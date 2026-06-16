@@ -1,0 +1,23 @@
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.DS_Store
+
+# --- research-env data (not part of the template) ---
+
+# shared derived index — regenerable with `reref index`
+.reref/
+
+# personal reference corpus (PDFs etc.) — keep the folder, ignore its contents
+/library/*
+!/library/.gitkeep
+
+# each project under projects/ is its OWN standalone git repo
+/projects/*
+!/projects/.gitkeep

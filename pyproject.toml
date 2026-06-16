@@ -1,0 +1,27 @@
+[project]
+name = "research-env"
+version = "0.1.0"
+description = "A research environment template: a shared paper library + the reref engine for local span-anchored, verified citations. Each paper lives in its own project repo under projects/."
+readme = "README.md"
+requires-python = ">=3.10"
+# Core runs on the stdlib only. Heavy SOTA backends are optional extras
+# (lazy-imported) so the pipeline works today on Python 3.14 without torch.
+dependencies = []
+
+[project.optional-dependencies]
+pdf = ["pdfminer.six"]            # light, MIT — default PDF text extraction
+parse-sota = ["docling"]          # MIT — page_no + bbox + charspan (upgrade)
+anchor = ["rapidfuzz"]            # MIT — robust fuzzy re-anchoring across versions
+embed-local = ["sentence-transformers"]  # Qwen3-Embedding / BGE-M3
+verify-local = ["transformers", "torch"]  # FactCG / MiniCheck
+api = ["anthropic", "openai"]     # LLM-judge verifier / API embeddings
+
+[project.scripts]
+reref = "reref.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["reref*"]

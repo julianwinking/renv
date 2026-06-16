@@ -1,16 +1,59 @@
-# Ideation for a paper
+# Ideation
+
+This file holds two related but distinct ideas:
+1. **Fine-grained, location-anchored citation**
+2. **Reasoning lines** (a separate idea, parked at the bottom).
+
+---
+
+# Paper: Fine-grained, location-anchored citation
 
 ## Problem
-Currently more people in research are trying to use large language models (LLMs) to help with their research. One big limitation of LLMs is that they can hallucinate. This shows in the form of generating false information, or making up references. The ladder one can be addressed by introducing checks of references in the sources of a paper if they referene the correct paper name and if it already exists. This is partially already done on plattforms like Google scholar but could also be moved into the latex code of the paper itself by directly referencing a paper publication link. Still that would leave the problem that an LLM might not have to read through a paper when referencing it or only read the abstract. (happned to me personally, check if that is a known proble.). What we can see already in tools like Anara.com is an idexing of a pdf in chunks and then referencing exact chunks when retrieving information. 
+More researchers are using large language models (LLMs) to help with their work. A major limitation is hallucination, which shows up in two distinct ways for citations:
 
-## Solution
-Generally, there is a lot inbetween the lines of a paper that is not explicitly written down but a human researcher knows during the writing process. A frist step could be to add a reasoning line in-between paper sentences to make the implicit knowledge explicit. This would be a first step to make the paper more transparent and easier to check for correctness and AI iterations to not lose on context from what is maybe in notes and what is written down in the actual paper. This could happen on a section basis, a paragraph basis and a sentence basis.
+1. **Fabricated references** — the cited paper does not exist. This is largely addressable today by checking reference names/links against an index (Google Scholar, DOI lookup), and can be moved into the LaTeX source by referencing a publication link directly.
+2. **Unsupported / distorted attribution** — the reference exists, but it does not actually support the claim attributed to it. This is the harder, still-unsolved problem and the one this paper targets.
 
-Further, I would like to explore to extend that to references. Currently, in technical fields you would only cite a reference at the end of a sentecence. I think it would be actual helpful to list the exact place from the original paper (line number or the chunked vector when we assume all papers could be indexed in a standardized way as anara currently does it but also a local paper indexing in the personal storage could already work)
+The root cause of (2) is that an LLM may cite a paper without reading it, or after reading only the abstract. (This is a documented failure mode — to confirm against the citation-faithfulness / attributed-QA literature.) Tools like Anara already index a PDF into chunks and reference exact chunks on retrieval, which points at the mechanism we want to build on. This could become a component of autoresearch pipelines.
 
-## Approach
-- Implement local vector indexing approach
-- Write my own paper suggesting this approach using the other papers I have read as references and explicitly referencing the exact place in the paper where I got the information from including the hidden text intructions that improve the reasoning of the paper and make it more transparent.
-- Show that this approach enables it to create reasoning chains of multiple papers (that were building on each other) and visualize those to see how the reasoning is built on top of each other and how the references are connected to each other.
-- Show that this approach can be used to check for hallucinations in the references and also to check for the correctness of the paper itself by checking if the reasoning lines are correct and if the references
-  - This could also be a standadrdized approach that is then applied in reviewing papers because it makes it more transparent where a paper is coming from and what the actual additions are.
+## Core idea
+Today, in technical fields, a citation points only at a whole paper, attached at the end of a sentence. The proposal is to make citations **location-anchored**: each citation points to the *exact place* in the source it draws from — not just the paper, but the specific span (sentence, line, or indexed chunk/vector).
+
+This assumes papers can be indexed in a standardized way. Anara does this in the cloud; a **local vector index over a researcher's personal paper storage** is enough to demonstrate the approach (and is the MVP).
+
+A key open problem to address: **anchors must be stable.** Line numbers break across versions, preprint vs. typeset, and two-column layouts; chunk vectors are tool-specific and non-portable. A standard needs robust anchoring (e.g. quote/semantic-span based) rather than raw line numbers. Or the paper author would run this together with their publication process so that everybody has the same line numbers long-term.
+
+## Contributions (one paper)
+1. **Location-anchored citation** — the mechanism above, with a stable anchoring scheme and a local indexing implementation.
+2. **Hallucination & correctness checking** — because each citation resolves to a specific source span, we can automatically check whether the cited span actually supports the claim. This detects unsupported/distorted attributions, not just fabricated references. *(builds on contribution 1)*
+3. **Cross-paper reasoning chains + visualization** — when papers build on each other, location-anchored citations let us reconstruct and visualize how reasoning is layered across papers and how references connect. *(builds on contributions 1 & 2)*
+4. **Application to peer review** — a standardized, location-anchored format makes it transparent where a paper's claims come from and what its actual novel additions are, which could be applied as a reviewing aid.
+
+## Positioning (must do before writing)
+Position explicitly against prior art — this is the make-or-break for novelty:
+- Attributed QA / citation generation & evaluation (e.g. ALCE-style citation metrics).
+- Citation faithfulness / unsupported-attribution detection.
+- Scientific claim verification (e.g. SciFact).
+- Commercial tools: Anara, SciSpace, Elicit, Consensus, scite.ai.
+
+The novelty claim must be made *against* this body of work.
+
+## Evaluation (design this first, then build only what it needs)
+Construction alone is a demo, not a paper. Needed:
+- **Dataset** with ground truth: claims labeled supported / unsupported / fabricated.
+- **Baselines** to beat: paper-level citation + plain LLM, and existing RAG-attribution tools.
+- **Metrics**: citation precision/recall, attribution faithfulness, hallucination-detection rate.
+- Writing my own paper with this method is a useful demo, but **N=1 on my own paper is not evidence** — it invites a self-fulfilling-prophecy critique. The visualization is a figure, not a result.
+
+## Thesis (one testable claim)
+> Fine-grained, location-anchored citations enable automatic detection of unsupported/distorted attributions in scientific writing better than paper-level citation plus existing RAG.
+
+---
+
+# Separate idea: Reasoning lines
+
+There is a lot between the lines of a paper that a researcher knows during writing but never writes down. The idea: interleave an explicit **reasoning line** between a paper's sentences (at section, paragraph, and sentence granularity) to make this implicit knowledge explicit — improving transparency, easier correctness-checking, and preventing AI iterations from losing the context that lives in notes rather than the final text.
+
+**Open problems to resolve before this is its own paper:**
+- **Provenance & trust.** If a human writes the reasoning lines, this is a tooling/workflow contribution and adoption is the central challenge. If an LLM generates them, the reasoning lines are themselves potentially hallucinated — you've added a layer that needs verifying, not one that reduces verification.
+- **Circularity.** Using an LLM to make reasoning explicit and then an LLM to check correctness can launder confidence rather than establish it; the evaluation must not just measure self-consistency.

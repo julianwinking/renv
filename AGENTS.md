@@ -59,6 +59,15 @@ through the same code paths, so the rules below hold either way.
 5. **Results are generated, never typed**: entrypoints read
    `REREF_RUN_DIR`/`REREF_PARAMS`, write `metrics.json`; numbers flow
    run → metric → paper via `reref weave`.
+   **Cluster runs** (compute/data stay remote): register remote data with
+   `dataset add --remote ssh://… --sha256 <hashed-on-cluster>`; after the run,
+   `reref exp ingest <project> <slug> --dir <copied-dir>` — or, when nothing
+   comes home, `--metrics '{…}' --remote ssh://…` (MCP: `ingest_run`).
+   Provenance grades `remote`, or `remote-verified` if the cluster wrapper
+   wrote `provenance.json` (git_sha, params, seed, env_hash) into the run dir.
+   §0 unchanged: a result still only enters via a recorded run.
+   Per-step curves (TensorBoard events etc.) are TELESCOPE artifacts — never
+   citable; only `metric` rows feed the paper.
 6. **Snapshot for git**: `reref export` after meaningful changes.
 
 ## Finding things

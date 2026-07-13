@@ -404,9 +404,18 @@ ALTER TABLE plan_item_v11 RENAME TO plan_item;
 CREATE INDEX idx_plan_project ON plan_item(project_id);
 """
 
+# v12: cluster-resident compute AND data — `run.remote` records where a run
+# executed / its artifacts live (e.g. ssh://cluster/scratch/runs/exp42), and
+# `dataset.location` records where the data lives when it never touches this
+# machine (hash supplied by the remote wrapper keeps pinning intact).
+_SCHEMA_V12 = """
+ALTER TABLE run ADD COLUMN remote TEXT;
+ALTER TABLE dataset ADD COLUMN location TEXT;
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
               _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
-              _SCHEMA_V11]
+              _SCHEMA_V11, _SCHEMA_V12]
 
 
 # --- time & hashing ----------------------------------------------------------

@@ -327,13 +327,10 @@ def run_status(con: sqlite3.Connection, run_id: int) -> dict:
     return run
 
 
-def _ingest_metrics(con: sqlite3.Connection, run_id: int, run_dir: Path) -> None:
-    mfile = run_dir / "metrics.json"
-    if not mfile.exists():
-        return
-    data = json.loads(mfile.read_text())  # raises on bad JSON -> caught by run_experiment
-    if not isinstance(data, dict):
-        raise ValueError("metrics.json must be a JSON object {name: value}")
+def _insert_metrics(con: sqlite3.Connection, run_id: int, data) -> None:
+    """Validate + insert a flat metrics mapping (shared by runner and ingest)."""
+    if not isinstance(data, dict) or not data:
+        raise ValueError("metrics must be a non-empty JSON object {name: value}")
     for name, value in data.items():
         # accept {"name": value} or {"name": {"value": v, "split": s}}
         if isinstance(value, dict):
@@ -348,14 +345,96 @@ def _ingest_metrics(con: sqlite3.Connection, run_id: int, run_dir: Path) -> None
         )
 
 
+def _ingest_metrics(con: sqlite3.Connection, run_id: int, run_dir: Path) -> None:
+    mfile = run_dir / "metrics.json"
+    if not mfile.exists():
+        return
+    data = json.loads(mfile.read_text())  # raises on bad JSON -> caught by run_experiment
+    _insert_metrics(con, run_id, data)
+
+
 def _ingest_artifacts(con: sqlite3.Connection, run_id: int, run_dir: Path) -> None:
-    reserved = {"metrics.json", "stdout.txt", "stderr.txt"}
+    reserved = {"metrics.json", "stdout.txt", "stderr.txt", "provenance.json"}
     for f in sorted(run_dir.iterdir()):
         if f.is_file() and f.name not in reserved:
             con.execute(
                 "INSERT INTO artifact (run_id, path, sha256, kind) VALUES (?,?,?,?)",
                 (run_id, str(f), sha256_file(f), f.suffix.lstrip(".") or None),
             )
+
+
+def ingest_run(con: sqlite3.Connection, project: str, slug: str, *,
+               run_dir=None, metrics: dict | None = None,
+               remote: str | None = None, dataset_id: int | None = None) -> dict:
+    """Register a run executed ELSEWHERE (a cluster) — the §0 entry point for
+    results whose compute and data may never touch this machine.
+
+    Two shapes:
+    - ``run_dir``: a copied-back run directory (metrics.json + artifact files,
+      optionally provenance.json written by the cluster-side wrapper).
+    - ``metrics`` (+ ``remote`` locator): nothing local at all — the agent
+      operating the cluster passes the final scalars and where the run lives
+      (e.g. ``ssh://cluster/scratch/runs/exp42``); artifacts stay remote and
+      are recorded as a remote artifact row.
+
+    Provenance is graded honestly: ``remote-verified`` only when a
+    provenance.json supplies at least a git_sha (plus whatever env/dataset
+    fingerprints the wrapper captured); plain ``remote`` otherwise. Never
+    ``complete`` — this machine did not observe the execution.
+    """
+    pid = project_id(con, project)
+    erow = con.execute(
+        "SELECT id FROM experiment WHERE project_id=? AND slug=?", (pid, slug)).fetchone()
+    if not erow:
+        raise KeyError(f"no experiment {slug!r} in {project!r}")
+    if run_dir is None and metrics is None:
+        raise ValueError("ingest needs --dir (a copied run directory) or metrics")
+
+    prov = {}
+    if run_dir is not None:
+        run_dir = Path(run_dir)
+        if not run_dir.is_dir():
+            raise ValueError(f"{run_dir} is not a directory")
+        pfile = run_dir / "provenance.json"
+        if pfile.exists():
+            prov = json.loads(pfile.read_text())
+            if not isinstance(prov, dict):
+                raise ValueError("provenance.json must be a JSON object")
+        if metrics is None:
+            mfile = run_dir / "metrics.json"
+            if not mfile.exists():
+                raise ValueError(f"no metrics.json in {run_dir}")
+            metrics = json.loads(mfile.read_text())
+
+    grade = "remote-verified" if prov.get("git_sha") else "remote"
+    config_id = None
+    if isinstance(prov.get("params"), dict) and prov["params"]:
+        config_id = get_or_create_config(con, prov["params"])
+    ts = now()
+    cur = con.execute(
+        "INSERT INTO run (experiment_id, config_id, dataset_id, git_sha, env_hash, "
+        "corpus_lock_hash, seed, status, started, finished, entrypoint, "
+        "entrypoint_sha, dirty, provenance, remote) "
+        "VALUES (?,?,?,?,?,?,?,'done',?,?,?,?,?,?,?)",
+        (erow["id"], config_id, dataset_id, prov.get("git_sha"), prov.get("env_hash"),
+         None, prov.get("seed"), prov.get("started") or ts, prov.get("finished") or ts,
+         prov.get("entrypoint"), prov.get("entrypoint_sha"), None, grade,
+         remote or prov.get("remote")))
+    run_id = cur.lastrowid
+    try:
+        _insert_metrics(con, run_id, metrics)
+    except Exception:
+        con.rollback()
+        raise
+    if run_dir is not None:
+        _ingest_artifacts(con, run_id, run_dir)
+    elif remote:
+        con.execute(
+            "INSERT INTO artifact (run_id, path, sha256, kind) VALUES (?,?,?,?)",
+            (run_id, remote, prov.get("sha256"), "remote"))
+    set_status(con, project, slug, "done")
+    con.commit()
+    return row_to_dict(con.execute("SELECT * FROM run WHERE id=?", (run_id,)).fetchone())
 
 
 def get_metrics(con: sqlite3.Connection, run_id: int) -> list[dict]:

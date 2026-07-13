@@ -241,8 +241,8 @@ def _runs(con, slug):
     pid = db.project_id(con, slug)
     runs = [dict(r) for r in con.execute(
         "SELECT r.id, r.status, r.started, r.finished, r.seed, r.git_sha, "
-        "       r.dirty, r.provenance, r.entrypoint, e.slug AS experiment, "
-        "       c.params_json, d.slug AS dataset "
+        "       r.dirty, r.provenance, r.entrypoint, r.remote, e.slug AS experiment, "
+        "       c.params_json, d.slug AS dataset, d.location AS dataset_location "
         "FROM run r JOIN experiment e ON e.id = r.experiment_id "
         "LEFT JOIN config c ON c.id = r.config_id "
         "LEFT JOIN dataset d ON d.id = r.dataset_id "

@@ -3,6 +3,9 @@ import { getProject, getRuns } from '../api.js'
 import { Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
 
 function Run({ run, defs }) {
+  const where = run.remote
+    ? run.remote.replace(/^[a-z+]+:\/\//, '').split('/')[0]   // host part
+    : 'local'
   return (
     <tr>
       <td className="num">#{run.id}</td>
@@ -14,6 +17,12 @@ function Run({ run, defs }) {
       </td>
       <td className="num faint">{run.seed ?? '—'}</td>
       <td><Provenance run={run} /></td>
+      <td className="num faint"
+          title={(run.remote || 'ran on this machine')
+                 + (run.dataset ? `\ndata: ${run.dataset}` : '')
+                 + (run.dataset_location ? ` @ ${run.dataset_location}` : '')}>
+        {where}{run.dataset_location && !run.dataset_location.startsWith('/') ? ' ⇅' : ''}
+      </td>
       <td className="num faint" title={run.git_sha}>{(run.git_sha || '').slice(0, 7) || '—'}</td>
       <td className="when">{timeAgo(run.started)}</td>
     </tr>
@@ -79,7 +88,7 @@ export default function Experiments({ slug, defs, focus }) {
                   {eruns.length > 0 && (
                     <table className="ledger-t" style={{ marginTop: 8 }}>
                       <thead>
-                        <tr><th>run</th><th>status</th><th>metrics</th><th>params</th><th>seed</th><th>provenance</th><th>git</th><th>when</th></tr>
+                        <tr><th>run</th><th>status</th><th>metrics</th><th>params</th><th>seed</th><th>provenance</th><th>where</th><th>git</th><th>when</th></tr>
                       </thead>
                       <tbody>{eruns.map((r) => <Run key={r.id} run={r} defs={defs} />)}</tbody>
                     </table>

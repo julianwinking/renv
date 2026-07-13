@@ -259,6 +259,32 @@ def cmd_exp_run(args):
         print(f"  {m['name']}{split} = {experiment.fmt_metric(defs, m['name'], m['value'])}")
 
 
+def cmd_exp_ingest(args):
+    con = db.connect(args.corpus)
+    metrics = None
+    if args.metrics:
+        raw = Path(args.metrics[1:]).read_text() if args.metrics.startswith("@") else args.metrics
+        metrics = json.loads(raw)
+    dataset_id = None
+    if args.dataset:
+        slug, _, ver = args.dataset.partition("@")
+        ds = get_dataset(con, slug, ver or "1")
+        if not ds:
+            sys.exit(f"! dataset {args.dataset!r} not registered — `reref dataset add`")
+        dataset_id = ds["id"]
+    try:
+        run = experiment.ingest_run(con, args.project, args.slug, run_dir=args.dir,
+                                    metrics=metrics, remote=args.remote,
+                                    dataset_id=dataset_id)
+    except (ValueError, KeyError, json.JSONDecodeError) as exc:
+        sys.exit(f"! {exc}")
+    print(f"run {run['id']} ingested [{run['provenance']}]"
+          + (f"  remote={run['remote']}" if run["remote"] else ""))
+    defs = experiment.metric_defs(con)
+    for m in experiment.get_metrics(con, run["id"]):
+        print(f"  {m['name']} = {experiment.fmt_metric(defs, m['name'], m['value'])}")
+
+
 def cmd_exp_show(args):
     con = db.connect(args.corpus)
     e = experiment.get_experiment(con, args.project, args.slug)
@@ -334,9 +360,11 @@ def cmd_note_add(args):
 def cmd_dataset_add(args):
     con = db.connect(args.corpus)
     ds = register_dataset(con, args.slug, version=args.version, path=args.path,
-                          description=args.description)
+                          description=args.description, location=args.remote,
+                          sha256=args.sha256)
     print(f"dataset {ds['slug']}@{ds['version']} (id {ds['id']}) "
-          f"sha={ds['sha256'][:12] + '…' if ds['sha256'] else '-'}")
+          f"sha={ds['sha256'][:12] + '…' if ds['sha256'] else '-'}"
+          + (f"  at {ds['location']}" if ds.get("location") else ""))
 
 
 def cmd_dataset_list(args):
@@ -832,6 +860,17 @@ def main(argv=None):
     er.add_argument("--env-allow", action="append", dest="env_allow",
                     help="pass a secret-named env var through to the run (repeatable)")
     er.set_defaults(func=cmd_exp_run)
+    ei = pe.add_parser("ingest", help="register a run executed elsewhere (a cluster)")
+    ei.add_argument("project")
+    ei.add_argument("slug")
+    ei.add_argument("--dir", default=None,
+                    help="copied-back run directory (metrics.json [+ provenance.json])")
+    ei.add_argument("--metrics", default=None,
+                    help='final scalars when nothing is local: JSON or @file, e.g. \'{"acc":0.91}\'')
+    ei.add_argument("--remote", default=None,
+                    help="where the run/artifacts live, e.g. ssh://cluster/scratch/runs/exp42")
+    ei.add_argument("--dataset", default=None, help="slug[@version]")
+    ei.set_defaults(func=cmd_exp_ingest)
     es = pe.add_parser("show", help="experiment detail + its runs")
     es.add_argument("project")
     es.add_argument("slug")
@@ -879,7 +918,11 @@ def main(argv=None):
     da = pds.add_parser("add", help="register a versioned, hashed dataset")
     da.add_argument("slug")
     da.add_argument("--version", default="1")
-    da.add_argument("--path", default=None, help="file to hash for provenance")
+    da.add_argument("--path", default=None, help="local file to hash for provenance")
+    da.add_argument("--remote", default=None,
+                    help="where the data lives when not local, e.g. ssh://cluster/data/x")
+    da.add_argument("--sha256", default=None,
+                    help="hash computed remotely (`shasum -a 256` on the cluster)")
     da.add_argument("--description", default=None)
     da.set_defaults(func=cmd_dataset_add)
     dl = pds.add_parser("list", help="list datasets")

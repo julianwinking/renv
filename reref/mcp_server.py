@@ -205,7 +205,15 @@ def h_add_note(root, a):
 def h_register_dataset(root, a):
     return register_dataset(
         _conn(root), a["slug"], version=a.get("version", "1"),
-        path=a.get("path"), description=a.get("description"))
+        path=a.get("path"), description=a.get("description"),
+        location=a.get("location"), sha256=a.get("sha256"))
+
+
+def h_ingest_run(root, a):
+    return experiment.ingest_run(
+        _conn(root), a["project"], a["slug"], run_dir=a.get("dir"),
+        metrics=a.get("metrics"), remote=a.get("remote"),
+        dataset_id=a.get("dataset_id"))
 
 
 def h_scaffold_project(root, a):
@@ -423,9 +431,15 @@ TOOLS = [
     {"name": "add_note", "description": "Add a meeting note to a project.",
      "inputSchema": _obj({"project": _S, "body": _S, "title": _S}, ["project", "body"]),
      "handler": h_add_note},
-    {"name": "register_dataset", "description": "Register a versioned, content-hashed evaluation dataset.",
-     "inputSchema": _obj({"slug": _S, "version": _S, "path": _S, "description": _S}, ["slug"]),
+    {"name": "register_dataset", "description": "Register a versioned, content-hashed evaluation dataset. Cluster-resident data: pass location (ssh://…) + sha256 computed remotely.",
+     "inputSchema": _obj({"slug": _S, "version": _S, "path": _S, "description": _S,
+                          "location": _S, "sha256": _S}, ["slug"]),
      "handler": h_register_dataset},
+    {"name": "ingest_run", "description": "Register a run executed elsewhere (a cluster) — §0 entry for remote results: pass a copied run dir, or metrics + a remote locator when data/artifacts stay on the cluster. Provenance graded remote/remote-verified, never complete.",
+     "inputSchema": _obj({"project": _S, "slug": _S, "dir": _S,
+                          "metrics": {"type": "object"}, "remote": _S,
+                          "dataset_id": _I}, ["project", "slug"]),
+     "handler": h_ingest_run},
     {"name": "scaffold_project", "description": "Create a project: paper skeleton + store-native ideation (a kickoff question; plan lives in the graph).",
      "inputSchema": _obj({"slug": _S, "title": _S}, ["slug"]), "handler": h_scaffold_project},
     {"name": "weave", "description": "Regenerate results_table.tex + references.bib from the store.",

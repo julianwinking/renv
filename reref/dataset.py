@@ -22,9 +22,18 @@ def register_dataset(
     version: str = "1",
     path: str | None = None,
     description: str | None = None,
+    location: str | None = None,
+    sha256: str | None = None,
 ) -> dict:
-    """Register (or return) dataset ``slug@version``; hash the file if given."""
-    sha = sha256_file(Path(path)) if path else None
+    """Register (or return) dataset ``slug@version``.
+
+    Local data: pass ``path`` — hashed here, and recorded as the location.
+    Cluster-resident data: pass ``location`` (e.g. ``ssh://cluster/data/x``)
+    plus ``sha256`` computed remotely (``shasum -a 256`` on the cluster), so
+    hash-pinning survives without the bytes ever touching this machine.
+    """
+    sha = sha256 or (sha256_file(Path(path)) if path else None)
+    location = location or path
     row = con.execute(
         "SELECT * FROM dataset WHERE slug=? AND version=?", (slug, version)
     ).fetchone()
@@ -36,9 +45,9 @@ def register_dataset(
                 "bump the version instead of re-pointing it at new bytes")
         return row_to_dict(row)
     cur = con.execute(
-        "INSERT INTO dataset (slug, version, sha256, description, created) "
-        "VALUES (?,?,?,?,?)",
-        (slug, version, sha, description, now()),
+        "INSERT INTO dataset (slug, version, sha256, description, created, location) "
+        "VALUES (?,?,?,?,?,?)",
+        (slug, version, sha, description, now(), location),
     )
     con.commit()
     return row_to_dict(

@@ -128,17 +128,28 @@ aside {
 /* ---------- topbar ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar {
-  display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 14px; flex-shrink: 0; position: relative;
   padding: 10px 22px; border-bottom: 1px solid var(--line); background: var(--surface);
 }
 .topbar h2 { font-size: 14px; font-weight: 600; margin: 0; white-space: nowrap; }
 .topbar .crumb { color: var(--faint); font-weight: 400; }
-.searchbox { position: relative; flex: 1; max-width: 380px; }
+.searchbox {
+  /* dead-center of the topbar, independent of breadcrumb/control widths */
+  position: absolute; left: 50%; transform: translateX(-50%);
+  width: min(380px, 34vw);
+}
 .searchbox input {
   width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink);
-  border-radius: 7px; padding: 5px 10px; font: inherit;
+  border-radius: 7px; padding: 5px 52px 5px 10px; font: inherit;
 }
 .searchbox input::placeholder { color: var(--faint); }
+.searchbox kbd {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  background: var(--surface); pointer-events: none;
+}
+.searchbox:focus-within kbd { display: none; }
 .search-pop {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
   background: var(--surface); border: 1px solid var(--line); border-radius: 9px;

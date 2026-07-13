@@ -69,6 +69,18 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
+  useEffect(() => {   // ⌘K / Ctrl-K jumps into search
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const loadOverview = useCallback(async () => {
     const o = await getOverview()
     setOverview(o)
@@ -173,9 +185,10 @@ export default function App() {
             <input
               ref={searchRef}
               placeholder="Search papers, claims, log, notes…"
-              onKeyDown={(e) => { if (e.key === 'Enter') runSearch(e.target.value); if (e.key === 'Escape') { setHits(null); e.target.value = '' } }}
+              onKeyDown={(e) => { if (e.key === 'Enter') runSearch(e.target.value); if (e.key === 'Escape') { setHits(null); e.target.value = ''; e.target.blur() } }}
               onBlur={() => setTimeout(() => setHits(null), 200)}
             />
+            <kbd>{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd>
             {hits && (
               <div className="search-pop">
                 {hits.map((h, i) => (

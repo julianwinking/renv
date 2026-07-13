@@ -45,6 +45,7 @@ export default function App() {
   const setView = (v) => setRoute({ view: v, focus: null })
   const [theme, setTheme] = useState(initialTheme)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('reref-sidebar') === 'collapsed')
+  const [sideW, setSideW] = useState(() => Number(localStorage.getItem('reref-sidebar-w')) || 228)
   const [hits, setHits] = useState(null)
   const searchRef = useRef(null)
 
@@ -89,6 +90,22 @@ export default function App() {
   const inv = overview?.invariants
   const openFindings = project?.open_findings || 0
 
+  const clampW = (w) => Math.min(400, Math.max(180, w))
+  const startResize = (e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = sideW
+    let w = startW
+    const move = (ev) => { w = clampW(startW + ev.clientX - startX); setSideW(w) }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      localStorage.setItem('reref-sidebar-w', String(w))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
   const PanelIcon = (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
       <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
@@ -99,7 +116,8 @@ export default function App() {
   return (
     <div className="app">
       {!collapsed && (
-      <aside>
+      <aside style={{ width: sideW }}>
+        <div className="side-resize" onMouseDown={startResize} title="Drag to resize" />
         <div className="brand-row">
           <h1 className="brand">
             <span className="re">re</span>ref

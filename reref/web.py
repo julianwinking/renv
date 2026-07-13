@@ -380,6 +380,12 @@ class Handler(BaseHTTPRequestHandler):
             return ingest.list_papers(con)
         if path == "/api/metric_defs":
             return experiment.metric_defs(con)
+        if path == "/api/sources":
+            # distinct feedback/entry authors (people), for consistent labels;
+            # system writers are not people
+            return [r["source"] for r in con.execute(
+                "SELECT DISTINCT source FROM log_entry WHERE source IS NOT NULL "
+                "AND source NOT IN ('cockpit', 'scaffold') ORDER BY source")]
         if path == "/api/rubric":
             from .review import RUBRIC
             return RUBRIC

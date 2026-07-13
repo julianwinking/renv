@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, addNote, addLog, editLog, editNote } from '../api.js'
+import { getProject, addNote, addLog, editLog, editNote, getSources } from '../api.js'
 import { Stamp, Section, Empty, timeAgo } from '../ui.jsx'
 
 // 'result' is deliberately absent: measured numbers enter via runs (§0).
@@ -17,8 +17,11 @@ export default function Timeline({ slug, focus }) {
   const [editText, setEditText] = useState('')
   const [err, setErr] = useState(null)
 
+  const [sources, setSources] = useState([])
+
   const load = () => getProject(slug).then(setData)
   useEffect(() => { setData(null); setAnswering(null); load() }, [slug])
+  useEffect(() => { getSources().then(setSources) }, [slug])
   useEffect(() => {   // deep link from the graph: scroll to one entry
     if (focus && data) {
       requestAnimationFrame(() =>
@@ -83,9 +86,25 @@ export default function Timeline({ slug, focus }) {
             </div>
           )}
           {!answering && type === 'feedback' && (
-            <input className="text" style={{ marginBottom: 8 }}
-                   placeholder='Who gave it? e.g. "advisor: Prof. X"'
-                   value={source} onChange={(e) => setSource(e.target.value)} />
+            <>
+              <input className="text" style={{ marginBottom: 6 }}
+                     placeholder='Who gave it? e.g. "advisor: Prof. X"'
+                     value={source} onChange={(e) => setSource(e.target.value)} />
+              {(() => {   // suggest known people so the same person stays one label
+                const s = sources.filter((p) =>
+                  p.toLowerCase().includes(source.trim().toLowerCase()) && p !== source)
+                return s.length ? (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {s.slice(0, 8).map((p) => (
+                      <button key={p} className="chip" style={{ cursor: 'pointer' }}
+                              onClick={() => setSource(p)}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                ) : null
+              })()}
+            </>
           )}
           <textarea
             placeholder={

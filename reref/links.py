@@ -59,22 +59,29 @@ _CTX_LABEL = {
     "relates_to": "Relates to",  # generic
 }
 
-# Curated meaning per directed pair. Only these pairs connect softly; anything
-# not listed (and not a strong pair above) has no meaning and is refused.
-_CTX_MATRIX: dict[tuple[str, str], list[str]] = {
+# The kinds that can carry soft links (everything conceptual; citations are
+# evidence-only, code nodes are read-only @reref tags). Between ANY two of
+# these, "Relates to" is always available — it genuinely applies to any pair,
+# so nothing conceptual is ever un-connectable.
+_CTX_KINDS = ("feedback", "note", "question", "hypothesis", "thought",
+              "claim", "experiment", "paper", "finding")
+
+# Specific verbs layered on top, only where they carry real meaning. Everything
+# else falls back to relates_to alone.
+_CTX_VERBS: dict[tuple[str, str], list[str]] = {
     # a result of research surfaces or motivates the next step
     ("claim", "question"): ["raises"],
     ("claim", "experiment"): ["motivates"],
     ("experiment", "question"): ["raises"],
     ("finding", "question"): ["raises"],
-    ("finding", "claim"): [],
-    ("finding", "experiment"): [],
+    ("observation", "question"): ["raises"],   # ('thought' node, see below)
     # open threads point at the work that will resolve them
     ("question", "experiment"): ["motivates"],
     ("question", "claim"): ["about"],
     ("question", "paper"): ["about"],
     ("hypothesis", "experiment"): ["motivates"],
     ("hypothesis", "claim"): ["motivates"],
+    ("hypothesis", "question"): ["raises"],
     # external input is directed at something
     ("feedback", "claim"): ["concerns"],
     ("feedback", "experiment"): ["concerns"],
@@ -85,18 +92,18 @@ _CTX_MATRIX: dict[tuple[str, str], list[str]] = {
     ("paper", "claim"): ["informs"],
     ("paper", "experiment"): ["informs"],
     ("paper", "question"): ["raises"],
-    # notes are deliberately generic — relates_to only
-    ("note", "claim"): [],
-    ("note", "experiment"): [],
-    ("note", "paper"): [],
-    ("note", "finding"): [],
-    ("note", "question"): [],
 }
-for (_a, _b), _verbs in _CTX_MATRIX.items():
-    if (_a, _b) in CONNECTIONS:              # never shadow a strong pair
-        continue
-    CONNECTIONS[(_a, _b)] = [(v, _CTX_LABEL[v], "context") for v in _verbs] \
-        + [("relates_to", _CTX_LABEL["relates_to"], "context")]
+# observation/decision/blocker log entries all render as the 'thought' node
+_CTX_VERBS = {(("thought" if a == "observation" else a), b): v
+              for (a, b), v in _CTX_VERBS.items()}
+
+for _a in _CTX_KINDS:
+    for _b in _CTX_KINDS:
+        if (_a, _b) in CONNECTIONS:          # never shadow a strong pair
+            continue
+        verbs = _CTX_VERBS.get((_a, _b), [])
+        CONNECTIONS[(_a, _b)] = [(v, _CTX_LABEL[v], "context") for v in verbs] \
+            + [("relates_to", _CTX_LABEL["relates_to"], "context")]
 
 
 def options_for(from_kind: str, to_kind: str) -> list[dict]:

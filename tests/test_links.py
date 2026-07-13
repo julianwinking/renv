@@ -20,12 +20,15 @@ def test_registry_options():
     assert {o["value"] for o in ev} >= {"supports", "refutes", "relates_to"}
     # literature evidence: citation → claim
     assert {o["value"] for o in links.options_for("citation", "claim")} >= {"supports", "refutes"}
-    # curated meanings, not a generic bag
+    # curated verbs where meaningful, on top of universal relates_to
     assert {o["value"] for o in links.options_for("claim", "question")} == {"raises", "relates_to"}
     assert {o["value"] for o in links.options_for("feedback", "claim")} == {"concerns", "relates_to"}
     assert {o["value"] for o in links.options_for("paper", "claim")} == {"informs", "relates_to"}
-    # unlisted pair → no connection
-    assert links.options_for("paper", "note") == []
+    # any two conceptual nodes always at least "relate to" each other
+    assert {o["value"] for o in links.options_for("note", "thought")} == {"relates_to"}
+    assert {o["value"] for o in links.options_for("thought", "question")} == {"raises", "relates_to"}
+    assert {o["value"] for o in links.options_for("paper", "note")} == {"relates_to"}
+    # citations are evidence-only, not soft-linkable
     assert links.options_for("citation", "note") == []
 
 

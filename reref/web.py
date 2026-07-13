@@ -37,12 +37,15 @@ def _graph(con, root, slug):
     shape; the client lays it out (dagre) and maps kinds to node components."""
     pid = db.project_id(con, slug)
     nodes, edges, seen = [], [], set()
+    saved = {r["node_id"]: {"x": r["x"], "y": r["y"]} for r in con.execute(
+        "SELECT node_id, x, y FROM graph_layout WHERE project_id=?", (pid,))}
 
     def node(nid, kind, label, data):
         if nid in seen:
             return
         seen.add(nid)
-        nodes.append({"id": nid, "kind": kind, "label": label, "data": data})
+        nodes.append({"id": nid, "kind": kind, "label": label, "data": data,
+                      "pos": saved.get(nid)})
 
     for e in experiment.list_experiments(con, slug):
         node(f"exp:{e['id']}", "experiment", e["slug"],
@@ -68,12 +71,15 @@ def _graph(con, root, slug):
             if ev["run_id"]:
                 r = con.execute("SELECT experiment_id FROM run WHERE id=?", (ev["run_id"],)).fetchone()
                 if r:
-                    edges.append({"source": f"exp:{r['experiment_id']}", "target": f"claim:{c['id']}", "kind": ev["stance"]})
+                    edges.append({"source": f"exp:{r['experiment_id']}", "target": f"claim:{c['id']}",
+                                  "kind": ev["stance"], "note": ev["note"]})
             if ev["citation_id"]:
-                edges.append({"source": f"cite:{ev['citation_id']}", "target": f"claim:{c['id']}", "kind": ev["stance"]})
+                edges.append({"source": f"cite:{ev['citation_id']}", "target": f"claim:{c['id']}",
+                              "kind": ev["stance"], "note": ev["note"]})
     for rel in claimmod.list_relations(con, slug):
         edges.append({"source": f"claim:{rel['claim_id']}",
-                      "target": f"claim:{rel['related_id']}", "kind": rel["kind"]})
+                      "target": f"claim:{rel['related_id']}", "kind": rel["kind"],
+                      "note": rel["note"]})
 
     # thinking made visible: questions / hypotheses / feedback join the graph,
     # wired to the experiment they concern and to the entries that answer them
@@ -204,11 +210,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # keep the console quiet
         pass
 
-    def _send(self, obj, status=200, ctype="application/json"):
+    def _send(self, obj, status=200, ctype="application/json", cache=None):
         body = obj if isinstance(obj, (bytes, bytearray)) else json.dumps(obj, default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if cache:
+            self.send_header("Cache-Control", cache)
         # CORS: only trust local dev origins (Vite on :5173 etc.) — never `*`.
         # A wildcard would let any website the browser visits read/write the
         # research DB via drive-by fetch; same-origin requests need no header.
@@ -228,11 +236,16 @@ class Handler(BaseHTTPRequestHandler):
         simple buildless page. Static assets come from dist/."""
         if path in ("/", "/index.html"):
             page = DIST / "index.html" if (DIST / "index.html").exists() else WEB_DIR / "index.html"
-            return self._send(page.read_bytes(), ctype="text/html; charset=utf-8")
+            # never cache the shell: it references hash-named bundles that
+            # change on every rebuild — a cached shell shows a stale app
+            return self._send(page.read_bytes(), ctype="text/html; charset=utf-8",
+                              cache="no-cache")
         # static asset from the built app (e.g. /assets/index-xxxx.js)
         target = (DIST / path.lstrip("/")).resolve()
         if DIST.exists() and str(target).startswith(str(DIST.resolve())) and target.is_file():
-            return self._send(target.read_bytes(), ctype=_MIME.get(target.suffix, "application/octet-stream"))
+            return self._send(target.read_bytes(),
+                              ctype=_MIME.get(target.suffix, "application/octet-stream"),
+                              cache="max-age=31536000, immutable")
         self._send({"error": "not found"}, 404)
 
     # --- GET ---
@@ -308,9 +321,18 @@ class Handler(BaseHTTPRequestHandler):
             return claimmod.link_evidence(con, d["claim_id"], citation_id=d.get("citation_id"),
                                           run_id=d.get("run_id"), stance=d.get("stance", "supports"),
                                           note=d.get("note"))
+        if path == "/api/graph/layout":
+            pid = db.project_id(con, d["project"])
+            for nid, p in (d.get("positions") or {}).items():
+                con.execute(
+                    "INSERT INTO graph_layout (project_id, node_id, x, y) VALUES (?,?,?,?) "
+                    "ON CONFLICT(project_id, node_id) DO UPDATE SET x=excluded.x, y=excluded.y",
+                    (pid, nid, float(p["x"]), float(p["y"])))
+            con.commit()
+            return {"saved": len(d.get("positions") or {})}
         if path == "/api/claim/relate":
             return claimmod.relate(con, d["claim_id"], d["related_id"],
-                                   kind=d.get("kind", "depends_on"))
+                                   kind=d.get("kind", "depends_on"), note=d.get("note"))
         if path == "/api/experiment":
             return experiment.create_experiment(con, d["project"], d["slug"],
                                                 title=d.get("title"),
@@ -331,7 +353,8 @@ class Handler(BaseHTTPRequestHandler):
                     f"experiment {d['experiment']!r} has no completed run yet — "
                     "run it first; claim evidence must be a recorded run (§0)")
             return claimmod.link_evidence(con, d["claim_id"], run_id=run["id"],
-                                          stance=d.get("stance", "supports"))
+                                          stance=d.get("stance", "supports"),
+                                          note=d.get("note"))
         raise ValueError(f"unknown endpoint {path}")
 
 

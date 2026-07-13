@@ -26,8 +26,10 @@ export const addExperiment = (project, slug, title, hypothesis, parent) =>
   post('/api/experiment', { project, slug, title, hypothesis, parent })
 export const setExperimentParent = (project, slug, parent) =>
   post('/api/experiment/parent', { project, slug, parent })
-export const relateClaims = (claim_id, related_id, kind) =>
-  post('/api/claim/relate', { claim_id, related_id, kind })
-export const linkExperimentToClaim = (project, experiment, claim_id, stance) =>
-  post('/api/claim/link_experiment', { project, experiment, claim_id, stance })
+export const relateClaims = (claim_id, related_id, kind, note) =>
+  post('/api/claim/relate', { claim_id, related_id, kind, note })
+export const linkExperimentToClaim = (project, experiment, claim_id, stance, note) =>
+  post('/api/claim/link_experiment', { project, experiment, claim_id, stance, note })
+export const saveLayout = (project, positions) =>
+  post('/api/graph/layout', { project, positions })
 export const search = (q) => api('/api/search?q=' + encodeURIComponent(q))

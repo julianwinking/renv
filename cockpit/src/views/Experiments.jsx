@@ -20,17 +20,26 @@ function Run({ run, defs }) {
   )
 }
 
-export default function Experiments({ slug, defs }) {
+export default function Experiments({ slug, defs, focus }) {
   const [exps, setExps] = useState(null)
   const [runs, setRuns] = useState([])
   const [open, setOpen] = useState({})
 
   useEffect(() => {
     let live = true
-    getProject(slug).then((d) => live && setExps(d.experiments))
+    getProject(slug).then((d) => {
+      if (!live) return
+      setExps(d.experiments)
+      const hit = focus && d.experiments.find((e) => e.slug === focus)
+      if (hit) {
+        setOpen((o) => ({ ...o, [hit.id]: true }))
+        requestAnimationFrame(() =>
+          document.getElementById(`exp-${focus}`)?.scrollIntoView({ block: 'center' }))
+      }
+    })
     getRuns(slug).then((r) => live && setRuns(r))
     return () => { live = false }
-  }, [slug])
+  }, [slug, focus])
 
   if (!exps) return <div className="loading">reading the store…</div>
 
@@ -52,7 +61,7 @@ export default function Experiments({ slug, defs }) {
           const eruns = runs.filter((r) => r.experiment === e.slug)
           const isOpen = !!open[e.id]
           return (
-            <div key={e.id}>
+            <div key={e.id} id={`exp-${e.slug}`} className={focus === e.slug ? 'flash' : ''}>
               <button className="rowbtn" onClick={() => setOpen({ ...open, [e.id]: !isOpen })}>
                 <div className="row" style={{ paddingLeft: 16 + depth(e) * 22 }}>
                   <span className="faint mono">{isOpen ? '▾' : '▸'}</span>

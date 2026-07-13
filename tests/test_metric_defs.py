@@ -62,6 +62,15 @@ def test_web_endpoints_and_cors(tmp_path):
         assert runs[0]["experiment"] == "001" and runs[0]["metrics"] == {"r": 0.5}
         ov = json.loads(urllib.request.urlopen(base + "/api/overview").read())
         assert ov["invariants"]["clean"] is True
+        # graph layout: hand-placed positions persist and come back on the nodes
+        req = urllib.request.Request(
+            base + "/api/graph/layout", method="POST",
+            data=json.dumps({"project": "p", "positions": {"exp:1": {"x": 40.5, "y": -12}}}).encode(),
+            headers={"Content-Type": "application/json"})
+        assert json.loads(urllib.request.urlopen(req).read())["saved"] == 1
+        g = json.loads(urllib.request.urlopen(base + "/api/graph/p").read())
+        exp_node = next(n for n in g["nodes"] if n["id"] == "exp:1")
+        assert exp_node["pos"] == {"x": 40.5, "y": -12}
         # CORS: a foreign origin gets NO allow-origin header; localhost dev does
         evil = urllib.request.urlopen(urllib.request.Request(
             base + "/api/overview", headers={"Origin": "https://evil.example"}))

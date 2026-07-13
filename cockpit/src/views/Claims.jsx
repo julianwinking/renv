@@ -2,15 +2,23 @@ import React, { useEffect, useState } from 'react'
 import { getProject, getClaim } from '../api.js'
 import { Stamp, Section, Empty, Mono } from '../ui.jsx'
 
-export default function Claims({ slug }) {
+export default function Claims({ slug, focus }) {
   const [claims, setClaims] = useState(null)
   const [detail, setDetail] = useState({})
 
   useEffect(() => {
     let live = true
-    getProject(slug).then((d) => live && setClaims(d.claims))
+    getProject(slug).then((d) => {
+      if (!live) return
+      setClaims(d.claims)
+      if (focus) {
+        getClaim(Number(focus)).then((full) => live && setDetail((dd) => ({ ...dd, [focus]: full })))
+        requestAnimationFrame(() =>
+          document.getElementById(`claim-${focus}`)?.scrollIntoView({ block: 'center' }))
+      }
+    })
     return () => { live = false }
-  }, [slug])
+  }, [slug, focus])
 
   const toggle = async (id) => {
     if (detail[id]) { setDetail({ ...detail, [id]: null }); return }
@@ -28,7 +36,7 @@ export default function Claims({ slug }) {
       </div>
       <Section title="Claim ledger" aside={`${claims.length} claims`}>
         {claims.map((c) => (
-          <div key={c.id}>
+          <div key={c.id} id={`claim-${c.id}`} className={String(focus) === String(c.id) ? 'flash' : ''}>
             <button className="rowbtn" onClick={() => toggle(c.id)}>
               <div className="row">
                 <Mono>#{c.id}</Mono>

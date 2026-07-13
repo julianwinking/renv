@@ -6,7 +6,7 @@ import { Stamp, Section, Empty, timeAgo } from '../ui.jsx'
 const COMPOSER_TYPES = ['note', 'decision', 'hypothesis', 'observation', 'question', 'feedback', 'blocker']
 const FILTERS = ['all', ...COMPOSER_TYPES.filter((t) => t !== 'note'), 'result', 'note']
 
-export default function Timeline({ slug }) {
+export default function Timeline({ slug, focus }) {
   const [data, setData] = useState(null)
   const [filter, setFilter] = useState('all')
   const [draft, setDraft] = useState('')
@@ -17,12 +17,19 @@ export default function Timeline({ slug }) {
 
   const load = () => getProject(slug).then(setData)
   useEffect(() => { setData(null); setAnswering(null); load() }, [slug])
+  useEffect(() => {   // deep link from the graph: scroll to one entry
+    if (focus && data) {
+      requestAnimationFrame(() =>
+        document.getElementById(`tl-${focus}`)?.scrollIntoView({ block: 'center' }))
+    }
+  }, [focus, data])
 
   if (!data) return <div className="loading">reading the store…</div>
 
   const entries = [
-    ...(data.log || []).map((e) => ({ ...e, kind: e.type })),
-    ...(data.notes || []).map((n) => ({ ...n, kind: 'note', body_md: n.title ? `${n.title}\n${n.body_md}` : n.body_md })),
+    ...(data.log || []).map((e) => ({ ...e, kind: e.type, fkey: `log-${e.id}` })),
+    ...(data.notes || []).map((n) => ({ ...n, kind: 'note', fkey: `note-${n.id}`,
+      body_md: n.title ? `${n.title}\n${n.body_md}` : n.body_md })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1))
   const shown = entries.filter((e) => filter === 'all' || e.kind === filter)
 
@@ -113,7 +120,7 @@ export default function Timeline({ slug }) {
         }
       >
         {shown.map((e) => (
-          <div className="tl-row" key={`${e.kind}-${e.id}`}>
+          <div className={`tl-row ${focus === e.fkey ? 'flash' : ''}`} id={`tl-${e.fkey}`} key={e.fkey}>
             <div className="tl-rail">
               <Stamp value={e.kind} tone={e.kind === 'result' ? 'ok' : e.kind === 'blocker' ? 'bad' : 'idle'} />
               {e.kind === 'question' && (

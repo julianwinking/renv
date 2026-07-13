@@ -50,9 +50,11 @@ def test_claim_relations_and_cycle_guard(tmp_path):
     db.ensure_project(con, "p", title="P")
     thesis = claim.add_claim(con, "p", "Targeted beats random", kind="thesis")
     lemma = claim.add_claim(con, "p", "Random shift is eps/sqrt(d)")
-    claim.relate(con, thesis["id"], lemma["id"], kind="depends_on")
+    claim.relate(con, thesis["id"], lemma["id"], kind="depends_on",
+                 note="gap size is derived from the lemma")
     full = claim.get_claim(con, thesis["id"])
     assert full["relations"][0]["related_id"] == lemma["id"]
+    assert full["relations"][0]["note"] == "gap size is derived from the lemma"
     # relations are structure, not proof — status stays derived from evidence
     assert full["status"] == "open"
     with pytest.raises(ValueError):   # cycle refused

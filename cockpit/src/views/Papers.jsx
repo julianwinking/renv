@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { getPapers, getPaperUsage } from '../api.js'
 import { Stamp, Section, Empty, Mono } from '../ui.jsx'
 
-export default function Papers() {
+export default function Papers({ focus }) {
   const [papers, setPapers] = useState(null)
-  const [sel, setSel] = useState(null)       // key
+  const [sel, setSel] = useState(focus || null)   // key
   const [usage, setUsage] = useState(null)
+
+  useEffect(() => { if (focus) setSel(focus) }, [focus])
 
   useEffect(() => {
     let live = true

@@ -287,7 +287,7 @@ def h_link_claim_evidence(root, a):
 def h_relate_claims(root, a):
     from . import claim
     return claim.relate(_conn(root), a["claim_id"], a["related_id"],
-                        kind=a.get("kind", "depends_on"))
+                        kind=a.get("kind", "depends_on"), note=a.get("note"))
 
 
 def h_list_claims(root, a):
@@ -450,7 +450,8 @@ TOOLS = [
                          ["claim_id"]), "handler": h_link_claim_evidence},
     {"name": "relate_claims", "description": "Chain two claims (depends_on/contradicts) — argument structure, not proof; never changes derived status.",
      "inputSchema": _obj({"claim_id": _I, "related_id": _I,
-                          "kind": {"type": "string", "enum": ["depends_on", "contradicts"]}},
+                          "kind": {"type": "string", "enum": ["depends_on", "contradicts"]},
+                          "note": _S},
                          ["claim_id", "related_id"]), "handler": h_relate_claims},
     {"name": "list_claims", "description": "Claims of a project with derived status + evidence counts.",
      "inputSchema": _obj({"project": _S, "status": _S}, ["project"]), "handler": h_list_claims},

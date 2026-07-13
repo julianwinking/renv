@@ -67,7 +67,7 @@ def _recompute_status(con: sqlite3.Connection, claim_id: int) -> None:
 
 
 def relate(con: sqlite3.Connection, claim_id: int, related_id: int,
-           kind: str = "depends_on") -> dict:
+           kind: str = "depends_on", note: str | None = None) -> dict:
     """Link two claims into a chain of argument (depends_on / contradicts).
 
     Structure, not proof: relations never change a claim's derived status —
@@ -94,8 +94,8 @@ def relate(con: sqlite3.Connection, claim_id: int, related_id: int,
                 "SELECT related_id FROM claim_relation WHERE claim_id=? AND kind='depends_on'",
                 (nxt,)).fetchall())
     con.execute(
-        "INSERT OR IGNORE INTO claim_relation (claim_id, related_id, kind) VALUES (?,?,?)",
-        (claim_id, related_id, kind))
+        "INSERT OR IGNORE INTO claim_relation (claim_id, related_id, kind, note) "
+        "VALUES (?,?,?,?)", (claim_id, related_id, kind, note))
     con.commit()
     return get_claim(con, claim_id)
 

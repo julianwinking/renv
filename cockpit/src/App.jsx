@@ -20,6 +20,16 @@ const I = {
 
 const VIEWS = ['overview', 'graph', 'experiments', 'papers', 'claims', 'findings', 'timeline']
 
+// routes: #/<view> or #/<view>/<focus> — a focus deep-links one entity
+// (experiment slug, claim id, paper key, timeline entry) inside its view
+function parseHash() {
+  const seg = location.hash.replace(/^#\//, '').split('/')
+  return {
+    view: VIEWS.includes(seg[0]) ? seg[0] : 'overview',
+    focus: seg[1] ? decodeURIComponent(seg[1]) : null,
+  }
+}
+
 function initialTheme() {
   const saved = localStorage.getItem('reref-theme')
   if (saved) return saved
@@ -30,10 +40,9 @@ export default function App() {
   const [overview, setOverview] = useState(null)
   const [defs, setDefs] = useState({})
   const [slug, setSlug] = useState(null)
-  const [view, setView] = useState(() => {
-    const h = location.hash.replace('#/', '')
-    return VIEWS.includes(h) ? h : 'overview'
-  })
+  const [route, setRoute] = useState(parseHash)
+  const { view, focus } = route
+  const setView = (v) => setRoute({ view: v, focus: null })
   const [theme, setTheme] = useState(initialTheme)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('reref-sidebar') === 'collapsed')
   const [hits, setHits] = useState(null)
@@ -48,13 +57,13 @@ export default function App() {
     localStorage.setItem('reref-theme', theme)
   }, [theme])
 
-  useEffect(() => { location.hash = '#/' + view }, [view])
+  useEffect(() => {
+    const h = '#/' + view + (focus ? '/' + encodeURIComponent(focus) : '')
+    if (location.hash !== h) location.hash = h
+  }, [view, focus])
 
   useEffect(() => {   // deep links: react to external hash navigation too
-    const onHash = () => {
-      const h = location.hash.replace('#/', '')
-      if (VIEWS.includes(h)) setView(h)
-    }
+    const onHash = () => setRoute(parseHash())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -188,11 +197,11 @@ export default function App() {
           {!slug && <div className="loading">no project selected</div>}
           {slug && view === 'overview' && <Overview slug={slug} project={project} defs={defs} counts={counts} />}
           {slug && view === 'graph' && <GraphView slug={slug} defs={defs} onMutate={loadOverview} />}
-          {slug && view === 'experiments' && <Experiments slug={slug} defs={defs} />}
-          {view === 'papers' && <Papers />}
-          {slug && view === 'claims' && <Claims slug={slug} />}
+          {slug && view === 'experiments' && <Experiments slug={slug} defs={defs} focus={focus} />}
+          {view === 'papers' && <Papers focus={focus} />}
+          {slug && view === 'claims' && <Claims slug={slug} focus={focus} />}
           {slug && view === 'findings' && <Findings slug={slug} />}
-          {slug && view === 'timeline' && <Timeline slug={slug} />}
+          {slug && view === 'timeline' && <Timeline slug={slug} focus={focus} />}
         </div>
       </div>
     </div>

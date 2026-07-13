@@ -334,8 +334,24 @@ CREATE TABLE claim_relation (
 );
 """
 
+# v8: relations carry an optional comment (WHY does this depend on that?) —
+# rendered on the graph edge, same role claim_evidence.note plays for evidence.
+# Plus graph_layout: hand-placed canvas positions per node (presentation state,
+# not research truth — but it should survive reloads and be shared by clients).
+_SCHEMA_V8 = """
+ALTER TABLE claim_relation ADD COLUMN note TEXT;
+CREATE TABLE graph_layout (
+    id         INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    node_id    TEXT NOT NULL,
+    x          REAL NOT NULL,
+    y          REAL NOT NULL,
+    UNIQUE(project_id, node_id)
+);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
-              _SCHEMA_V6, _SCHEMA_V7]
+              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8]
 
 
 # --- time & hashing ----------------------------------------------------------

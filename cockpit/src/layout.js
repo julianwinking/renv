@@ -1,9 +1,11 @@
 import dagre from '@dagrejs/dagre'
+import { MarkerType } from '@xyflow/react'
 
 const SIZE = { width: 220, height: 96 }
 
-// Map the backend's neutral {nodes, edges} into React Flow nodes/edges, then run a
-// dagre layered layout so the experiment branches read left→right.
+// Map the backend's neutral {nodes, edges} into React Flow nodes/edges. Nodes
+// with a hand-saved position (graph_layout) keep it; the rest get a dagre
+// layered layout so experiment branches read left→right.
 export function toFlow(graph, dir = 'LR') {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
@@ -20,7 +22,8 @@ export function toFlow(graph, dir = 'LR') {
     return {
       id: n.id,
       type: n.kind,
-      position: { x: p.x - SIZE.width / 2, y: p.y - SIZE.height / 2 },
+      position: n.pos ? { x: n.pos.x, y: n.pos.y }
+                      : { x: p.x - SIZE.width / 2, y: p.y - SIZE.height / 2 },
       data: { label: n.label, ...n.data },
     }
   })
@@ -28,23 +31,29 @@ export function toFlow(graph, dir = 'LR') {
   const stroke = (kind) =>
     kind === 'refutes' || kind === 'contradicts' ? 'var(--bad)'
     : kind === 'supports' ? 'var(--ok)'
+    : kind === 'answers' ? 'var(--ok)'
     : kind === 'depends_on' ? 'var(--claim)'
     : kind === 'parent' ? 'var(--line-strong)'
     : 'var(--line)'
 
-  const LABELLED = new Set(['supports', 'refutes', 'depends_on', 'contradicts'])
-  const edges = graph.edges.map((e, i) => ({
-    id: `e${i}`,
-    source: e.source,
-    target: e.target,
-    label: LABELLED.has(e.kind) ? e.kind.replace('_', ' ') : '',
-    animated: e.kind === 'refutes' || e.kind === 'contradicts',
-    style: {
-      stroke: stroke(e.kind),
-      strokeWidth: e.kind === 'parent' ? 1.6 : 1.2,
-      strokeDasharray: e.kind === 'depends_on' || e.kind === 'contradicts' ? '5 4' : undefined,
-    },
-  }))
+  const LABELLED = new Set(['supports', 'refutes', 'depends_on', 'contradicts', 'answers'])
+  const edges = graph.edges.map((e, i) => {
+    const base = LABELLED.has(e.kind) ? e.kind.replace('_', ' ') : ''
+    const note = e.note ? ` — ${e.note.length > 30 ? e.note.slice(0, 30) + '…' : e.note}` : ''
+    return {
+      id: `e${i}`,
+      source: e.source,
+      target: e.target,
+      label: base ? base + note : '',
+      animated: e.kind === 'refutes' || e.kind === 'contradicts',
+      markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: stroke(e.kind) },
+      style: {
+        stroke: stroke(e.kind),
+        strokeWidth: e.kind === 'parent' ? 1.6 : 1.2,
+        strokeDasharray: e.kind === 'depends_on' || e.kind === 'contradicts' ? '5 4' : undefined,
+      },
+    }
+  })
 
   return { nodes, edges }
 }

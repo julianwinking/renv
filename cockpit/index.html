@@ -3,7 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>reref cockpit</title>
+    <title>reref — research cockpit</title>
+    <script>
+      // apply the saved/system theme before first paint (no flash)
+      document.documentElement.dataset.theme =
+        localStorage.getItem('reref-theme') ||
+        (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    </script>
   </head>
   <body>
     <div id="root"></div>

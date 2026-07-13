@@ -8,11 +8,26 @@ export const post = (p, body) =>
   }).then((r) => r.json())
 
 export const getOverview = () => api('/api/overview')
+export const getMetricDefs = () => api('/api/metric_defs')
 export const getGraph = (slug) => api('/api/graph/' + encodeURIComponent(slug))
 export const getProject = (slug) => api('/api/project/' + encodeURIComponent(slug))
+export const getRuns = (slug) => api('/api/project/' + encodeURIComponent(slug) + '/runs')
+export const getPapers = () => api('/api/papers')
+export const getPaperUsage = (key) => api('/api/paper/' + encodeURIComponent(key) + '/usage')
 export const getFinding = (id) => api('/api/finding/' + id)
 export const getClaim = (id) => api('/api/claim/' + id)
 export const adjudicate = (id, verdict, reasoning) =>
   post('/api/finding/adjudicate', { id, verdict, reasoning, by: 'cockpit' })
-export const addNote = (project, body) => post('/api/note', { project, body })
+export const addNote = (project, body, title) => post('/api/note', { project, body, title })
+export const addLog = (project, type, body, extra = {}) =>
+  post('/api/log', { project, type, body, source: 'cockpit', ...extra })
+export const addClaim = (project, text, kind) => post('/api/claim', { project, text, kind })
+export const addExperiment = (project, slug, title, hypothesis, parent) =>
+  post('/api/experiment', { project, slug, title, hypothesis, parent })
+export const setExperimentParent = (project, slug, parent) =>
+  post('/api/experiment/parent', { project, slug, parent })
+export const relateClaims = (claim_id, related_id, kind) =>
+  post('/api/claim/relate', { claim_id, related_id, kind })
+export const linkExperimentToClaim = (project, experiment, claim_id, stance) =>
+  post('/api/claim/link_experiment', { project, experiment, claim_id, stance })
 export const search = (q) => api('/api/search?q=' + encodeURIComponent(q))

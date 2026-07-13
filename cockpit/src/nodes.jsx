@@ -1,13 +1,11 @@
 import React, { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
-
-const STAT = { planned: '○', running: '▶', done: '✓', abandoned: '✗' }
-const SEVCLASS = { high: 'sev-high', medium: 'sev-medium', low: 'sev-low' }
-const CSTAT = { open: '○ open', supported: '✓ supported', refuted: '✗ refuted' }
+import { adjudicate } from './api.js'
+import { Stamp, Metrics } from './ui.jsx'
 
 function Shell({ kind, children }) {
   return (
-    <div className={`node node-${kind}`}>
+    <div className={`gnode gnode-${kind}`}>
       <Handle type="target" position={Position.Left} />
       {children}
       <Handle type="source" position={Position.Right} />
@@ -15,42 +13,64 @@ function Shell({ kind, children }) {
   )
 }
 
-// Experiment node: status + metrics; expand to show the hypothesis.
+// Experiment: status stamp + formatted metrics; click to reveal the hypothesis.
 export function ExperimentNode({ data }) {
   const [open, setOpen] = useState(false)
-  const mets = Object.entries(data.metrics || {})
   return (
     <Shell kind="experiment">
-      <div className="node-head" onClick={() => setOpen(!open)}>
-        <span className="ic">{STAT[data.status] || '?'}</span>
-        <b>{data.label}</b>
+      <div className="gnode-head" onClick={() => setOpen(!open)} style={{ cursor: 'pointer' }}>
+        <b className="mono">{data.label}</b>
+        <span style={{ marginLeft: 'auto' }}><Stamp value={data.status} /></span>
       </div>
-      <div className="node-sub">{data.title}</div>
-      {mets.length > 0 && (
-        <div className="chips">
-          {mets.map(([k, v]) => (
-            <span key={k} className="chip">{k}={v}</span>
-          ))}
+      <div className="gnode-sub">{data.title}</div>
+      <Metrics defs={data.defs} metrics={data.metrics} />
+      {open && data.hypothesis && (
+        <div className="gnode-sub" style={{ WebkitLineClamp: 6, marginTop: 6 }}>
+          <span className="gnode-kind">hypothesis · </span>{data.hypothesis}
         </div>
       )}
-      {open && data.hypothesis && <div className="node-detail">⌖ {data.hypothesis}</div>}
     </Shell>
   )
 }
 
-// Finding node: severity + issue, with inline adjudication branches.
+// Finding: severity + issue, adjudicated inline with required reasoning.
 export function FindingNode({ data }) {
+  const [verdict, setVerdict] = useState(null)
+  const [reason, setReason] = useState('')
+
+  const submit = async () => {
+    if (!reason.trim()) return
+    const r = await adjudicate(data.id, verdict, reason.trim())
+    if (!r.error) data.onDone?.()
+  }
+
   return (
     <Shell kind="finding">
-      <div className="node-head">
-        <span className={SEVCLASS[data.severity]}>{(data.severity || '').toUpperCase()}</span>
-        <b>{data.label}</b>
+      <div className="gnode-head">
+        <Stamp value={data.severity} />
+        <b className="mono">{data.label}</b>
       </div>
-      <div className="node-sub">{data.issue}</div>
-      <div className="node-actions">
-        <button onClick={() => data.onAdjudicate?.(data.id, 'accept')}>accept</button>
-        <button className="danger" onClick={() => data.onAdjudicate?.(data.id, 'reject')}>reject</button>
-      </div>
+      <div className="gnode-sub">{data.issue}</div>
+      {!verdict && (
+        <div className="gnode-actions">
+          <button className="btn ghost" onClick={() => setVerdict('accept')}>accept</button>
+          <button className="btn ghost" onClick={() => setVerdict('reject')}>reject</button>
+        </div>
+      )}
+      {verdict && (
+        <>
+          <textarea
+            className="nodrag"
+            placeholder={`why ${verdict}?`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <div className="gnode-actions">
+            <button className="btn" onClick={submit}>save</button>
+            <button className="btn ghost" onClick={() => setVerdict(null)}>cancel</button>
+          </div>
+        </>
+      )}
     </Shell>
   )
 }
@@ -58,11 +78,11 @@ export function FindingNode({ data }) {
 export function ClaimNode({ data }) {
   return (
     <Shell kind="claim">
-      <div className="node-head">
-        <span className="chip">{data.kind}</span>
-        <span className={`cstat ${data.status}`}>{CSTAT[data.status] || data.status}</span>
+      <div className="gnode-head">
+        <span className="gnode-kind">{data.kind}</span>
+        <span style={{ marginLeft: 'auto' }}><Stamp value={data.status} /></span>
       </div>
-      <div className="node-sub">{data.text}</div>
+      <div className="gnode-sub" style={{ WebkitLineClamp: 3 }}>{data.text}</div>
     </Shell>
   )
 }
@@ -70,8 +90,11 @@ export function ClaimNode({ data }) {
 export function CitationNode({ data }) {
   return (
     <Shell kind="citation">
-      <div className="node-head"><b>{data.label}</b><span className="pill">{data.support}</span></div>
-      {data.quote && <div className="node-sub mono">“{(data.quote || '').slice(0, 60)}…”</div>}
+      <div className="gnode-head">
+        <b className="mono">{data.label}</b>
+        <span style={{ marginLeft: 'auto' }}><Stamp value={data.support} /></span>
+      </div>
+      {data.quote && <div className="gnode-sub quote">“{(data.quote || '').slice(0, 90)}…”</div>}
     </Shell>
   )
 }
@@ -79,19 +102,45 @@ export function CitationNode({ data }) {
 export function PaperNode({ data }) {
   return (
     <Shell kind="paper">
-      <div className="node-head">📄 <b>{data.label}</b></div>
+      <div className="gnode-head">
+        <span className="gnode-kind">paper</span>
+        <b className="mono">{data.label}</b>
+      </div>
     </Shell>
   )
 }
 
-// Code reference node: a @reref tag in the codebase pointing at a store entity.
 export function CodeNode({ data }) {
   return (
     <Shell kind="code">
-      <div className="node-head">{'</>'} <b className="mono">{data.label}</b></div>
-      {data.text && <div className="node-sub">{data.text}</div>}
+      <div className="gnode-head">
+        <span className="gnode-kind">code</span>
+        <b className="mono" style={{ fontSize: 11 }}>{data.label}</b>
+      </div>
+      {data.text && <div className="gnode-sub">{data.text}</div>}
     </Shell>
   )
+}
+
+// Thinking nodes: questions (open/answered), hypotheses, advisor feedback,
+// answers — the reasoning that surrounds experiments, visible on the canvas.
+function ThoughtNode(kind) {
+  return function Thought({ data }) {
+    return (
+      <Shell kind={kind}>
+        <div className="gnode-head">
+          <span className="gnode-kind">{data.type || kind}</span>
+          {kind === 'question' && (
+            <span style={{ marginLeft: 'auto' }}>
+              <Stamp value={data.answered ? 'answered' : 'open'} tone={data.answered ? 'ok' : 'warn'} />
+            </span>
+          )}
+        </div>
+        {data.source && <div className="gnode-kind" style={{ marginTop: 2 }}>{data.source}</div>}
+        <div className="gnode-sub" style={{ WebkitLineClamp: 4 }}>{data.text}</div>
+      </Shell>
+    )
+  }
 }
 
 export const nodeTypes = {
@@ -101,4 +150,9 @@ export const nodeTypes = {
   citation: CitationNode,
   paper: PaperNode,
   code: CodeNode,
+  question: ThoughtNode('question'),
+  hypothesis: ThoughtNode('hypothesis'),
+  feedback: ThoughtNode('feedback'),
+  thought: ThoughtNode('thought'),
+  note: ThoughtNode('note'),
 }

@@ -394,6 +394,9 @@ class Handler(BaseHTTPRequestHandler):
             return ingest.list_papers(con)
         if path == "/api/metric_defs":
             return experiment.metric_defs(con)
+        if path == "/api/conferences":
+            from . import conferences
+            return conferences.fetch(self.root)
         if path == "/api/remotes":
             from . import remote as remotemod
             return remotemod.list_remotes(con)

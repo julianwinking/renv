@@ -25,6 +25,7 @@ venv/
 .research/env.db-shm
 .research/web.log
 .research/tls/
+.research/cache/
 
 # personal reference corpus (PDFs etc.) — keep the folder, ignore its contents
 /library/*

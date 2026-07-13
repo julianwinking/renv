@@ -212,6 +212,9 @@ aside {
   color: var(--muted); width: 28px; height: 28px; display: grid; place-items: center;
 }
 .iconbtn:hover { color: var(--ink); background: var(--surface2); }
+/* match the health pill's optically-lifted content: icon rises 1px, the
+   28px hover square itself stays put */
+.topbar .iconbtn svg { transform: translateY(-1px); }
 
 /* ---------- content ---------- */
 .content { flex: 1; overflow-y: auto; padding: 22px; overscroll-behavior: contain; }

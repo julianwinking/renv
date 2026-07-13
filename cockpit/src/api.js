@@ -48,6 +48,7 @@ export const saveProjectSettings = (slug, settings) =>
   post('/api/project/settings', { slug, ...settings })
 export const getRubric = () => api('/api/rubric')
 export const getRemotes = () => api('/api/remotes')
+export const getConferences = () => api('/api/conferences')
 export const addRemote = (r) => post('/api/remote', r)
 export const getHealth = (slug) => api('/api/health/' + encodeURIComponent(slug))
 export const getSources = () => api('/api/sources')

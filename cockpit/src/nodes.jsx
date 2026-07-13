@@ -31,7 +31,8 @@ export function RegionNode({ id, data }) {
                  onChange={(e) => setLabel(e.target.value)} onBlur={saveLabel}
                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { setLabel(data.label || ''); setEditing(false) } }} />
         ) : (
-          <span className="region-name" onDoubleClick={() => setEditing(true)}>
+          <span className="region-name" title="Click to rename"
+                onClick={(e) => { e.stopPropagation(); setEditing(true) }}>
             {data.label || 'Untitled region'}
           </span>
         )}

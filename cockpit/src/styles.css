@@ -292,8 +292,8 @@ table.ledger-t { width: 100%; border-collapse: collapse; }
 .inline-target:hover { background: var(--surface2); }
 .inline-edit {
   flex: 1; font: inherit; line-height: 1.5; min-height: 0; height: auto;
-  padding: 4px 8px; border: 1.5px solid var(--accent); border-radius: 6px;
-  background: var(--bg); resize: none; field-sizing: content;
+  padding: 4px 8px; border: 1.5px solid var(--line-strong); border-radius: 6px;
+  background: var(--bg); resize: none; field-sizing: content; outline: none;
 }
 
 /* ---------- vocabulary: stamps & metrics ---------- */
@@ -414,7 +414,13 @@ select.text {
 .region-name {
   font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--region-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: text;
 }
+/* region frame is click-through except its bar/handles, and never shows the
+   default selection outline (it has its own border + resize handles) */
+.react-flow__node-region { pointer-events: none; }
+.react-flow__node-region.selected { outline: none; box-shadow: none; }
+.region-bar, .react-flow__node-region .react-flow__resize-control { pointer-events: all; }
 /* identical to .region-name so renaming doesn't shift the layout — just a caret */
 .region-input {
   flex: 1; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;

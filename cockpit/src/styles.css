@@ -351,7 +351,7 @@ select.text {
 
 /* expandable detail area */
 .detail { padding: 10px 16px 12px; background: var(--bg); border-top: 1px solid var(--line); }
-.detail .kv { display: flex; gap: 8px; margin: 2px 0; font-size: 12px; }
+.detail .kv { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; font-size: 12px; }
 .detail .kv .k { color: var(--faint); min-width: 84px; }
 
 /* timeline */

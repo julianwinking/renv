@@ -690,6 +690,16 @@ def cmd_claim_link(args):
     print(f"claim #{c['id']} → {c['status']}  ({len(c['evidence'])} evidence)")
 
 
+def cmd_claim_edit(args):
+    from . import claim
+    con = db.connect(args.corpus)
+    try:
+        c = claim.update_text(con, args.id, args.text)
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    print(f"claim #{c['id']} updated")
+
+
 def cmd_claim_relate(args):
     from . import claim
     con = db.connect(args.corpus)
@@ -1108,6 +1118,10 @@ def main(argv=None):
     cll.add_argument("--stance", default="supports", choices=["supports", "refutes"])
     cll.add_argument("--note", default=None)
     cll.set_defaults(func=cmd_claim_link)
+    cle = pcl.add_parser("edit", help="edit a claim's wording")
+    cle.add_argument("id", type=int)
+    cle.add_argument("text")
+    cle.set_defaults(func=cmd_claim_edit)
     clr = pcl.add_parser("relate", help="chain claims (argument structure, not proof)")
     clr.add_argument("id", type=int)
     clr.add_argument("related", type=int)

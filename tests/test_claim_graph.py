@@ -21,6 +21,17 @@ def test_add_and_list_claim(tmp_path):
     assert rows[0]["evidence_count"] == 0
 
 
+def test_update_text_keeps_status(tmp_path):
+    con = _proj(tmp_path)
+    c = claim.add_claim(con, "p", "original wording", kind="assertion")
+    got = claim.update_text(con, c["id"], "revised wording")
+    assert got["text"] == "revised wording" and got["status"] == "open"
+    with pytest.raises(ValueError):
+        claim.update_text(con, c["id"], "   ")
+    with pytest.raises(KeyError):
+        claim.update_text(con, 999, "x")
+
+
 def test_status_derives_from_evidence(tmp_path):
     con = _proj(tmp_path)
     ingest.add_paper(con, {"title": "ALCE", "authors": ["Gao"], "year": 2023}, key="gao2023_alce")

@@ -13,6 +13,34 @@ function Shell({ kind, children }) {
   )
 }
 
+// Double-click a node's text to rename it inline (saves to the store).
+// Falls back to a plain span when the node kind has no editor.
+function EditableText({ value, onSave, className, style, clamp = 3 }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(value)
+  if (!onSave) return <div className={className} style={{ ...style, WebkitLineClamp: clamp }}>{value}</div>
+  if (editing) {
+    return (
+      <textarea
+        className="nodrag gnode-edit" autoFocus value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => { setEditing(false); if (text.trim() && text !== value) onSave(text.trim()) }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur() }
+          if (e.key === 'Escape') { setText(value); setEditing(false) }
+        }}
+      />
+    )
+  }
+  return (
+    <div className={className} title="Double-click to edit"
+         style={{ ...style, WebkitLineClamp: clamp, cursor: 'text' }}
+         onDoubleClick={(e) => { e.stopPropagation(); setText(value); setEditing(true) }}>
+      {value}
+    </div>
+  )
+}
+
 // Experiment: status stamp + formatted metrics; click to reveal the hypothesis.
 export function ExperimentNode({ data }) {
   const [open, setOpen] = useState(false)
@@ -82,7 +110,7 @@ export function ClaimNode({ data }) {
         <span className="gnode-kind">{data.kind}</span>
         <span style={{ marginLeft: 'auto' }}><Stamp value={data.status} /></span>
       </div>
-      <div className="gnode-sub" style={{ WebkitLineClamp: 3 }}>{data.text}</div>
+      <EditableText className="gnode-sub" value={data.text} onSave={data.onSaveText} clamp={3} />
     </Shell>
   )
 }
@@ -137,7 +165,7 @@ function ThoughtNode(kind) {
           )}
         </div>
         {data.source && <div className="gnode-kind" style={{ marginTop: 2 }}>{data.source}</div>}
-        <div className="gnode-sub" style={{ WebkitLineClamp: 4 }}>{data.text}</div>
+        <EditableText className="gnode-sub" value={data.text} onSave={data.onSaveText} clamp={4} />
       </Shell>
     )
   }

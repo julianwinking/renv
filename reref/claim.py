@@ -107,6 +107,18 @@ def list_relations(con: sqlite3.Connection, project: str) -> list[dict]:
         "WHERE c.project_id=? ORDER BY cr.id", (pid,)).fetchall()]
 
 
+def update_text(con: sqlite3.Connection, claim_id: int, text: str) -> dict:
+    """Edit a claim's wording. Status stays derived from evidence — only the
+    prose changes, so an inline rename never touches what backs it."""
+    if not text.strip():
+        raise ValueError("claim text must not be empty")
+    if not con.execute("SELECT 1 FROM claim WHERE id=?", (claim_id,)).fetchone():
+        raise KeyError(f"no claim #{claim_id}")
+    con.execute("UPDATE claim SET text=? WHERE id=?", (text.strip(), claim_id))
+    con.commit()
+    return get_claim(con, claim_id)
+
+
 def get_claim(con: sqlite3.Connection, claim_id: int) -> dict | None:
     c = row_to_dict(con.execute("SELECT * FROM claim WHERE id=?", (claim_id,)).fetchone())
     if not c:

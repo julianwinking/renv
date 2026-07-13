@@ -494,6 +494,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/claim":
             return claimmod.add_claim(con, d["project"], d["text"],
                                       kind=d.get("kind", "assertion"))
+        if path == "/api/claim/edit":
+            return claimmod.update_text(con, d["id"], d["text"])
         if path == "/api/claim/link":
             return claimmod.link_evidence(con, d["claim_id"], citation_id=d.get("citation_id"),
                                           run_id=d.get("run_id"), stance=d.get("stance", "supports"),

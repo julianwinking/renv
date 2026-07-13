@@ -24,6 +24,7 @@ export const addLog = (project, type, body, extra = {}) =>
 export const editLog = (id, body) => post('/api/log/edit', { id, body })
 export const editNote = (id, body) => post('/api/note/edit', { id, body })
 export const addClaim = (project, text, kind) => post('/api/claim', { project, text, kind })
+export const editClaim = (id, text) => post('/api/claim/edit', { id, text })
 export const createProject = (slug, title) => post('/api/project', { slug, title })
 export const addExperiment = (project, slug, title, hypothesis, parent) =>
   post('/api/experiment', { project, slug, title, hypothesis, parent })

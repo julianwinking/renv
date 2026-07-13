@@ -3,6 +3,7 @@ import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState 
 import {
   getGraph, addExperiment, addClaim, addLog, addNote,
   setExperimentParent, relateClaims, linkExperimentToClaim, saveLayout,
+  editClaim, editLog, editNote,
 } from '../api.js'
 import { toFlow } from '../layout.js'
 import { nodeTypes } from '../nodes.jsx'
@@ -169,9 +170,14 @@ export default function GraphView({ slug, defs, onMutate }) {
     const flow = toFlow(g)
     flow.nodes.forEach((n) => {
       n.data.defs = defs
+      const [k, id] = n.id.split(':')
+      const after = () => { load(); onMutate && onMutate() }
+      if (k === 'claim') n.data.onSaveText = (t) => editClaim(Number(id), t).then(after)
+      else if (k === 'log') n.data.onSaveText = (t) => editLog(Number(id), t).then(after)
+      else if (k === 'note') n.data.onSaveText = (t) => editNote(Number(id), t).then(after)
       if (n.type === 'finding') {
-        n.data.id = Number(n.id.split(':')[1])
-        n.data.onDone = () => { load(); onMutate && onMutate() }
+        n.data.id = Number(id)
+        n.data.onDone = after
       }
     })
     setNodes(flow.nodes)

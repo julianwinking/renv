@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, getClaim, addClaim } from '../api.js'
+import { getProject, getClaim, addClaim, editClaim } from '../api.js'
 import { Stamp, Section, Empty, Mono, Modal } from '../ui.jsx'
 
 export default function Claims({ slug, focus }) {
   const [claims, setClaims] = useState(null)
   const [detail, setDetail] = useState({})
   const [adding, setAdding] = useState(null)   // {text, kind} while creating
+  const [editing, setEditing] = useState(null) // claim id being renamed inline
+  const [editText, setEditText] = useState('')
   const [err, setErr] = useState(null)
 
   const load = () => getProject(slug).then((d) => setClaims(d.claims))
@@ -37,6 +39,14 @@ export default function Claims({ slug, focus }) {
     load()
   }
 
+  const commitEdit = async () => {
+    const t = editText.trim()
+    const c = claims.find((x) => x.id === editing)
+    if (t && c && t !== c.text) await editClaim(editing, t)
+    setEditing(null)
+    load()
+  }
+
   if (!claims) return <div className="loading">reading the store…</div>
 
   return (
@@ -48,14 +58,28 @@ export default function Claims({ slug, focus }) {
       <Section title="Claim ledger" aside={`${claims.length} claims`}>
         {claims.map((c) => (
           <div key={c.id} id={`claim-${c.id}`} className={String(focus) === String(c.id) ? 'flash' : ''}>
-            <button className="rowbtn" onClick={() => toggle(c.id)}>
-              <div className="row">
+            <div className="row">
+              <button className="rowbtn" style={{ width: 'auto' }} onClick={() => toggle(c.id)}
+                      title="Show evidence">
                 <Mono>#{c.id}</Mono>
-                <Stamp value={c.status} />
-                <div className="grow">{c.text}</div>
-                <span className="chip">{c.kind}</span>
-              </div>
-            </button>
+              </button>
+              <Stamp value={c.status} />
+              {editing === c.id ? (
+                <textarea className="inline-edit" autoFocus value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit() }
+                            if (e.key === 'Escape') setEditing(null)
+                          }} />
+              ) : (
+                <div className="grow inline-target" title="Click to edit"
+                     onClick={() => { setEditing(c.id); setEditText(c.text) }}>
+                  {c.text}
+                </div>
+              )}
+              <span className="chip">{c.kind}</span>
+            </div>
             {detail[c.id] && (
               <div className="detail">
                 {(detail[c.id].evidence || []).map((ev, i) => (

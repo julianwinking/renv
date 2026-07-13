@@ -371,14 +371,16 @@ def cmd_metric_list(args):
 def cmd_plan_add(args):
     from . import plan
     con = db.connect(args.corpus)
+    kind = "milestone" if args.milestone else "deadline" if args.deadline else "phase"
     try:
         it = plan.add_item(con, args.project, args.title, due=args.due,
-                           kind="milestone" if args.milestone else "phase",
-                           start=args.start, note=args.note)
+                           kind=kind, start=args.start, note=args.note,
+                           end_deadline=args.end_deadline)
     except (ValueError, KeyError) as exc:
         sys.exit(f"! {exc}")
     span = f"{it['start']} → {it['due']}" if it["start"] else it["due"]
-    print(f"plan #{it['id']} [{it['kind']}] {it['title']}  ({span})")
+    tail = "  (ends in a deadline)" if it["end_deadline"] else ""
+    print(f"plan #{it['id']} [{it['kind']}] {it['title']}  ({span}){tail}")
 
 
 def cmd_plan_list(args):
@@ -394,6 +396,16 @@ def cmd_plan_list(args):
                 else "!" if it["due"] < today else "·")
         span = f"{it['start']} → {it['due']}" if it["start"] else f"      due {it['due']}"
         print(f"  {mark} #{it['id']} [{it['kind']:9}] {span}  {it['title']}")
+
+
+def cmd_plan_prepared(args):
+    from . import plan
+    con = db.connect(args.corpus)
+    try:
+        it = plan.update_item(con, args.id, prepared=0 if args.undo else 1)
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    print(f"plan #{it['id']} {'prepared' if it['prepared'] else 'not prepared'}: {it['title']}")
 
 
 def cmd_plan_done(args):
@@ -852,7 +864,11 @@ def main(argv=None):
     pa.add_argument("title")
     pa.add_argument("--due", required=True, help="YYYY-MM-DD (end date / the deadline)")
     pa.add_argument("--start", default=None, help="YYYY-MM-DD (phases)")
-    pa.add_argument("--milestone", action="store_true", help="a single-date deadline")
+    pa.add_argument("--milestone", action="store_true", help="a single-date event")
+    pa.add_argument("--deadline", action="store_true",
+                    help="a single-date DEADLINE (can be marked prepared)")
+    pa.add_argument("--end-deadline", action="store_true",
+                    help="this phase ends in a deadline")
     pa.add_argument("--note", default=None)
     pa.set_defaults(func=cmd_plan_add)
     pll = ppl.add_parser("list", help="the plan, date-ordered")
@@ -861,6 +877,10 @@ def main(argv=None):
     pd = ppl.add_parser("done", help="mark an item done")
     pd.add_argument("id", type=int)
     pd.set_defaults(func=cmd_plan_done)
+    pp = ppl.add_parser("prepared", help="mark a deadline prepared (--undo to revert)")
+    pp.add_argument("id", type=int)
+    pp.add_argument("--undo", action="store_true")
+    pp.set_defaults(func=cmd_plan_prepared)
     pr = ppl.add_parser("rm", help="remove an item (plans are intent, not evidence)")
     pr.add_argument("id", type=int)
     pr.set_defaults(func=cmd_plan_rm)

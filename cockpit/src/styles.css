@@ -433,9 +433,23 @@ select.text {
 .gantt-ms.bar-active { background: var(--accent-soft); border-color: var(--accent); }
 .gantt-ms.bar-done { background: var(--ok-soft); border-color: var(--ok); }
 .gantt-ms.bar-overdue { background: var(--bad-soft); border-color: var(--bad); }
-.gantt-dot {
-  position: absolute; top: 50%; transform: translateY(-50%); border-radius: 50%;
-  background: var(--citation); opacity: 0.75;
+.gantt-stack {
+  position: absolute; bottom: 3px; border-radius: 2px; overflow: hidden;
+  display: block; opacity: 0.9;
+}
+.gantt-ms.ms-unprepared { border-width: 2px; border-style: dashed; }
+.gantt-ms { cursor: grab; }
+.gantt-ms:active { cursor: grabbing; }
+.gantt-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }
+.gantt-handle.left { left: 0; border-radius: 5px 0 0 5px; }
+.gantt-handle.right { right: 0; border-radius: 0 5px 5px 0; }
+.gantt-bar:hover .gantt-handle { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+
+/* reusable confirm dialog */
+.confirm {
+  position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 80;
+  width: 340px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow);
 }
 
 /* admin file editor */

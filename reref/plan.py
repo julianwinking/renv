@@ -29,21 +29,27 @@ def _check_date(value: str | None, field: str, *, required: bool = False) -> Non
 
 def add_item(con: sqlite3.Connection, project: str, title: str, *,
              due: str, kind: str = "phase", start: str | None = None,
-             note: str | None = None) -> dict:
-    if kind not in ("phase", "milestone"):
-        raise ValueError(f"kind must be phase|milestone, got {kind!r}")
+             note: str | None = None, end_deadline: bool = False,
+             prepared: bool = False) -> dict:
+    if kind not in ("phase", "milestone", "deadline"):
+        raise ValueError(f"kind must be phase|milestone|deadline, got {kind!r}")
     if not title.strip():
         raise ValueError("title must not be empty")
     _check_date(due, "due", required=True)
     _check_date(start, "start")
-    if kind == "milestone":
+    if kind != "phase":
         start = None
+        end_deadline = False
     elif start and start > due:
         raise ValueError(f"start {start} is after due {due}")
+    if prepared and not (kind == "deadline" or end_deadline):
+        raise ValueError("prepared only applies to deadlines (standalone or a phase's end)")
     pid = project_id(con, project)
     cur = con.execute(
-        "INSERT INTO plan_item (project_id, title, kind, start, due, note, created) "
-        "VALUES (?,?,?,?,?,?,?)", (pid, title.strip(), kind, start, due, note, now()))
+        "INSERT INTO plan_item (project_id, title, kind, start, due, note, "
+        "end_deadline, prepared, created) VALUES (?,?,?,?,?,?,?,?,?)",
+        (pid, title.strip(), kind, start, due, note,
+         int(end_deadline), int(prepared), now()))
     con.commit()
     return row_to_dict(con.execute(
         "SELECT * FROM plan_item WHERE id=?", (cur.lastrowid,)).fetchone())
@@ -54,7 +60,7 @@ def update_item(con: sqlite3.Connection, item_id: int, **fields) -> dict:
     row = con.execute("SELECT * FROM plan_item WHERE id=?", (item_id,)).fetchone()
     if not row:
         raise KeyError(f"no plan item #{item_id}")
-    allowed = {"title", "start", "due", "status", "note"}
+    allowed = {"title", "start", "due", "status", "note", "prepared", "end_deadline"}
     bad = set(fields) - allowed
     if bad:
         raise ValueError(f"cannot update {sorted(bad)}")
@@ -66,11 +72,15 @@ def update_item(con: sqlite3.Connection, item_id: int, **fields) -> dict:
                                      or k in ("start", "note")}}
     if merged["kind"] == "phase" and merged["start"] and merged["start"] > merged["due"]:
         raise ValueError(f"start {merged['start']} is after due {merged['due']}")
+    if merged["kind"] != "phase":
+        merged["end_deadline"] = 0
     con.execute(
-        "UPDATE plan_item SET title=?, start=?, due=?, status=?, note=?, edited=? "
-        "WHERE id=?",
+        "UPDATE plan_item SET title=?, start=?, due=?, status=?, note=?, "
+        "prepared=?, end_deadline=?, edited=? WHERE id=?",
         (merged["title"], merged["start"] if merged["kind"] == "phase" else None,
-         merged["due"], merged["status"], merged["note"], now(), item_id))
+         merged["due"], merged["status"], merged["note"],
+         int(bool(merged["prepared"])), int(bool(merged["end_deadline"])),
+         now(), item_id))
     con.commit()
     return row_to_dict(con.execute(
         "SELECT * FROM plan_item WHERE id=?", (item_id,)).fetchone())

@@ -378,8 +378,35 @@ CREATE TABLE plan_item (
 CREATE INDEX idx_plan_project ON plan_item(project_id);
 """
 
+# v11: deadlines are first-class plan items — standalone (kind='deadline') or
+# attached to a phase's end (end_deadline=1). A deadline can be marked
+# `prepared` (ready for it?) independently of done. Rebuild: kind CHECK grows.
+_SCHEMA_V11 = """
+CREATE TABLE plan_item_v11 (
+    id           INTEGER PRIMARY KEY,
+    project_id   INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    kind         TEXT NOT NULL DEFAULT 'phase'
+                 CHECK(kind IN ('phase','milestone','deadline')),
+    start        TEXT,
+    due          TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned','done')),
+    prepared     INTEGER NOT NULL DEFAULT 0,
+    end_deadline INTEGER NOT NULL DEFAULT 0,
+    note         TEXT,
+    created      TEXT NOT NULL,
+    edited       TEXT
+);
+INSERT INTO plan_item_v11 (id, project_id, title, kind, start, due, status, note, created, edited)
+    SELECT id, project_id, title, kind, start, due, status, note, created, edited FROM plan_item;
+DROP TABLE plan_item;
+ALTER TABLE plan_item_v11 RENAME TO plan_item;
+CREATE INDEX idx_plan_project ON plan_item(project_id);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
-              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10]
+              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
+              _SCHEMA_V11]
 
 
 # --- time & hashing ----------------------------------------------------------

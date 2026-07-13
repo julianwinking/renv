@@ -452,10 +452,13 @@ class Handler(BaseHTTPRequestHandler):
             from . import plan as planmod
             return planmod.add_item(con, d["project"], d["title"], due=d["due"],
                                     kind=d.get("kind", "phase"),
-                                    start=d.get("start"), note=d.get("note"))
+                                    start=d.get("start"), note=d.get("note"),
+                                    end_deadline=bool(d.get("end_deadline")),
+                                    prepared=bool(d.get("prepared")))
         if path == "/api/plan/update":
             from . import plan as planmod
-            fields = {k: d[k] for k in ("title", "start", "due", "status", "note") if k in d}
+            fields = {k: d[k] for k in ("title", "start", "due", "status", "note",
+                                        "prepared", "end_deadline") if k in d}
             return planmod.update_item(con, d["id"], **fields)
         if path == "/api/plan/delete":
             from . import plan as planmod

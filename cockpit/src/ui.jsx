@@ -82,6 +82,27 @@ export function timeAgo(iso) {
   return new Date(iso).toISOString().slice(0, 10)
 }
 
+// Minimal reusable confirm dialog — for actions worth a second look
+// (e.g. moving a deadline). Renders nothing when closed.
+export function Confirm({ open, title, body, confirmLabel = 'Confirm', danger, onConfirm, onCancel }) {
+  if (!open) return null
+  return (
+    <>
+      <div className="backdrop" onClick={onCancel} />
+      <div className="confirm">
+        <div className="eyebrow" style={{ margin: 0 }}>{title}</div>
+        <div style={{ margin: '10px 0 14px' }}>{body}</div>
+        <div className="gnode-actions" style={{ marginTop: 0 }}>
+          <button className={`btn ${danger ? 'danger' : ''}`} onClick={onConfirm} autoFocus>
+            {confirmLabel}
+          </button>
+          <button className="btn ghost" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // provenance stamp for a run
 export function Provenance({ run }) {
   const grade = run.provenance || (run.status === 'done' ? 'unknown' : null)

@@ -4,10 +4,10 @@
 // can see when what kind of progress actually happened.
 import React, { useEffect, useMemo, useState } from 'react'
 import { getPlan, addPlanItem, updatePlanItem, deletePlanItem, getProject } from '../api.js'
-import { Stamp, Section, Empty, timeAgo } from '../ui.jsx'
+import { Stamp, Section, Empty, Confirm, timeAgo } from '../ui.jsx'
 
 const DAY = 86400000
-const PX = 26                                   // px per day
+const ZOOMS = [10, 18, 26, 42, 64]              // px per day
 const parse = (s) => new Date(s + 'T00:00:00Z')
 const iso = (d) => d.toISOString().slice(0, 10)
 const addDays = (d, n) => new Date(d.getTime() + n * DAY)
@@ -15,11 +15,17 @@ const addDays = (d, n) => new Date(d.getTime() + n * DAY)
 const TONE_COLOR = {
   done: 'var(--ok)', overdue: 'var(--bad)', active: 'var(--accent)', future: 'var(--line-strong)',
 }
+// activity lane: one color per entry type, stacked by share
+const TYPE_COLOR = {
+  decision: 'var(--accent)', hypothesis: 'var(--citation)', observation: 'var(--muted)',
+  result: 'var(--ok)', blocker: 'var(--bad)', question: 'var(--warn-dot)',
+  feedback: 'var(--code-kind)', note: 'var(--paper-kind)',
+}
 
 function itemState(it, today) {
   if (it.status === 'done') return 'done'
   if (it.due < today) return 'overdue'
-  if (it.kind === 'milestone') return it.due === today ? 'active' : 'future'
+  if (it.kind !== 'phase') return it.due === today ? 'active' : 'future'
   if (it.start && it.start > today) return 'future'
   return 'active'
 }
@@ -31,6 +37,63 @@ export default function Plan({ slug }) {
   const [draft, setDraft] = useState(null)         // new-item form
   const [sel, setSel] = useState(null)             // item being edited
   const [err, setErr] = useState(null)
+  const [zoom, setZoom] = useState(2)              // index into ZOOMS
+  const PX = ZOOMS[zoom]
+  const [preview, setPreview] = useState(null)     // live dates while dragging
+  const [confirm, setConfirm] = useState(null)     // pending deadline move
+  const justDragged = React.useRef(false)
+
+  const shiftDate = (s, days) => iso(addDays(parse(s), days))
+
+  // drag a bar edge ('start' | 'due') or a whole single-date item ('move')
+  const beginDrag = (e, it, mode) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const x0 = e.clientX
+    const dates = (delta) => {
+      let start = it.start, due = it.due
+      if (mode === 'start') {
+        const s = shiftDate(it.start, delta)
+        start = s > due ? due : s                        // never past the end
+      } else if (mode === 'due') {
+        const d2 = shiftDate(it.due, delta)
+        due = it.start && d2 < it.start ? it.start : d2  // never before the start
+      } else {
+        due = shiftDate(it.due, delta)
+        if (it.start) start = shiftDate(it.start, delta)
+      }
+      return { start, due }
+    }
+    const onMove = (ev) => {
+      const delta = Math.round((ev.clientX - x0) / PX)
+      setPreview({ id: it.id, ...dates(delta) })
+    }
+    const onUp = (ev) => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setPreview(null)
+      const delta = Math.round((ev.clientX - x0) / PX)
+      if (!delta) return
+      justDragged.current = true
+      setTimeout(() => { justDragged.current = false }, 50)
+      const d = dates(delta)
+      const fields = mode === 'start' ? { start: d.start }
+        : mode === 'due' ? { due: d.due } : { start: d.start, due: d.due }
+      const apply = async () => { await updatePlanItem(it.id, fields); load() }
+      const movesDeadline = (it.kind === 'deadline' || it.end_deadline) && d.due !== it.due
+      if (movesDeadline) {
+        setConfirm({
+          title: 'Move deadline?',
+          body: <>“{it.title}” moves from <b className="mono">{it.due}</b> to <b className="mono">{d.due}</b>.</>,
+          onConfirm: () => { setConfirm(null); apply() },
+        })
+      } else {
+        apply()
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   const today = iso(new Date())
 
@@ -42,7 +105,9 @@ export default function Plan({ slug }) {
       const by = {}
       for (const e of [...(d.log || []), ...(d.notes || []).map((n) => ({ ...n, type: 'note' }))]) {
         const day = (e.ts || '').slice(0, 10)
-        if (day) (by[day] = by[day] || []).push(e.type)
+        if (!day) continue
+        by[day] = by[day] || {}
+        by[day][e.type] = (by[day][e.type] || 0) + 1
       }
       setActivity(by)
     })
@@ -78,9 +143,14 @@ export default function Plan({ slug }) {
 
   const save = async () => {
     setErr(null)
+    const extras = {
+      prepared: draft.kind === 'deadline' || (draft.kind === 'phase' && draft.end_deadline)
+        ? (draft.prepared ? 1 : 0) : 0,
+      end_deadline: draft.kind === 'phase' && draft.end_deadline ? 1 : 0,
+    }
     const r = draft.id
-      ? await updatePlanItem(draft.id, { title: draft.title, start: draft.kind === 'phase' ? draft.start || null : null, due: draft.due, note: draft.note })
-      : await addPlanItem(slug, { title: draft.title, kind: draft.kind, start: draft.kind === 'phase' ? draft.start || undefined : undefined, due: draft.due, note: draft.note })
+      ? await updatePlanItem(draft.id, { title: draft.title, start: draft.kind === 'phase' ? draft.start || null : null, due: draft.due, note: draft.note, ...extras })
+      : await addPlanItem(slug, { title: draft.title, kind: draft.kind, start: draft.kind === 'phase' ? draft.start || undefined : undefined, due: draft.due, note: draft.note, ...extras })
     if (r && r.error) { setErr(r.error); return }
     setDraft(null)
     load()
@@ -89,7 +159,7 @@ export default function Plan({ slug }) {
   const form = draft && (
     <div className="detail" style={{ display: 'grid', gap: 8, borderTop: draft?.id ? '1px solid var(--line)' : undefined }}>
       <div style={{ display: 'flex', gap: 6 }}>
-        {['phase', 'milestone'].map((k) => (
+        {['phase', 'milestone', 'deadline'].map((k) => (
           <button key={k} className="btn ghost"
                   style={{ textTransform: 'capitalize', ...(draft.kind === k ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : {}) }}
                   disabled={!!draft.id}
@@ -111,6 +181,20 @@ export default function Plan({ slug }) {
                  onChange={(e) => setDraft({ ...draft, due: e.target.value })} />
         </label>
       </div>
+      {draft.kind === 'phase' && (
+        <label className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <input type="checkbox" checked={!!draft.end_deadline}
+                 onChange={(e) => setDraft({ ...draft, end_deadline: e.target.checked })} />
+          this phase ends in a deadline
+        </label>
+      )}
+      {(draft.kind === 'deadline' || (draft.kind === 'phase' && draft.end_deadline)) && (
+        <label className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <input type="checkbox" checked={!!draft.prepared}
+                 onChange={(e) => setDraft({ ...draft, prepared: e.target.checked })} />
+          already prepared for it
+        </label>
+      )}
       <input className="text" placeholder="note (optional)" value={draft.note || ''}
              onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
       {err && <div style={{ color: 'var(--bad)', fontSize: 12 }}>{err}</div>}
@@ -145,13 +229,22 @@ export default function Plan({ slug }) {
       <Section
         title="Plan"
         aside={
-          <span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+            <span>
+              <button className="rowbtn" style={{ display: 'inline', width: 'auto', cursor: 'pointer' }}
+                      disabled={zoom === 0} onClick={() => setZoom(Math.max(0, zoom - 1))}
+                      title="Zoom out">−</button>
+              <span style={{ margin: '0 6px' }}>zoom</span>
+              <button className="rowbtn" style={{ display: 'inline', width: 'auto', cursor: 'pointer' }}
+                      disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom(Math.min(ZOOMS.length - 1, zoom + 1))}
+                      title="Zoom in">+</button>
+            </span>
             <button className="rowbtn" style={{ display: 'inline', width: 'auto', cursor: 'pointer',
                                                 color: showActivity ? 'var(--accent)' : 'inherit' }}
                     onClick={() => setShowActivity(!showActivity)}>
               activity overlay
             </button>
-            <button className="rowbtn" style={{ display: 'inline', width: 'auto', marginLeft: 12,
+            <button className="rowbtn" style={{ display: 'inline', width: 'auto',
                                                 color: 'var(--accent)', cursor: 'pointer' }}
                     onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}>
               + add item
@@ -172,7 +265,10 @@ export default function Plan({ slug }) {
                   <span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.title}
                   </span>
-                  {it.status === 'done' && <Stamp value="done" />}
+                  {it.status === 'done' ? <Stamp value="done" />
+                    : (it.kind === 'deadline' || it.end_deadline)
+                      ? <Stamp value={it.prepared ? 'prepared' : 'unprepared'} tone={it.prepared ? 'ok' : 'warn'} />
+                      : null}
                 </button>
               ))}
               {showActivity && activity && <div className="gantt-label muted" style={{ cursor: 'default' }}>activity</div>}
@@ -190,21 +286,36 @@ export default function Plan({ slug }) {
                   <div className="gantt-today" style={{ left: x(today) + PX / 2 }} title={`today · ${today}`} />
                   {items.map((it) => {
                     const state = itemState(it, today)
+                    const dl = it.kind === 'deadline' || it.end_deadline
+                    const prep = dl ? (it.prepared ? '\nprepared ✓' : '\nNOT prepared') : ''
+                    // live-preview dates while dragging
+                    const disp = preview && preview.id === it.id
+                      ? { ...it, start: preview.start, due: preview.due } : it
+                    const open = () => { if (!justDragged.current) setDraft({ ...it }) }
                     return (
                       <div key={it.id} className="gantt-row">
-                        {it.kind === 'phase' ? (
-                          <button
+                        {it.kind === 'phase' && (
+                          <div
+                            role="button" tabIndex={0}
                             className={`gantt-bar bar-${state}`}
-                            style={{ left: x(it.start || it.due), width: Math.max(x(it.due) - x(it.start || it.due) + PX, PX) }}
-                            title={`${it.title}\n${it.start || it.due} → ${it.due}${it.note ? '\n' + it.note : ''}`}
-                            onClick={() => setDraft({ ...it })}
-                          />
-                        ) : (
+                            style={{ left: x(disp.start || disp.due), width: Math.max(x(disp.due) - x(disp.start || disp.due) + PX, PX) }}
+                            title={`${it.title}\n${disp.start || disp.due} → ${disp.due}${prep}${it.note ? '\n' + it.note : ''}`}
+                            onClick={open}
+                            onKeyDown={(e) => e.key === 'Enter' && open()}
+                          >
+                            <span className="gantt-handle left" title="drag to move the start"
+                                  onMouseDown={(e) => beginDrag(e, it, 'start')} />
+                            <span className="gantt-handle right" title="drag to move the end"
+                                  onMouseDown={(e) => beginDrag(e, it, 'due')} />
+                          </div>
+                        )}
+                        {(it.kind !== 'phase' || it.end_deadline) && (
                           <button
-                            className={`gantt-ms bar-${state}`}
-                            style={{ left: x(it.due) + PX / 2 - 6 }}
-                            title={`${it.title}\n${it.due}${it.note ? '\n' + it.note : ''}`}
-                            onClick={() => setDraft({ ...it })}
+                            className={`gantt-ms bar-${state} ${dl && !it.prepared && it.status !== 'done' ? 'ms-unprepared' : ''}`}
+                            style={{ left: x(disp.due) + PX / 2 - 6 }}
+                            title={`${it.title}\n${disp.due}${prep}${it.note ? '\n' + it.note : ''}\n(drag to move)`}
+                            onMouseDown={(e) => beginDrag(e, it, it.kind === 'phase' ? 'due' : 'move')}
+                            onClick={open}
                           />
                         )}
                       </div>
@@ -212,13 +323,29 @@ export default function Plan({ slug }) {
                   })}
                   {showActivity && activity && (
                     <div className="gantt-row">
-                      {Object.entries(activity).map(([day, types]) => (
-                        <span key={day} className="gantt-dot"
-                              style={{ left: x(day) + PX / 2 - 3.5,
-                                       width: Math.min(7 + (types.length - 1) * 2, 13),
-                                       height: Math.min(7 + (types.length - 1) * 2, 13) }}
-                              title={`${day}\n${types.join(', ')}`} />
-                      ))}
+                      {Object.entries(activity).map(([day, counts]) => {
+                        const total = Object.values(counts).reduce((a, b) => a + b, 0)
+                        const barH = Math.min(8 + total * 3, 28)
+                        const tip = `${day}\n` + Object.entries(counts)
+                          .map(([t, n]) => `${n}× ${t}`).join(', ')
+                        let acc = 0
+                        return (
+                          <span key={day} className="gantt-stack"
+                                style={{ left: x(day) + PX / 2 - Math.min(PX - 2, 10) / 2,
+                                         width: Math.min(PX - 2, 10), height: barH }}
+                                title={tip}>
+                            {Object.entries(counts).map(([t, n]) => {
+                              const h = Math.max((n / total) * barH, 2)
+                              const seg = (
+                                <span key={t} style={{ position: 'absolute', bottom: acc, left: 0, right: 0,
+                                                       height: h, background: TYPE_COLOR[t] || 'var(--citation)' }} />
+                              )
+                              acc += h
+                              return seg
+                            })}
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -227,6 +354,9 @@ export default function Plan({ slug }) {
           </div>
         )}
         {draft && form}
+        <Confirm open={!!confirm} title={confirm?.title} body={confirm?.body}
+                 confirmLabel="Move deadline" onConfirm={confirm?.onConfirm}
+                 onCancel={() => setConfirm(null)} />
       </Section>
 
       <div style={{ height: 14 }} />

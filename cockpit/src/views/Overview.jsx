@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, getRuns } from '../api.js'
+import { getProject, getRuns, getPlan } from '../api.js'
 import { Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
 
 export default function Overview({ slug, project, defs, counts }) {
   const [data, setData] = useState(null)
   const [runs, setRuns] = useState([])
+  const [plan, setPlan] = useState([])
 
   useEffect(() => {
     let live = true
     getProject(slug).then((d) => live && setData(d))
     getRuns(slug).then((r) => live && setRuns(r))
+    getPlan(slug).then((p) => live && setPlan(p))
     return () => { live = false }
   }, [slug])
 
@@ -19,6 +21,15 @@ export default function Overview({ slug, project, defs, counts }) {
   const supported = claims.filter((c) => c.status === 'supported').length
   const openFindings = (data.findings || []).filter((f) => f.status === 'open')
   const log = (data.log || []).slice(0, 6)
+
+  // the next deadline: standalone or at a phase's end, not done, not past
+  const today = new Date().toISOString().slice(0, 10)
+  const nextDl = plan
+    .filter((i) => i.status !== 'done' && (i.kind === 'deadline' || i.end_deadline) && i.due >= today)
+    .sort((a, b) => (a.due < b.due ? -1 : 1))[0]
+  const dlDays = nextDl
+    ? Math.round((new Date(nextDl.due + 'T00:00:00Z') - new Date(today + 'T00:00:00Z')) / 86400000)
+    : null
 
   return (
     <>
@@ -38,6 +49,13 @@ export default function Overview({ slug, project, defs, counts }) {
           <b>{openFindings.length}</b><span>open findings</span>
         </div>
         <div className="stat"><b>{counts.paper ?? 0}</b><span>papers</span></div>
+        {nextDl && (
+          <div className={`stat ${!nextDl.prepared && dlDays <= 7 ? 'alert' : ''}`}
+               title={`${nextDl.title} · ${nextDl.due}${nextDl.prepared ? ' · prepared' : ' · not prepared yet'}`}>
+            <b>{dlDays}d</b>
+            <span>to deadline{nextDl.prepared ? ' ✓' : ''}</span>
+          </div>
+        )}
       </div>
 
       <div className="grid cols-2">

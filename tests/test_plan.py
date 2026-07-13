@@ -29,6 +29,20 @@ def test_phase_and_milestone_lifecycle(tmp_path):
         plan.delete_item(con, ms["id"])
 
 
+def test_deadlines_and_prepared(tmp_path):
+    con = _con(tmp_path)
+    dl = plan.add_item(con, "p", "NeurIPS abstract", due="2026-08-01", kind="deadline")
+    assert dl["kind"] == "deadline" and dl["prepared"] == 0 and dl["start"] is None
+    dl = plan.update_item(con, dl["id"], prepared=1)
+    assert dl["prepared"] == 1
+    # a phase can end in a deadline; prepared applies to it too
+    ph = plan.add_item(con, "p", "Writing", due="2026-08-10", start="2026-08-01",
+                       end_deadline=True)
+    assert ph["end_deadline"] == 1
+    with pytest.raises(ValueError):   # prepared is meaningless on a plain milestone
+        plan.add_item(con, "p", "x", due="2026-08-01", kind="milestone", prepared=True)
+
+
 def test_validation(tmp_path):
     con = _con(tmp_path)
     with pytest.raises(ValueError):   # bad date format

@@ -111,11 +111,11 @@ aside {
 .proj .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); flex-shrink: 0; transform: translateY(-1px); }
 .proj.active .dot { background: var(--accent); }
 
-.side-counts {
-  margin-top: auto; padding: 10px 8px 2px; border-top: 1px solid var(--line);
-  color: var(--faint); font-size: 11px; font-family: var(--mono); line-height: 1.9;
+.navitem .count {
+  margin-left: auto; font-family: var(--mono); font-size: 10.5px;
+  color: var(--faint); font-variant-numeric: tabular-nums;
 }
-.side-counts b { color: var(--muted); font-weight: 500; }
+.navitem.active .count { color: var(--accent); }
 
 /* ---------- topbar ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }

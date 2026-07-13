@@ -116,18 +116,19 @@ export default function App() {
         )}
 
         <div className="eyebrow">Views</div>
-        {VIEWS.map((v) => (
-          <button key={v} className={`navitem ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
-            <svg viewBox="0 0 15 15" fill="currentColor">{I[v]}</svg>
-            <span style={{ textTransform: 'capitalize' }}>{v}</span>
-            {v === 'findings' && openFindings > 0 && <span className="badge">{openFindings}</span>}
-          </button>
-        ))}
-
-        <div className="side-counts">
-          <b>{counts.paper ?? 0}</b> papers · <b>{counts.run ?? 0}</b> runs<br />
-          <b>{counts.claim ?? 0}</b> claims · <b>{counts.note ?? 0}</b> notes
-        </div>
+        {VIEWS.map((v) => {
+          const n = { experiments: counts.experiment, papers: counts.paper,
+                      claims: counts.claim, findings: counts.finding }[v]
+          return (
+            <button key={v} className={`navitem ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
+              <svg viewBox="0 0 15 15" fill="currentColor">{I[v]}</svg>
+              <span style={{ textTransform: 'capitalize' }}>{v}</span>
+              {v === 'findings' && openFindings > 0
+                ? <span className="badge">{openFindings}</span>
+                : n != null && n > 0 ? <span className="count">{n}</span> : null}
+            </button>
+          )
+        })}
       </aside>
       )}
 

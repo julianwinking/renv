@@ -45,25 +45,139 @@ claim ── retrieve ──> candidate passages
       ── cite     ──> \spancite{src}{start}{end}{quote} + <project>/citations.json
 ```
 
-## Quickstart (zero dependencies)
+## Quickstart (uv)
 
-The default stack is **stdlib-only** so it runs today on Python 3.14.
+The project is managed with [uv](https://docs.astral.sh/uv/). The default stack is
+**stdlib-only** (the heavy SOTA backends are optional extras), so one `uv sync`
+gives you a working environment on Python 3.14 with nothing to compile.
 
 ```bash
+uv sync                                      # create .venv + install (pins Python 3.14)
+
 # 1. put .txt/.md/.pdf papers in library/  (two demo papers are included)
-python3 -m reref.cli index                           # index the shared corpus
-python3 -m reref.cli status projects/span-citation   # corpus + project state
+uv run reref index                           # index the shared corpus
+uv run reref status projects/span-citation   # corpus + project state
 
 # 2. cite the corpus from a project
-python3 -m reref.cli cite "Citation precision uses NLI to flag unsupported passages." projects/span-citation --all
-python3 -m reref.cli cite "..." projects/span-citation --write   # -> projects/span-citation/citations.json
+uv run reref cite "Citation precision uses NLI to flag unsupported passages." projects/span-citation --all
+uv run reref cite "..." projects/span-citation --write   # -> projects/span-citation/citations.json
 
-python3 -m reref.cli resolve "smaller passages are easier to verify"
-python3 -m reref.cli preamble                         # LaTeX \spancite macro
-python3 tests/test_selectors.py && python3 tests/test_pipeline.py
+uv run reref resolve "smaller passages are easier to verify"
+uv run reref preamble                         # LaTeX \spancite macro
+uv run pytest                                 # run the test suite
 ```
 
-Point `--corpus PATH` at a different corpus root to keep separate libraries.
+`uv run reref` invokes the `reref` console script; `uv run python -m reref.cli`
+works too. Point `--corpus PATH` at a different corpus root to keep separate
+libraries.
+
+## Experiments + reasoning log (the research store)
+
+Beyond citations, the environment tracks **what you did, in what order, and why**
+in one central SQLite DB (`.research/env.db`, stdlib `sqlite3`, no new dep) — the
+single ground truth, with the `reref` CLI, an MCP server, and a web cockpit as
+clients over it. See [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) for the full design.
+
+```bash
+uv run reref db init                          # create/migrate the env DB
+uv run reref project new span-citation        # DB row + workspace dirs
+
+# experiments form a DAG (one experiment, one question)
+uv run reref exp new span-citation 001-tfidf --title "TF-IDF baseline"
+uv run reref exp new span-citation 002-dense --parent 001-tfidf
+
+# runs are reproducible: the entrypoint reads REREF_RUN_DIR + REREF_PARAMS and
+# writes metrics.json; we pin git sha, env hash, dataset, config hash, seed.
+uv run reref dataset add alce-claims --path library/gao2023_alce.txt
+uv run reref exp run span-citation 001-tfidf --entrypoint run.py --param k=8 --dataset alce-claims
+uv run reref exp list span-citation           # the progress view (DAG + metrics)
+
+# the decision log — numbers may only enter via a recorded run
+uv run reref log add span-citation result "recall hit 0.8" --evidence run:1
+uv run reref log add span-citation decision "Anchor at sentence granularity"
+uv run reref log check                         # audit the §0 invariant
+uv run reref export                            # deterministic JSONL snapshot for git
+```
+
+**Provenance enforcement (not a correctness proof):** a `result` log entry is
+*rejected* unless it links a *done* run of the same project, and `reref log check`
+re-audits the whole DB — so a measured number can't be asserted without a recorded
+run behind it. This guarantees provenance, not validity: a buggy run can still
+produce a wrong number. See `docs/BLUEPRINT.md` → *Honest status* for what is and
+isn't guaranteed.
+
+## Discover & search
+
+```bash
+uv run reref discover "span-level citation faithfulness" --add 0   # arXiv search → ingest result 0
+uv run reref search "sentence anchoring"                           # FTS over papers/cards/notes/log/claims
+uv run reref export --project span-citation     # project-scoped JSONL slice
+uv run reref import                              # rebuild the DB from the export (round-trip)
+```
+
+Long experiments run in the background so they never block an agent:
+`start_run` + `run_status` (MCP), and the runner withholds secret-named env vars by
+default (`reref exp run … --env-allow OPENAI_API_KEY` to opt one in).
+
+## Draft the paper (numbers generated, never typed)
+
+```bash
+uv run reref new span-citation --title "Span-anchored citation"  # ideation.md + text/ skeleton
+# ... run experiments (above) ...
+uv run reref weave span-citation        # regenerate results_table.tex + references.bib
+```
+
+`reref new` scaffolds `ideation.md` (a structured plan with a prior-art positioning
+table) and a LaTeX skeleton (`paper.tex` + the `\spancite` preamble). `reref weave`
+regenerates `text/results_table.tex` straight from the `metric` rows and
+`text/references.bib` from cited papers — so the paper's numbers and bibliography
+are build outputs of the store, never hand-typed text that can drift.
+
+## The claim/evidence graph
+
+Assertions are first-class and traced to evidence — the backbone that makes "every
+claim is backed" checkable:
+
+```bash
+uv run reref claim add span-citation "Span anchoring beats paper-level citation" --kind thesis
+uv run reref claim link 1 --cite 3 --stance supports     # a verified citation backs it
+uv run reref claim link 1 --run 7  --stance refutes       # a run that contradicts it
+uv run reref claim list span-citation                     # status is DERIVED from evidence
+```
+
+A claim's status (`open` / `supported` / `refuted`) is computed from its evidence,
+not hand-set. `reref review` flags any thesis/contribution claim still `open`.
+
+## The web cockpit
+
+```bash
+uv run reref web                 # → http://127.0.0.1:8765
+```
+
+There are two frontends over the same JSON API (the store is the single source of
+truth either way; every edit goes through the same domain functions as CLI/MCP):
+
+- **Buildless page** (default, stdlib, zero toolchain): dashboard, papers +
+  **citation usage map**, branch explorer, findings with accept/reject, claim graph,
+  timeline + notes.
+- **React Flow graph app** (`cockpit/`, richer): experiment branches, claims,
+  findings, citations, and papers as connected, **expandable interactive nodes** on
+  a dagre-laid-out canvas — inline finding accept/reject, claim→evidence edges.
+  Build it and `reref web` serves it automatically:
+  ```bash
+  cd cockpit && npm install && npm run build   # → cockpit/dist
+  uv run reref web                              # now serves the graph app
+  ```
+  For live development: `npm run dev` (Vite at :5173, proxies to the API). See
+  [`cockpit/README.md`](cockpit/README.md).
+
+## Drive it from Claude Code (MCP)
+
+`.mcp.json` registers a local stdio MCP server (`reref mcp`, pure stdlib) so an
+agent can run the whole loop — `search_corpus`, `cite_claim`, `create/run_experiment`,
+`log_decision`, `weave`, read-only `query` — through the same code paths and the
+same §0 constraints as the CLI. See [`AGENTS.md`](AGENTS.md) for the operating
+protocol.
 
 ## The lockfile (consistency / hand-off)
 
@@ -89,16 +203,18 @@ Default backends are lightweight; the verified SOTA picks are pluggable adapters
 | Re-anchor | stdlib `difflib` | **RapidFuzz** (MIT) |
 
 ```bash
-pip install -e ".[pdf,anchor]"           # light, recommended
-pip install -e ".[parse-sota,embed-local,verify-local]"   # full SOTA (needs torch)
+uv sync --extra pdf --extra anchor                            # light, recommended
+uv sync --extra parse-sota --extra embed-local --extra verify-local   # full SOTA (needs torch)
 ```
 
 ## Layout
 
 ```
-reref/      the engine (indexing, retrieval, anchoring, verification)
-tests/      dependency-free unit + integration tests
-library/    SHARED corpus of reference papers (index once)
-.reref/     shared index + lockfile (derived)
-projects/   one folder per paper: ideation.md, src/, text/, citations.json
+reref/          the engine (indexing, retrieval, anchoring, verification)
+tests/          dependency-free unit + integration tests
+library/        SHARED corpus of reference papers (index once)
+.reref/         shared index + lockfile (derived)
+projects/       one folder per paper: ideation.md, src/, text/, citations.json
+pyproject.toml  project + extras (uv-managed)
+uv.lock         pinned dependency lockfile (commit this)
 ```

@@ -319,7 +319,7 @@ export default function App() {
             </button>
           )}
           <h2>
-            {TOOLS.includes(view) ? 'Tools' : project ? project.slug : 'reref'}{' '}
+            {project ? project.slug : 'reref'}{' '}
             <span className="crumb">/ {view.charAt(0).toUpperCase() + view.slice(1)}</span>
           </h2>
           <div className="searchbox">

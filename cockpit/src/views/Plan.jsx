@@ -4,7 +4,7 @@
 // can see when what kind of progress actually happened.
 import React, { useEffect, useMemo, useState } from 'react'
 import { getPlan, addPlanItem, updatePlanItem, deletePlanItem, getProject } from '../api.js'
-import { asArray, Stamp, Section, Empty, Confirm, timeAgo } from '../ui.jsx'
+import { asArray, Stamp, Confirm } from '../ui.jsx'
 
 const DAY = 86400000
 const ZOOMS = [10, 18, 26, 42, 64]              // px per day
@@ -39,9 +39,37 @@ export default function Plan({ slug }) {
   const [err, setErr] = useState(null)
   const [zoom, setZoom] = useState(2)              // index into ZOOMS
   const PX = ZOOMS[zoom]
+  const [labelW, setLabelW] = useState(() =>
+    Number(localStorage.getItem('reref-gantt-labels')) || 230)
+
+  const startLabelResize = (e) => {
+    e.preventDefault()
+    const x0 = e.clientX
+    const w0 = labelW
+    let w = w0
+    const move = (ev) => { w = Math.min(420, Math.max(140, w0 + ev.clientX - x0)); setLabelW(w) }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      localStorage.setItem('reref-gantt-labels', String(w))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
   const chartRef = React.useRef(null)
   const zoomRef = React.useRef(zoom)
   zoomRef.current = zoom
+  const [chartW, setChartW] = useState(1200)
+
+  useEffect(() => {   // grid must always fill the visible width, at any zoom
+    const el = chartRef.current
+    if (!el) return
+    const measure = () => setChartW(el.clientWidth)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [items === null])
 
   // trackpad pinch (arrives as ctrl+wheel) zooms, anchored on the cursor date
   useEffect(() => {
@@ -152,8 +180,11 @@ export default function Plan({ slug }) {
     let min = addDays(parse(dates[0]), -3)
     let max = addDays(parse(dates[dates.length - 1]), 10)
     if ((max - min) / DAY < 28) max = addDays(min, 28)
+    // dates continue to the right page edge even when zoomed far out
+    const minDays = Math.ceil(chartW / PX) + 1
+    if ((max - min) / DAY < minDays) max = addDays(min, minDays)
     return { min, max, days: Math.round((max - min) / DAY) }
-  }, [items, activity, today])
+  }, [items, activity, today, chartW, PX])
 
   if (!items) return <div className="loading">reading the plan…</div>
 
@@ -256,42 +287,32 @@ export default function Plan({ slug }) {
 
   return (
     <>
-      <div className="pagehead">
+      <div className="pagehead" style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
         <h1>Timeline</h1>
+        <span className="gantt-tools">
+          <button className="gtool sq" disabled={zoom === 0}
+                  onClick={() => setZoom(Math.max(0, zoom - 1))} title="Zoom out">−</button>
+          <button className="gtool sq" disabled={zoom === ZOOMS.length - 1}
+                  onClick={() => setZoom(Math.min(ZOOMS.length - 1, zoom + 1))} title="Zoom in">+</button>
+          <button className={`gtool ${showActivity ? 'active' : ''}`}
+                  onClick={() => setShowActivity(!showActivity)}>
+            Activity
+          </button>
+          <button className="gtool" onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}>
+            + Add item
+          </button>
+        </span>
       </div>
 
-      <Section
-        title="Plan"
-        aside={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
-            <span>
-              <button className="rowbtn" style={{ display: 'inline', width: 'auto', cursor: 'pointer' }}
-                      disabled={zoom === 0} onClick={() => setZoom(Math.max(0, zoom - 1))}
-                      title="Zoom out">−</button>
-              <span style={{ margin: '0 6px' }}>zoom</span>
-              <button className="rowbtn" style={{ display: 'inline', width: 'auto', cursor: 'pointer' }}
-                      disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom(Math.min(ZOOMS.length - 1, zoom + 1))}
-                      title="Zoom in">+</button>
-            </span>
-            <button className="rowbtn" style={{ display: 'inline', width: 'auto', cursor: 'pointer',
-                                                color: showActivity ? 'var(--accent)' : 'inherit' }}
-                    onClick={() => setShowActivity(!showActivity)}>
-              activity overlay
-            </button>
-            <button className="rowbtn" style={{ display: 'inline', width: 'auto',
-                                                color: 'var(--accent)', cursor: 'pointer' }}
-                    onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}>
-              + add item
-            </button>
-          </span>
-        }
-      >
-        {items.length === 0 && !draft && (
-          <Empty>No plan yet — add a deadline or a phase, e.g. a conference submission window.</Empty>
-        )}
-        {items.length > 0 && (
-          <div className="gantt">
-            <div className="gantt-labels">
+      {items.length === 0 && !draft && (
+        <div className="muted" style={{ padding: '30px 2px' }}>
+          No plan yet — add a deadline or a phase, e.g. a conference submission window.
+        </div>
+      )}
+      {items.length > 0 && (
+          <div className="gantt gantt-page">
+            <div className="gantt-labels" style={{ width: labelW }}>
+              <div className="side-resize" onMouseDown={startLabelResize} title="Drag to resize" />
               <div className="gantt-head" />
               {items.map((it) => (
                 <button key={it.id} className="gantt-label rowbtn" onClick={() => setDraft({ ...it })}>
@@ -390,29 +411,11 @@ export default function Plan({ slug }) {
               </div>
             </div>
           </div>
-        )}
-        {draft && form}
-        <Confirm open={!!confirm} title={confirm?.title} body={confirm?.body}
-                 confirmLabel="Move deadline" onConfirm={confirm?.onConfirm}
-                 onCancel={() => setConfirm(null)} />
-      </Section>
-
-      <div style={{ height: 14 }} />
-
-      <Section title="Items" aside={`${items.filter((i) => i.status !== 'done').length} open`}>
-        {items.map((it) => (
-          <button key={it.id} className="rowbtn" onClick={() => setDraft({ ...it })}>
-            <div className="row">
-              <span className="gantt-swatch" style={{ background: TONE_COLOR[itemState(it, today)] }} />
-              <span className="chip">{it.kind}</span>
-              <div className="grow">{it.title}{it.note && <span className="muted"> — {it.note}</span>}</div>
-              <span className="num faint">{it.start ? `${it.start} → ${it.due}` : it.due}</span>
-              {it.edited && <span className="when" title="last edited">✎ {timeAgo(it.edited)}</span>}
-            </div>
-          </button>
-        ))}
-        {!items.length && <Empty>Nothing planned yet.</Empty>}
-      </Section>
+      )}
+      {draft && <div className="card" style={{ marginTop: 14 }}>{form}</div>}
+      <Confirm open={!!confirm} title={confirm?.title} body={confirm?.body}
+               confirmLabel="Move deadline" onConfirm={confirm?.onConfirm}
+               onCancel={() => setConfirm(null)} />
     </>
   )
 }

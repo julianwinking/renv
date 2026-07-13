@@ -397,7 +397,23 @@ select.text {
 
 /* Gantt plan */
 .gantt { display: flex; border-top: 1px solid var(--line); }
-.gantt-labels { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); }
+/* page mode: the view IS the chart — no card around it, hairlines only;
+   bleeds through the content padding to end at the right page edge */
+.gantt-page { border-bottom: 1px solid var(--line); margin-right: -22px; }
+/* floating-pill controls, matching the graph's control language */
+.gantt-tools { margin-left: auto; display: inline-flex; gap: 8px; }
+.gtool {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); cursor: pointer; font-family: var(--mono);
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.gtool:hover:not(:disabled) { color: var(--ink); background: var(--surface2); }
+.gtool.active { color: var(--accent); }
+.gtool:disabled { opacity: 0.35; cursor: default; }
+.gtool.sq { width: 26px; padding: 0; justify-content: center; font-size: 14px; letter-spacing: 0; }
+.gantt-labels { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); position: relative; }
 .gantt-head { height: 34px; border-bottom: 1px solid var(--line); position: relative; }
 .gantt-tick {
   position: absolute; bottom: 2px; font-size: 9px; font-family: var(--mono);
@@ -411,6 +427,15 @@ select.text {
 .gantt-label:hover { background: var(--surface2); }
 .gantt-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 .gantt-chart { flex: 1; overflow-x: auto; }
+/* minimal, theme-aware horizontal scrollbar */
+.gantt-chart::-webkit-scrollbar { height: 7px; }
+.gantt-chart::-webkit-scrollbar-track { background: transparent; }
+.gantt-chart::-webkit-scrollbar-thumb {
+  background: var(--line-strong); border-radius: 4px;
+  border: 1px solid transparent; background-clip: padding-box;
+}
+.gantt-chart::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+.gantt-chart { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .gantt-month {
   position: absolute; top: 5px; font-size: 10px; font-family: var(--mono);
   color: var(--faint); letter-spacing: 0.05em; text-transform: uppercase;

@@ -129,6 +129,22 @@ def set_status(con: sqlite3.Connection, project: str, slug: str, status: str) ->
     con.commit()
 
 
+def update_meta(con: sqlite3.Connection, project: str, slug: str, *,
+                title: str | None = None, hypothesis: str | None = None) -> dict:
+    """Edit an experiment's title/hypothesis (its identity slug is immutable)."""
+    pid = project_id(con, project)
+    row = con.execute("SELECT id FROM experiment WHERE project_id=? AND slug=?",
+                      (pid, slug)).fetchone()
+    if not row:
+        raise KeyError(f"no experiment {slug!r} in {project!r}")
+    if title is not None:
+        con.execute("UPDATE experiment SET title=? WHERE id=?", (title, row["id"]))
+    if hypothesis is not None:
+        con.execute("UPDATE experiment SET hypothesis=? WHERE id=?", (hypothesis, row["id"]))
+    con.commit()
+    return get_experiment(con, project, slug)
+
+
 def set_parent(con: sqlite3.Connection, project: str, slug: str,
                parent: str | None) -> dict:
     """Re-parent an experiment onto the DAG (None detaches). Refuses cycles."""

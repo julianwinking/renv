@@ -32,6 +32,8 @@ export const addExperiment = (project, slug, title, hypothesis, parent) =>
   post('/api/experiment', { project, slug, title, hypothesis, parent })
 export const setExperimentParent = (project, slug, parent) =>
   post('/api/experiment/parent', { project, slug, parent })
+export const editExperiment = (project, slug, fields) =>
+  post('/api/experiment/update', { project, slug, ...fields })
 export const relateClaims = (claim_id, related_id, kind, note) =>
   post('/api/claim/relate', { claim_id, related_id, kind, note })
 export const linkExperimentToClaim = (project, experiment, claim_id, stance, note) =>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, getRuns, addExperiment } from '../api.js'
+import { getProject, getRuns, addExperiment, editExperiment } from '../api.js'
 import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance, Modal } from '../ui.jsx'
 
 function Run({ run, defs }) {
@@ -34,7 +34,17 @@ export default function Experiments({ slug, defs, focus }) {
   const [runs, setRuns] = useState([])
   const [open, setOpen] = useState({})
   const [adding, setAdding] = useState(null)
+  const [editing, setEditing] = useState(null)   // slug whose title is being edited
+  const [editText, setEditText] = useState('')
   const [err, setErr] = useState(null)
+
+  const commitEdit = async () => {
+    const t = editText.trim()
+    const e = exps.find((x) => x.slug === editing)
+    if (t && e && t !== e.title) await editExperiment(slug, editing, { title: t })
+    setEditing(null)
+    load()
+  }
 
   const load = () => getProject(slug).then((d) => setExps(d.experiments))
   useEffect(() => {
@@ -84,15 +94,29 @@ export default function Experiments({ slug, defs, focus }) {
           const isOpen = !!open[e.id]
           return (
             <div key={e.id} id={`exp-${e.slug}`} className={focus === e.slug ? 'flash' : ''}>
-              <button className="rowbtn" onClick={() => setOpen({ ...open, [e.id]: !isOpen })}>
-                <div className="row" style={{ paddingLeft: 16 + depth(e) * 22 }}>
+              <div className="row" style={{ paddingLeft: 16 + depth(e) * 22 }}>
+                <button className="rowbtn" style={{ width: 'auto', display: 'flex', gap: 10, alignItems: 'baseline' }}
+                        onClick={() => setOpen({ ...open, [e.id]: !isOpen })} title="Show runs">
                   <span className="faint mono">{isOpen ? '▾' : '▸'}</span>
                   <Mono>{e.slug}</Mono>
-                  <div className="grow">{e.title}</div>
-                  <Metrics defs={defs} metrics={e.metrics} />
-                  <Stamp value={e.status} />
-                </div>
-              </button>
+                </button>
+                {editing === e.slug ? (
+                  <textarea className="inline-edit" autoFocus value={editText}
+                            onChange={(ev) => setEditText(ev.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={(ev) => {
+                              if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commitEdit() }
+                              if (ev.key === 'Escape') setEditing(null)
+                            }} />
+                ) : (
+                  <div className="grow inline-target" title="Click to edit"
+                       onClick={() => { setEditing(e.slug); setEditText(e.title || '') }}>
+                    {e.title || <span className="faint">no title</span>}
+                  </div>
+                )}
+                <Metrics defs={defs} metrics={e.metrics} />
+                <Stamp value={e.status} />
+              </div>
               {isOpen && (
                 <div className="detail">
                   {e.hypothesis && (

@@ -32,7 +32,7 @@ export function RegionNode({ id, data }) {
                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { setLabel(data.label || ''); setEditing(false) } }} />
         ) : (
           <span className="region-name" title="Click to rename"
-                onClick={(e) => { e.stopPropagation(); setEditing(true) }}>
+                onClick={(e) => { e.stopPropagation(); setLabel(data.label || ''); setEditing(true) }}>
             {data.label || 'Untitled region'}
           </span>
         )}

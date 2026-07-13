@@ -389,6 +389,9 @@ def ingest_run(con: sqlite3.Connection, project: str, slug: str, *,
         raise KeyError(f"no experiment {slug!r} in {project!r}")
     if run_dir is None and metrics is None:
         raise ValueError("ingest needs --dir (a copied run directory) or metrics")
+    if remote:
+        from .remote import expand_locator
+        remote = expand_locator(con, remote)   # "snaga:runs/x" → data_root expansion
 
     prov = {}
     if run_dir is not None:

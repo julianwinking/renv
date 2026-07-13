@@ -209,6 +209,18 @@ def h_register_dataset(root, a):
         location=a.get("location"), sha256=a.get("sha256"))
 
 
+def h_add_remote(root, a):
+    from . import remote
+    return remote.add_remote(_conn(root), a["name"], host=a.get("host"),
+                             data_root=a.get("data_root"),
+                             description=a.get("description"))
+
+
+def h_list_remotes(root, a):
+    from . import remote
+    return remote.list_remotes(_conn(root))
+
+
 def h_ingest_run(root, a):
     return experiment.ingest_run(
         _conn(root), a["project"], a["slug"], run_dir=a.get("dir"),
@@ -435,7 +447,12 @@ TOOLS = [
      "inputSchema": _obj({"slug": _S, "version": _S, "path": _S, "description": _S,
                           "location": _S, "sha256": _S}, ["slug"]),
      "handler": h_register_dataset},
-    {"name": "ingest_run", "description": "Register a run executed elsewhere (a cluster) — §0 entry for remote results: pass a copied run dir, or metrics + a remote locator when data/artifacts stay on the cluster. Provenance graded remote/remote-verified, never complete.",
+    {"name": "add_remote", "description": "Register a named cluster/storage location referencing an ssh alias (e.g. snaga) with a data_root — locators like snaga:runs/x then expand against it.",
+     "inputSchema": _obj({"name": _S, "host": _S, "data_root": _S, "description": _S},
+                         ["name"]), "handler": h_add_remote},
+    {"name": "list_remotes", "description": "Named clusters/storage locations (ssh alias + data_root) — check before running or storing anything remotely.",
+     "inputSchema": _obj({}, []), "handler": h_list_remotes},
+    {"name": "ingest_run", "description": "Register a run executed elsewhere (a cluster) — §0 entry for remote results: pass a copied run dir, or metrics + a remote locator (e.g. snaga:runs/exp42) when data/artifacts stay on the cluster. Provenance graded remote/remote-verified, never complete.",
      "inputSchema": _obj({"project": _S, "slug": _S, "dir": _S,
                           "metrics": {"type": "object"}, "remote": _S,
                           "dataset_id": _I}, ["project", "slug"]),

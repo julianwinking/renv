@@ -394,6 +394,9 @@ class Handler(BaseHTTPRequestHandler):
             return ingest.list_papers(con)
         if path == "/api/metric_defs":
             return experiment.metric_defs(con)
+        if path == "/api/remotes":
+            from . import remote as remotemod
+            return remotemod.list_remotes(con)
         if path == "/api/sources":
             # distinct feedback/entry authors (people), for consistent labels;
             # system writers are not people
@@ -509,6 +512,11 @@ class Handler(BaseHTTPRequestHandler):
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
             return {"saved": str(p), "bytes": len(content.encode())}
+        if path == "/api/remote":
+            from . import remote as remotemod
+            return remotemod.add_remote(con, d["name"], host=d.get("host"),
+                                        data_root=d.get("data_root"),
+                                        description=d.get("description"))
         if path == "/api/metric_def":
             return experiment.define_metric(
                 con, d["name"], label=d.get("label"), unit=d.get("unit"),

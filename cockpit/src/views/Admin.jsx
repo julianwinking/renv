@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   getConfigFiles, getConfigFile, saveConfigFile, getMetricDefs, defineMetric,
-  saveProjectSettings, getRubric,
+  saveProjectSettings, getRubric, getRemotes, addRemote,
 } from '../api.js'
 import { Stamp, Section, Empty, Mono } from '../ui.jsx'
 
@@ -123,12 +123,24 @@ export function Settings({ slug, project, onMutate }) {
   const [status, setStatus] = useState(project?.status || 'active')
   const [defs, setDefs] = useState(null)
   const [draft, setDraft] = useState(null)      // metric being edited/created
+  const [remotes, setRemotes] = useState(null)
+  const [rdraft, setRdraft] = useState(null)    // remote being edited/created
   const [rubric, setRubric] = useState(null)
   const [showRubric, setShowRubric] = useState(false)
   const [msg, setMsg] = useState(null)
 
   useEffect(() => { setTitle(project?.title || ''); setStatus(project?.status || 'active') }, [project])
-  useEffect(() => { getMetricDefs().then(setDefs) }, [])
+  useEffect(() => {
+    getMetricDefs().then(setDefs)
+    getRemotes().then(setRemotes)
+  }, [])
+
+  const saveRemote = async () => {
+    const r = await addRemote(rdraft)
+    if (r.error) { setMsg({ bad: true, text: r.error }); return }
+    setRdraft(null)
+    setRemotes(await getRemotes())
+  }
 
   const saveSettings = async () => {
     const r = await saveProjectSettings(slug, { title, status })
@@ -206,6 +218,48 @@ export function Settings({ slug, project, onMutate }) {
             <div className="gnode-actions" style={{ marginTop: 0 }}>
               <button className="btn" onClick={saveMetric} disabled={!(draft.name || '').trim()}>Save metric</button>
               <button className="btn ghost" onClick={() => setDraft(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <div style={{ height: 14 }} />
+
+      <Section title="Remotes"
+               aside={<button className="rowbtn" style={{ display: 'inline', width: 'auto', color: 'var(--accent)', cursor: 'pointer' }}
+                              onClick={() => setRdraft({})}>+ add remote</button>}>
+        <div style={{ padding: '0 16px 8px' }} className="muted">
+          Named clusters/storage referencing your ssh aliases (`ssh snaga` stays the source of
+          truth for auth). The data root makes locators like <span className="mono">snaga:runs/exp42</span> expand.
+        </div>
+        {remotes && remotes.map((r) => (
+          <div className="row" key={r.name}>
+            <Mono>{r.name}</Mono>
+            <span className="chip">{r.host || 'this machine'}</span>
+            <div className="grow mono muted" style={{ fontSize: 11.5 }}>{r.data_root || '—'}</div>
+            {r.description && <span className="muted">{r.description}</span>}
+            <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
+                    onClick={() => setRdraft({ ...r })}>edit</button>
+          </div>
+        ))}
+        {remotes && !remotes.length && (
+          <Empty>No remotes yet — register your cluster so runs and data can say where they live.</Empty>
+        )}
+        {rdraft && (
+          <div className="detail" style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input className="text" placeholder="name, e.g. snaga" value={rdraft.name || ''}
+                     onChange={(e) => setRdraft({ ...rdraft, name: e.target.value })} />
+              <input className="text" placeholder="ssh alias (default: the name)" value={rdraft.host || ''}
+                     onChange={(e) => setRdraft({ ...rdraft, host: e.target.value })} />
+              <input className="text" placeholder="data root, e.g. /scratch/julian/research" value={rdraft.data_root || ''}
+                     onChange={(e) => setRdraft({ ...rdraft, data_root: e.target.value })} />
+              <input className="text" placeholder="description (optional)" value={rdraft.description || ''}
+                     onChange={(e) => setRdraft({ ...rdraft, description: e.target.value })} />
+            </div>
+            <div className="gnode-actions" style={{ marginTop: 0 }}>
+              <button className="btn" onClick={saveRemote} disabled={!(rdraft.name || '').trim()}>Save remote</button>
+              <button className="btn ghost" onClick={() => setRdraft(null)}>Cancel</button>
             </div>
           </div>
         )}

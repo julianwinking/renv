@@ -456,6 +456,41 @@ def cmd_plan_rm(args):
     print(f"plan #{args.id} removed")
 
 
+def cmd_remote_add(args):
+    from . import remote
+    con = db.connect(args.corpus)
+    try:
+        r = remote.add_remote(con, args.name, host=args.host,
+                              data_root=args.data_root, description=args.description)
+    except ValueError as exc:
+        sys.exit(f"! {exc}")
+    print(f"remote {r['name']}  host={r['host']}"
+          + (f"  data-root={r['data_root']}" if r["data_root"] else ""))
+
+
+def cmd_remote_list(args):
+    from . import remote
+    con = db.connect(args.corpus)
+    rows = remote.list_remotes(con)
+    if not rows:
+        print("(no remotes — `reref remote add snaga --data-root /scratch/you/research`)")
+        return
+    for r in rows:
+        print(f"  {r['name']}  host={r['host'] or '(this machine)'}"
+              + (f"  data-root={r['data_root']}" if r["data_root"] else "")
+              + (f"  — {r['description']}" if r["description"] else ""))
+
+
+def cmd_remote_rm(args):
+    from . import remote
+    con = db.connect(args.corpus)
+    try:
+        remote.delete_remote(con, args.name)
+    except KeyError as exc:
+        sys.exit(f"! {exc}")
+    print(f"remote {args.name} removed")
+
+
 def cmd_new(args):
     """Scaffold a project from templates/project/, register it, and git-init its repo."""
     from . import authoring
@@ -927,6 +962,21 @@ def main(argv=None):
     da.set_defaults(func=cmd_dataset_add)
     dl = pds.add_parser("list", help="list datasets")
     dl.set_defaults(func=cmd_dataset_list)
+
+    prm = sub.add_parser("remote", help="named clusters/storage (references your ssh aliases)").add_subparsers(
+        dest="remote_cmd", required=True)
+    ra = prm.add_parser("add", help="register a remote, e.g. `remote add snaga --data-root /scratch/you`")
+    ra.add_argument("name")
+    ra.add_argument("--host", default=None, help="ssh alias (default: the name — `ssh snaga` must work)")
+    ra.add_argument("--data-root", default=None,
+                    help="default experiment-data root there; makes `snaga:runs/x` locators expand")
+    ra.add_argument("--description", default=None)
+    ra.set_defaults(func=cmd_remote_add)
+    rl = prm.add_parser("list", help="list remotes")
+    rl.set_defaults(func=cmd_remote_list)
+    rr = prm.add_parser("rm", help="remove a remote")
+    rr.add_argument("name")
+    rr.set_defaults(func=cmd_remote_rm)
 
     ppl = sub.add_parser("plan", help="project plan: phases + deadlines (Gantt)").add_subparsers(
         dest="plan_cmd", required=True)

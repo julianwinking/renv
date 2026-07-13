@@ -413,9 +413,24 @@ ALTER TABLE run ADD COLUMN remote TEXT;
 ALTER TABLE dataset ADD COLUMN location TEXT;
 """
 
+# v13: the remote registry — named compute/storage locations referencing the
+# user's ssh aliases (we never reinvent ssh config, just point at it). A
+# remote's data_root lets locators be shorthand: "snaga:runs/exp42" expands
+# under /scratch/…; host NULL means this machine.
+_SCHEMA_V13 = """
+CREATE TABLE remote (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    host        TEXT,
+    data_root   TEXT,
+    description TEXT,
+    created     TEXT NOT NULL
+);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
               _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
-              _SCHEMA_V11, _SCHEMA_V12]
+              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13]
 
 
 # --- time & hashing ----------------------------------------------------------

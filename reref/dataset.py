@@ -34,6 +34,9 @@ def register_dataset(
     """
     sha = sha256 or (sha256_file(Path(path)) if path else None)
     location = location or path
+    if location:
+        from .remote import expand_locator
+        location = expand_locator(con, location)
     row = con.execute(
         "SELECT * FROM dataset WHERE slug=? AND version=?", (slug, version)
     ).fetchone()

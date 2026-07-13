@@ -59,7 +59,10 @@ through the same code paths, so the rules below hold either way.
 5. **Results are generated, never typed**: entrypoints read
    `REREF_RUN_DIR`/`REREF_PARAMS`, write `metrics.json`; numbers flow
    run → metric → paper via `reref weave`.
-   **Cluster runs** (compute/data stay remote): register remote data with
+   **Cluster runs** (compute/data stay remote): clusters are registered
+   remotes (`reref remote list` / MCP `list_remotes`) referencing ssh aliases
+   — `ssh <name>` is how you reach them; locators like `snaga:runs/exp42`
+   expand against the remote's data root. Register remote data with
    `dataset add --remote ssh://… --sha256 <hashed-on-cluster>`; after the run,
    `reref exp ingest <project> <slug> --dir <copied-dir>` — or, when nothing
    comes home, `--metrics '{…}' --remote ssh://…` (MCP: `ingest_run`).

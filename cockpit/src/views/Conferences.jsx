@@ -138,7 +138,7 @@ export default function Conferences({ slug }) {
                         ...(isPlanned ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : null) }}
                       title={isPlanned ? 'remove from the plan' : 'adopt as a plan deadline'}
                       onClick={() => toggle(c)}>
-                {isPlanned ? 'planned ✓' : '→ plan'}
+                {isPlanned ? 'Planned ✓' : '→ Plan'}
               </button>
             </div>
           )

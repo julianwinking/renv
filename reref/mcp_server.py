@@ -326,6 +326,11 @@ def h_relate_claims(root, a):
                         kind=a.get("kind", "depends_on"), note=a.get("note"))
 
 
+def h_analyze_argument(root, a):
+    from . import argument
+    return argument.analyze(_conn(root), a["project"])
+
+
 def h_link_context(root, a):
     from . import links
     return links.add_link(_conn(root), a["project"], from_kind=a["from_kind"],
@@ -520,6 +525,8 @@ TOOLS = [
                          ["claim_id", "related_id"]), "handler": h_relate_claims},
     {"name": "list_claims", "description": "Claims of a project with derived status + evidence counts.",
      "inputSchema": _obj({"project": _S, "status": _S}, ["project"]), "handler": h_list_claims},
+    {"name": "analyze_argument", "description": "Structural health of the claim graph: foundation soundness (depends_on propagation), contradictions among supported claims, and a ranked frontier of what to work on next. Read-only; never changes status.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_analyze_argument},
     {"name": "link_context", "description": "Soft, non-evidential link between graph entities (e.g. feedback relates_to a claim, note about an experiment). Never changes derived status. Kinds: claim/experiment/paper/finding/feedback/note/question/hypothesis/thought.",
      "inputSchema": _obj({"project": _S, "from_kind": _S, "from_id": _I,
                           "to_kind": _S, "to_id": _I, "relation": _S, "note": _S},

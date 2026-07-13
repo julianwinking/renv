@@ -252,6 +252,21 @@ aside {
 .stat span { color: var(--faint); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
 .stat.alert b { color: var(--bad); }
 
+/* argument alerts */
+.alerts { display: grid; gap: 8px; margin-bottom: 14px; }
+.alert-row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
+  border: 1px solid; border-radius: 9px; font-size: 12.5px;
+}
+.alert-row.bad { border-color: color-mix(in srgb, var(--bad) 35%, transparent); background: var(--bad-soft); }
+.alert-row.warn { border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: var(--warn-soft); }
+.alert-tag {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+}
+.alert-row.bad .alert-tag { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.alert-row.warn .alert-tag { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+
 /* ---------- rows & tables ---------- */
 .row { display: flex; align-items: baseline; gap: 10px; padding: 9px 16px; border-top: 1px solid var(--line); }
 .row:hover { background: var(--surface2); }

@@ -1,16 +1,25 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, getClaim, addClaim, editClaim } from '../api.js'
+import { getProject, getClaim, addClaim, editClaim, getArgument } from '../api.js'
 import { Stamp, Section, Empty, Mono, Modal } from '../ui.jsx'
 
 export default function Claims({ slug, focus }) {
   const [claims, setClaims] = useState(null)
   const [detail, setDetail] = useState({})
+  const [fnd, setFnd] = useState({})   // claim id → foundation ('weak'|'broken')
   const [adding, setAdding] = useState(null)   // {text, kind} while creating
   const [editing, setEditing] = useState(null) // claim id being renamed inline
   const [editText, setEditText] = useState('')
   const [err, setErr] = useState(null)
 
   const load = () => getProject(slug).then((d) => setClaims(d.claims))
+  useEffect(() => {
+    getArgument(slug).then((a) => {
+      if (!a || a.error) return
+      const m = {}
+      for (const c of a.claims) if (c.foundation && c.foundation !== 'sound') m[c.id] = c.foundation
+      setFnd(m)
+    })
+  }, [slug])
   useEffect(() => {
     let live = true
     getProject(slug).then((d) => {
@@ -64,6 +73,10 @@ export default function Claims({ slug, focus }) {
                 <Mono>#{c.id}</Mono>
               </button>
               <Stamp value={c.status} />
+              {fnd[c.id] && (
+                <Stamp value={fnd[c.id] === 'broken' ? 'foundation broken' : 'foundation weak'}
+                       tone={fnd[c.id] === 'broken' ? 'bad' : 'warn'} />
+              )}
               {editing === c.id ? (
                 <textarea className="inline-edit" autoFocus value={editText}
                           onChange={(e) => setEditText(e.target.value)}

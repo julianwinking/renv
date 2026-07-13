@@ -246,6 +246,19 @@ def _health(con, root, slug):
             checks.append({"id": "export", "label": "Committed snapshot", "status": "warn",
                            "detail": f"store changed ~{max(age, 1)} min after last export — `reref export`"})
 
+    # argument health: contradictions and broken foundations are real problems
+    from . import argument
+    arg = argument.analyze(con, slug)["summary"]
+    if arg["contradictions"]:
+        checks.append({"id": "argument", "label": "Argument", "status": "bad",
+                       "detail": f"{arg['contradictions']} supported claim(s) contradict each other"})
+    elif arg["broken_foundations"]:
+        checks.append({"id": "argument", "label": "Argument", "status": "warn",
+                       "detail": f"{arg['broken_foundations']} claim(s) rest on a refuted lemma"})
+    else:
+        checks.append({"id": "argument", "label": "Argument", "status": "ok",
+                       "detail": "no contradictions; foundations sound"})
+
     order = {"bad": 0, "warn": 1, "ok": 2}
     return {"checks": checks,
             "status": min((c["status"] for c in checks), key=lambda s: order[s])}
@@ -454,6 +467,9 @@ class Handler(BaseHTTPRequestHandler):
             return _project(con, unquote(parts[2]))
         if parts[:2] == ["api", "graph"] and len(parts) == 3:
             return _graph(con, self.root, unquote(parts[2]))
+        if parts[:2] == ["api", "argument"] and len(parts) == 3:
+            from . import argument
+            return argument.analyze(con, unquote(parts[2]))
         if path.startswith("/api/search"):
             from urllib.parse import parse_qs
             from . import search as searchmod

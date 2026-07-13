@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, getRuns, getPlan } from '../api.js'
+import { getProject, getRuns, getPlan, getArgument } from '../api.js'
 import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
+
+const CRIT_LABEL = { 3: 'thesis', 2: 'thesis-critical', 1: 'contribution', 0: '' }
 
 export default function Overview({ slug, project, defs, counts }) {
   const [data, setData] = useState(null)
   const [runs, setRuns] = useState([])
   const [plan, setPlan] = useState([])
+  const [arg, setArg] = useState(null)
 
   useEffect(() => {
     let live = true
     getProject(slug).then((d) => live && setData(d))
     getRuns(slug).then((r) => live && setRuns(asArray(r)))
     getPlan(slug).then((p) => live && setPlan(asArray(p)))
+    getArgument(slug).then((a) => live && setArg(a && !a.error ? a : null))
     return () => { live = false }
   }, [slug])
 
@@ -53,6 +57,41 @@ export default function Overview({ slug, project, defs, counts }) {
           </div>
         )}
       </div>
+
+      {arg && (arg.contradictions.length > 0 || arg.summary.broken_foundations > 0) && (
+        <div className="alerts">
+          {arg.contradictions.map((x, i) => (
+            <div className="alert-row bad" key={`c${i}`}>
+              <span className="alert-tag">Contradiction</span>
+              <span>Two supported claims contradict each other: “{x.a_text.slice(0, 60)}…” vs “{x.b_text.slice(0, 60)}…”</span>
+            </div>
+          ))}
+          {arg.summary.broken_foundations > 0 && (
+            <div className="alert-row warn">
+              <span className="alert-tag">Foundation</span>
+              <span>{arg.summary.broken_foundations} claim(s) rest on a refuted lemma — supported on their own, but their argument is undermined.</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {arg && arg.frontier.length > 0 && (
+        <>
+          <Section title="Next up" aside="open, thesis-critical claims — ranked">
+            {arg.frontier.slice(0, 6).map((f) => (
+              <div className="row" key={f.id}>
+                <Stamp value={f.status} />
+                <div className="grow">
+                  {f.text}
+                  <div className="muted" style={{ fontSize: 11.5 }}>→ {f.next}</div>
+                </div>
+                {CRIT_LABEL[f.criticality] && <span className="chip">{CRIT_LABEL[f.criticality]}</span>}
+              </div>
+            ))}
+          </Section>
+          <div style={{ height: 14 }} />
+        </>
+      )}
 
       <div className="grid cols-2">
         <Section title="Latest runs" aside={`${runs.length} recorded`}>

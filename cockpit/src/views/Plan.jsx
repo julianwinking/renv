@@ -484,6 +484,21 @@ export default function Plan({ slug }) {
                              pointerEvents: 'none',
                            }} />
                     )}
+                    {!draw && draft && !draft.id && draft.due
+                      && !Number.isNaN(+parse(draft.due)) && (() => {
+                        // live preview of the item being configured in the form
+                        const s = draft.kind === 'phase' && draft.start
+                          && !Number.isNaN(+parse(draft.start)) ? draft.start : draft.due
+                        return draft.kind === 'phase' ? (
+                          <div className="gantt-bar bar-active"
+                               style={{ left: x(s), width: Math.max(x(draft.due) - x(s) + PX, PX),
+                                        pointerEvents: 'none', opacity: 0.7 }} />
+                        ) : (
+                          <span className="gantt-ms bar-active"
+                                style={{ left: x(draft.due) + PX / 2 - 6,
+                                         pointerEvents: 'none', opacity: 0.7 }} />
+                        )
+                      })()}
                   </div>
                 </div>
               </div>

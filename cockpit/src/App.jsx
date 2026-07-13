@@ -192,7 +192,8 @@ export default function App() {
           setSpos({ top: r.bottom + 6, left: r.left })
           setSwitcher('list'); setPfilter('')
         }}>
-          <span className="dot" />
+          <span className="dot"
+                style={project?.status === 'archived' ? { background: 'var(--line-strong)' } : null} />
           <span className="pname">{slug || 'select project'}</span>
           <svg className="updown" width="12" height="12" viewBox="0 0 16 16" fill="none"
                stroke="currentColor" strokeWidth="1.4">
@@ -214,15 +215,29 @@ export default function App() {
                     <kbd>Esc</kbd>
                   </div>
                   <div className="list">
-                    {(overview?.projects || [])
-                      .filter((p) => (p.slug + ' ' + (p.title || '')).toLowerCase().includes(pfilter.toLowerCase()))
-                      .map((p) => (
-                        <button key={p.slug} className="item" onClick={() => { setSlug(p.slug); setSwitcher(false) }}>
-                          <span className="dot" style={p.slug === slug ? { background: 'var(--accent)' } : null} />
-                          <span>{p.slug}</span>
-                          {p.open_findings > 0 && <span className="badge" style={{ marginLeft: 'auto' }}>{p.open_findings}</span>}
-                        </button>
-                      ))}
+                    {(() => {
+                      const hits = (overview?.projects || []).filter((p) =>
+                        (p.slug + ' ' + (p.title || '')).toLowerCase().includes(pfilter.toLowerCase()))
+                      const groups = [
+                        ['Active', hits.filter((p) => p.status !== 'archived')],
+                        ['Archived', hits.filter((p) => p.status === 'archived')],
+                      ]
+                      return groups.filter(([, ps]) => ps.length).map(([label, ps]) => (
+                        <div key={label}>
+                          <div className="eyebrow" style={{ margin: '6px 9px 3px' }}>{label}</div>
+                          {ps.map((p) => (
+                            <button key={p.slug} className="item" onClick={() => { setSlug(p.slug); setSwitcher(false) }}>
+                              <span className="dot" style={{
+                                background: p.status === 'archived' ? 'var(--line-strong)'
+                                  : p.slug === slug ? 'var(--accent)' : undefined,
+                              }} />
+                              <span style={p.status === 'archived' ? { color: 'var(--muted)' } : null}>{p.slug}</span>
+                              {p.open_findings > 0 && <span className="badge" style={{ marginLeft: 'auto' }}>{p.open_findings}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    })()}
                     {overview && overview.projects.length === 0 && (
                       <div className="muted" style={{ padding: '6px 9px' }}>no projects yet</div>
                     )}

@@ -128,6 +128,32 @@ def list_entries(con: sqlite3.Connection, project: str, *, limit: int = 50) -> l
     return out
 
 
+def update_entry(con: sqlite3.Connection, entry_id: int, body_md: str) -> dict:
+    """Edit an entry's prose. Structure (type, evidence, answers) is immutable
+    ledger state; the edit is stamped so created vs last-edited stay visible."""
+    if not con.execute("SELECT 1 FROM log_entry WHERE id=?", (entry_id,)).fetchone():
+        raise KeyError(f"no log entry #{entry_id}")
+    con.execute("UPDATE log_entry SET body_md=?, edited=? WHERE id=?",
+                (body_md, now(), entry_id))
+    con.commit()
+    return row_to_dict(
+        con.execute("SELECT * FROM log_entry WHERE id=?", (entry_id,)).fetchone())
+
+
+def update_note(con: sqlite3.Connection, note_id: int, body_md: str,
+                *, title: str | None = None) -> dict:
+    if not con.execute("SELECT 1 FROM note WHERE id=?", (note_id,)).fetchone():
+        raise KeyError(f"no note #{note_id}")
+    if title is None:
+        con.execute("UPDATE note SET body_md=?, edited=? WHERE id=?",
+                    (body_md, now(), note_id))
+    else:
+        con.execute("UPDATE note SET body_md=?, title=?, edited=? WHERE id=?",
+                    (body_md, title, now(), note_id))
+    con.commit()
+    return row_to_dict(con.execute("SELECT * FROM note WHERE id=?", (note_id,)).fetchone())
+
+
 def add_note(
     con: sqlite3.Connection, project: str, body_md: str, *, title: str | None = None
 ) -> dict:

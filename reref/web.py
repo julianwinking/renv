@@ -439,6 +439,10 @@ class Handler(BaseHTTPRequestHandler):
             return logmod.add_entry(con, d["project"], d["type"], d["body"],
                                     experiment=d.get("experiment"),
                                     answers=d.get("answers"), source=d.get("source"))
+        if path == "/api/log/edit":
+            return logmod.update_entry(con, d["id"], d["body"])
+        if path == "/api/note/edit":
+            return logmod.update_note(con, d["id"], d["body"], title=d.get("title"))
         if path == "/api/claim":
             return claimmod.add_claim(con, d["project"], d["text"],
                                       kind=d.get("kind", "assertion"))

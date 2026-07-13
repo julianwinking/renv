@@ -350,8 +350,16 @@ CREATE TABLE graph_layout (
 );
 """
 
+# v9: prose is editable, honestly — log entries and notes carry an `edited`
+# timestamp (body text only; type/evidence/answers stay immutable ledger
+# structure). Created and last-edited are both always visible.
+_SCHEMA_V9 = """
+ALTER TABLE log_entry ADD COLUMN edited TEXT;
+ALTER TABLE note ADD COLUMN edited TEXT;
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
-              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8]
+              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9]
 
 
 # --- time & hashing ----------------------------------------------------------

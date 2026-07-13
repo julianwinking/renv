@@ -287,6 +287,15 @@ def cmd_log_add(args):
     print(f"logged [{e['type']}] #{e['id']} at {e['ts']}")
 
 
+def cmd_log_edit(args):
+    con = db.connect(args.corpus)
+    try:
+        e = log.update_entry(con, args.id, args.body)
+    except KeyError as exc:
+        sys.exit(f"! {exc}")
+    print(f"edited [{e['type']}] #{e['id']}  (created {e['ts']}, edited {e['edited']})")
+
+
 def cmd_log_list(args):
     con = db.connect(args.corpus)
     for e in reversed(log.list_entries(con, args.project, limit=args.limit)):
@@ -758,6 +767,10 @@ def main(argv=None):
     la.add_argument("--source", default=None,
                     help='who wrote it, e.g. "advisor: Prof. X" (feedback entries)')
     la.set_defaults(func=cmd_log_add)
+    le = pl.add_parser("edit", help="edit an entry's prose (stamps last-edited)")
+    le.add_argument("id", type=int)
+    le.add_argument("body")
+    le.set_defaults(func=cmd_log_edit)
     ll = pl.add_parser("list", help="recent log entries")
     ll.add_argument("project")
     ll.add_argument("--limit", type=int, default=50)

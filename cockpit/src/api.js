@@ -21,6 +21,8 @@ export const adjudicate = (id, verdict, reasoning) =>
 export const addNote = (project, body, title) => post('/api/note', { project, body, title })
 export const addLog = (project, type, body, extra = {}) =>
   post('/api/log', { project, type, body, source: 'cockpit', ...extra })
+export const editLog = (id, body) => post('/api/log/edit', { id, body })
+export const editNote = (id, body) => post('/api/note/edit', { id, body })
 export const addClaim = (project, text, kind) => post('/api/claim', { project, text, kind })
 export const createProject = (slug, title) => post('/api/project', { slug, title })
 export const addExperiment = (project, slug, title, hypothesis, parent) =>

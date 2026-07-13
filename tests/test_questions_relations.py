@@ -35,6 +35,20 @@ def test_answer_validation(tmp_path):
         log.add_entry(con, "p", "observation", "x", answers=999)
 
 
+def test_edit_entry_stamps_edited(tmp_path):
+    con = db.connect(tmp_path)
+    db.ensure_project(con, "p", title="P")
+    e = log.add_entry(con, "p", "decision", "original")
+    assert e["edited"] is None
+    got = log.update_entry(con, e["id"], "revised")
+    assert got["body_md"] == "revised" and got["edited"] and got["ts"] == e["ts"]
+    n = log.add_note(con, "p", "note body", title="T")
+    got = log.update_note(con, n["id"], "new body")
+    assert got["body_md"] == "new body" and got["edited"] and got["title"] == "T"
+    with pytest.raises(KeyError):
+        log.update_entry(con, 999, "x")
+
+
 def test_feedback_with_source(tmp_path):
     con = db.connect(tmp_path)
     db.ensure_project(con, "p", title="P")

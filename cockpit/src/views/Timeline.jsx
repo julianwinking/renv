@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, addNote, addLog } from '../api.js'
+import { getProject, addNote, addLog, editLog, editNote } from '../api.js'
 import { Stamp, Section, Empty, timeAgo } from '../ui.jsx'
 
 // 'result' is deliberately absent: measured numbers enter via runs (§0).
@@ -13,6 +13,8 @@ export default function Timeline({ slug, focus }) {
   const [type, setType] = useState('note')
   const [source, setSource] = useState('')
   const [answering, setAnswering] = useState(null)   // question entry being answered
+  const [editing, setEditing] = useState(null)        // fkey of the entry being edited
+  const [editText, setEditText] = useState('')
   const [err, setErr] = useState(null)
 
   const load = () => getProject(slug).then(setData)
@@ -29,6 +31,7 @@ export default function Timeline({ slug, focus }) {
   const entries = [
     ...(data.log || []).map((e) => ({ ...e, kind: e.type, fkey: `log-${e.id}` })),
     ...(data.notes || []).map((n) => ({ ...n, kind: 'note', fkey: `note-${n.id}`,
+      raw_body: n.body_md,
       body_md: n.title ? `${n.title}\n${n.body_md}` : n.body_md })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1))
   const shown = entries.filter((e) => filter === 'all' || e.kind === filter)
@@ -71,7 +74,8 @@ export default function Timeline({ slug, focus }) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
               {COMPOSER_TYPES.map((t) => (
                 <button key={t} className={`btn ghost ${type === t ? 'active' : ''}`}
-                        style={type === t ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : null}
+                        style={{ textTransform: 'capitalize',
+                                 ...(type === t ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : null) }}
                         onClick={() => setType(t)}>
                   {t}
                 </button>
@@ -111,6 +115,7 @@ export default function Timeline({ slug, focus }) {
             {FILTERS.map((t) => (
               <button key={t} className="rowbtn"
                       style={{ display: 'inline', width: 'auto', marginLeft: 10, font: 'inherit',
+                               textTransform: 'capitalize',
                                color: filter === t ? 'var(--accent)' : 'inherit', cursor: 'pointer' }}
                       onClick={() => setFilter(t)}>
                 {t}
@@ -129,21 +134,51 @@ export default function Timeline({ slug, focus }) {
                 </span>
               )}
               <span className="when" style={{ marginTop: 4 }}>{timeAgo(e.ts)}</span>
+              {e.edited && (
+                <span className="when" style={{ marginTop: 2 }} title="last edited">
+                  ✎ {timeAgo(e.edited)}
+                </span>
+              )}
             </div>
             <div className="tl-body">
               {e.source && <div className="faint" style={{ fontSize: 11.5 }}>{e.source}</div>}
-              {e.body_md}
-              <div className="tl-ev">
-                {e.evidence?.runs?.map((r) => <span key={`r${r}`} className="chip">run #{r}</span>)}
-                {e.evidence?.citations?.map((c) => <span key={`c${c}`} className="chip">cite #{c}</span>)}
-                {e.answers && <span className="chip">answers #{e.answers}</span>}
-                {e.kind === 'question' && !e.answered_by && (
+              {editing === e.fkey ? (
+                <>
+                  <textarea value={editText} autoFocus
+                            onChange={(ev) => setEditText(ev.target.value)} />
+                  <div className="gnode-actions">
+                    <button className="btn" onClick={async () => {
+                      const r = e.kind === 'note'
+                        ? await editNote(e.id, editText)
+                        : await editLog(e.id, editText)
+                      if (r.error) { setErr(r.error); return }
+                      setEditing(null)
+                      load()
+                    }} disabled={!editText.trim()}>Save edit</button>
+                    <button className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
+                  </div>
+                </>
+              ) : e.body_md}
+              {editing !== e.fkey && (
+                <div className="tl-ev">
+                  {e.evidence?.runs?.map((r) => <span key={`r${r}`} className="chip">run #{r}</span>)}
+                  {e.evidence?.citations?.map((c) => <span key={`c${c}`} className="chip">cite #{c}</span>)}
+                  {e.answers && <span className="chip">answers #{e.answers}</span>}
+                  {e.kind === 'question' && !e.answered_by && (
+                    <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
+                            onClick={() => { setAnswering(e); document.querySelector('.content')?.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                      Answer…
+                    </button>
+                  )}
                   <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
-                          onClick={() => { setAnswering(e); document.querySelector('.content')?.scrollTo({ top: 0, behavior: 'smooth' }) }}>
-                    Answer…
+                          onClick={() => {
+                            setEditing(e.fkey)
+                            setEditText(e.kind === 'note' ? (e.raw_body ?? e.body_md) : e.body_md)
+                          }}>
+                    Edit…
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         ))}

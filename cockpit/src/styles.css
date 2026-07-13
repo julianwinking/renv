@@ -56,7 +56,9 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+/* the document itself never scrolls — only .content and aside do — so the
+   sidebar and topbar can't wiggle when an inner pane rubber-bands */
+html, body, #root { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
 body {
   font: 13px/1.55 var(--sans);
   background: var(--bg);
@@ -76,6 +78,7 @@ aside {
   width: 228px; flex-shrink: 0; display: flex; flex-direction: column;
   background: var(--surface); border-right: 1px solid var(--line);
   padding: 18px 12px 12px; overflow-y: auto; position: relative;
+  overscroll-behavior: contain;
 }
 .side-resize {
   position: absolute; top: 0; right: 0; width: 5px; height: 100%;
@@ -159,7 +162,7 @@ aside {
 .iconbtn:hover { color: var(--ink); background: var(--surface2); }
 
 /* ---------- content ---------- */
-.content { flex: 1; overflow-y: auto; padding: 22px; }
+.content { flex: 1; overflow-y: auto; padding: 22px; overscroll-behavior: contain; }
 .content.full { padding: 0; position: relative; }
 
 .pagehead { margin: 2px 2px 18px; }

@@ -700,6 +700,12 @@ def install_launch_agent(root=".", *, domain: str = "research.test",
     /etc/hosts needs one manual sudo line — we never edit it silently."""
     import subprocess
     root = str(Path(root).resolve())
+    # the agent bakes this path in — refuse anything that isn't the env root,
+    # else the server would silently open a fresh empty DB somewhere else
+    if not (Path(root) / "reref").is_dir():
+        raise RuntimeError(
+            f"{root} is not the research-env root (no reref/ package) — "
+            "run from the repo root or pass --corpus")
     tls_args = ""
     if https:
         cert, key = _ensure_cert(root, domain)

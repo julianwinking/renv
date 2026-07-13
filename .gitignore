@@ -24,6 +24,7 @@ venv/
 .research/env.db-wal
 .research/env.db-shm
 .research/web.log
+.research/tls/
 
 # personal reference corpus (PDFs etc.) — keep the folder, ignore its contents
 /library/*

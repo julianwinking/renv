@@ -67,12 +67,13 @@ CLI and MCP tools are 1:1 — discover them with `uv run reref --help` (or the
 MCP tool list; server `reref` in `.mcp.json`). `query` is read-only SQL over
 the whole store.
 
-**Web cockpit:** `http://research.test/` — starts ON DEMAND (launchd socket
-activation) on the first request and exits after 30 min idle, so never start
-it manually when the agent is set up. Manual fallback: `uv run reref web`
-(→ 127.0.0.1:8765). One-time setup: `uv run reref web install` (+ the printed
-/etc/hosts line). It is a plain local process, not Docker — it must read/write
-this repo's working tree.
+**Web cockpit:** `https://research.com/` (local: /etc/hosts + a mkcert-trusted
+cert; http redirects) — starts ON DEMAND (launchd socket activation) on the
+first request and exits after 30 min idle, so never start it manually when the
+agent is set up. Manual fallback: `uv run reref web` (→ 127.0.0.1:8765).
+One-time setup: `uv run reref web install [--domain … --https]` + the printed
+/etc/hosts and `mkcert -install` steps. It is a plain local process, not
+Docker — it must read/write this repo's working tree.
 
 ## Where state lives
 

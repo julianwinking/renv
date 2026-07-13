@@ -726,17 +726,22 @@ def cmd_web(args):
         try:
             plist = webmod.install_launch_agent(
                 args.corpus, domain=args.domain, port=args.domain_port,
-                idle=args.idle_exit or 1800)
+                idle=args.idle_exit or 1800, https=args.https)
         except Exception as exc:
             sys.exit(f"! launchd install failed: {exc}")
         print(f"launchd agent loaded ({plist})")
         print(f"  on-demand: starts on the first request, exits after {args.idle_exit or 1800}s idle")
         hosts = Path("/etc/hosts").read_text() if Path("/etc/hosts").exists() else ""
         if args.domain not in hosts:
-            print(f"  one manual step (sudo, we never edit /etc/hosts silently):")
+            print(f"  manual step (sudo, we never edit /etc/hosts silently):")
             print(f"    echo '127.0.0.1 {args.domain}' | sudo tee -a /etc/hosts")
-        print(f"  then: http://{args.domain}"
-              + (f":{args.domain_port}" if args.domain_port != 80 else "") + "/")
+        if args.https:
+            print("  manual step (once, keychain prompt) so browsers trust the local CA:")
+            print("    mkcert -install")
+            print(f"  then: https://{args.domain}/  (http redirects)")
+        else:
+            print(f"  then: http://{args.domain}"
+                  + (f":{args.domain_port}" if args.domain_port != 80 else "") + "/")
         return
     if args.action == "uninstall":
         removed = webmod.uninstall_launch_agent()
@@ -744,7 +749,8 @@ def cmd_web(args):
         return
     webmod.serve(args.corpus, port=args.port, host=args.host,
                  idle_exit=args.idle_exit if args.idle_exit > 0 else None,
-                 launchd=args.launchd)
+                 launchd=args.launchd, tls_cert=args.tls_cert,
+                 tls_key=args.tls_key, domain=args.domain)
 
 
 def cmd_mcp(args):
@@ -1057,6 +1063,10 @@ def main(argv=None):
                       help="local domain for install (.test is IETF-reserved; never a real TLD)")
     pweb.add_argument("--domain-port", type=int, default=80,
                       help="port the launchd socket listens on (80 → no :port in the URL)")
+    pweb.add_argument("--https", action="store_true",
+                      help="install with TLS on :443 (mkcert local CA) + :80 redirect")
+    pweb.add_argument("--tls-cert", default=None, help=argparse.SUPPRESS)
+    pweb.add_argument("--tls-key", default=None, help=argparse.SUPPRESS)
     pweb.set_defaults(func=cmd_web)
 
     pm = sub.add_parser("mcp", help="run the local stdio MCP server (for Claude Code)")

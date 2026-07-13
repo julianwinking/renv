@@ -568,31 +568,65 @@ class Handler(BaseHTTPRequestHandler):
         raise ValueError(f"unknown endpoint {path}")
 
 
-def _launchd_socket() -> int:
-    """First listening fd handed over by launchd socket activation ("Listeners")."""
+def _launchd_socket(name: bytes = b"Listeners") -> int:
+    """First listening fd handed over by launchd socket activation."""
     libc = ctypes.CDLL(None, use_errno=True)
     fds = ctypes.POINTER(ctypes.c_int)()
     count = ctypes.c_size_t(0)
-    rc = libc.launch_activate_socket(b"Listeners", ctypes.byref(fds), ctypes.byref(count))
+    rc = libc.launch_activate_socket(name, ctypes.byref(fds), ctypes.byref(count))
     if rc != 0 or count.value == 0:
-        raise OSError(rc, "launch_activate_socket failed — not started by launchd?")
+        raise OSError(rc, f"launch_activate_socket({name!r}) failed — not started by launchd?")
     fd = fds[0]
     libc.free(fds)
     return fd
 
 
+class _Redirect(BaseHTTPRequestHandler):
+    """Tiny port-80 companion when the cockpit is https: 301 to https://<domain>."""
+    target = "research.test"
+
+    def log_message(self, *a):
+        pass
+
+    def _go(self):
+        self.send_response(301)
+        self.send_header("Location", f"https://{self.target}{self.path}")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    do_GET = do_HEAD = do_POST = _go
+
+
 def serve(root=".", port: int = 8765, host: str = "127.0.0.1", *,
-          idle_exit: int | None = None, launchd: bool = False) -> None:
+          idle_exit: int | None = None, launchd: bool = False,
+          tls_cert: str | None = None, tls_key: str | None = None,
+          domain: str | None = None) -> None:
     db.connect(root).close()  # ensure DB exists/migrated
     Handler.root = root
     if launchd:
         # launchd already bound + listens; adopt its socket instead of binding
         httpd = ThreadingHTTPServer((host, port), Handler, bind_and_activate=False)
-        httpd.socket = socketmod.socket(fileno=_launchd_socket())
+        httpd.socket = socketmod.socket(fileno=_launchd_socket(b"Listeners"))
         print(f"reref cockpit (launchd-activated, idle-exit {idle_exit or '-'}s)")
     else:
         httpd = ThreadingHTTPServer((host, port), Handler)
         print(f"reref cockpit → http://{host}:{port}   (Ctrl-C to stop)")
+    if tls_cert:
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(tls_cert, tls_key)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        if launchd:
+            # optional second launchd socket on :80 that bounces http → https
+            try:
+                rfd = _launchd_socket(b"Redirect")
+            except OSError:
+                rfd = None
+            if rfd is not None:
+                _Redirect.target = domain or host
+                rsrv = ThreadingHTTPServer((host, 80), _Redirect, bind_and_activate=False)
+                rsrv.socket = socketmod.socket(fileno=rfd)
+                threading.Thread(target=rsrv.serve_forever, daemon=True).start()
     if idle_exit:
         Handler.last_activity = time.monotonic()
 
@@ -620,37 +654,76 @@ _PLIST = """<?xml version="1.0" encoding="UTF-8"?>
     <key>ProgramArguments</key><array>
         <string>{python}</string><string>-m</string><string>reref.cli</string>
         <string>web</string><string>--launchd</string>
-        <string>--idle-exit</string><string>{idle}</string>
+        <string>--idle-exit</string><string>{idle}</string>{tls_args}
     </array>
     <key>WorkingDirectory</key><string>{root}</string>
-    <key>Sockets</key><dict><key>Listeners</key><dict>
-        <key>SockNodeName</key><string>127.0.0.1</string>
-        <key>SockServiceName</key><string>{port}</string>
-    </dict></dict>
+    <key>Sockets</key><dict>{sockets}</dict>
     <key>StandardOutPath</key><string>{root}/.research/web.log</string>
     <key>StandardErrorPath</key><string>{root}/.research/web.log</string>
     <key>RunAtLoad</key><false/>
 </dict></plist>
 """
 
+_SOCK = ("<key>{name}</key><dict>"
+         "<key>SockNodeName</key><string>127.0.0.1</string>"
+         "<key>SockServiceName</key><string>{port}</string></dict>")
+
+
+def _ensure_cert(root, domain: str) -> tuple[Path, Path]:
+    """Mint a locally-trusted TLS cert for the domain via mkcert.
+
+    mkcert keeps a local root CA; `mkcert -install` (one-time, user-run —
+    keychain prompt) makes browsers trust it. That is the ONLY way to get a
+    padlock for a domain you don't own: no public CA will sign it.
+    """
+    import shutil
+    import subprocess
+    tls = Path(root) / ".research" / "tls"
+    tls.mkdir(parents=True, exist_ok=True)
+    cert, key = tls / f"{domain}.pem", tls / f"{domain}-key.pem"
+    if cert.exists() and key.exists():
+        return cert, key
+    mkcert = shutil.which("mkcert")
+    if not mkcert:
+        raise RuntimeError("mkcert not found — `brew install mkcert`, then re-run")
+    subprocess.run([mkcert, "-cert-file", str(cert), "-key-file", str(key), domain],
+                   check=True, capture_output=True, text=True)
+    return cert, key
+
 
 def install_launch_agent(root=".", *, domain: str = "research.test",
-                         port: int = 80, idle: int = 1800) -> Path:
+                         port: int = 80, idle: int = 1800,
+                         https: bool = False) -> Path:
     """Write + load the LaunchAgent so the cockpit starts on first request and
-    stops itself when idle. Returns the plist path; /etc/hosts needs one
-    manual sudo line (printed by the caller) — we never edit it silently."""
+    stops itself when idle. With https=True the socket is 443 (TLS via a
+    mkcert cert) plus an :80 redirect socket. Returns the plist path;
+    /etc/hosts needs one manual sudo line — we never edit it silently."""
     import subprocess
     root = str(Path(root).resolve())
+    tls_args = ""
+    if https:
+        cert, key = _ensure_cert(root, domain)
+        sockets = (_SOCK.format(name="Listeners", port=443)
+                   + _SOCK.format(name="Redirect", port=80))
+        tls_args = (f"\n        <string>--tls-cert</string><string>{cert}</string>"
+                    f"\n        <string>--tls-key</string><string>{key}</string>"
+                    f"\n        <string>--domain</string><string>{domain}</string>")
+    else:
+        sockets = _SOCK.format(name="Listeners", port=port)
     plist = Path.home() / "Library" / "LaunchAgents" / "com.reref.web.plist"
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_text(_PLIST.format(python=sys.executable, root=root,
-                                   port=port, idle=idle))
+                                   idle=idle, sockets=sockets, tls_args=tls_args))
     uid = __import__("os").getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.reref.web"],
                    capture_output=True)   # reload-safe: drop any old version
-    subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(plist)],
-                   check=True, capture_output=True, text=True)
-    return plist
+    for attempt in range(4):              # bootout drains async — retry briefly
+        r = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(plist)],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return plist
+        time.sleep(1 + attempt)
+    raise RuntimeError(f"launchctl bootstrap failed: {r.stderr.strip() or r.returncode}")
 
 
 def uninstall_launch_agent() -> bool:

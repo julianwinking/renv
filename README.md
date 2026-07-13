@@ -164,6 +164,12 @@ uv run reref web                 # → http://127.0.0.1:8765 (manual)
 uv run reref web install         # launchd socket activation on 127.0.0.1:80
 echo '127.0.0.1 research.test' | sudo tee -a /etc/hosts   # once
 open http://research.test/
+
+# …or with a padlock on any name (mkcert local CA; :80 redirects to :443):
+brew install mkcert && mkcert -install                     # once, keychain prompt
+uv run reref web install --domain research.com --https
+echo '127.0.0.1 research.com' | sudo tee -a /etc/hosts     # once
+open https://research.com/
 ```
 
 No Docker on purpose: the cockpit reads/writes this repo's working tree

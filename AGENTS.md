@@ -1,87 +1,76 @@
 # AGENTS.md — operating protocol for this research environment
 
 This repo is an auto-research environment: a shared paper corpus + the `reref`
-engine + a central research database (`.research/env.db`) that records every
-experiment, decision, and citation. You (an agent, e.g. Claude Code) operate it
-either through the `reref` **CLI** or the **`reref` MCP tools** — both go through
-the same code paths, so the rules below hold no matter which you use.
+engine + a central research database (`.research/env.db`). You (an agent)
+operate it through the `reref` **CLI** or the **`reref` MCP tools** — both go
+through the same code paths, so the rules below hold either way.
+`docs/BLUEPRINT.md` has the full design; this file is what you follow.
 
-Read `docs/BLUEPRINT.md` for the full design. This file is the protocol you follow.
+## Architecture decisions (do not re-litigate these in a session)
 
-## The one invariant (§0): every fact has one source of truth
-
-| Fact | Lives in | You must |
-|---|---|---|
-| "the literature says X" | a `citation` (span-anchored) | `cite_claim` it — never paraphrase a source from memory |
-| "I measured Y" | a `metric` from a `run` | produce it via `run_experiment` — never type a number |
-| "I decided Z because…" | a typed `log_entry` | `log_decision` it *before* acting on it |
-
-A `result` log entry **without** a linked run is rejected at the write boundary.
-Run `reref log check` (or the `check_invariants` tool) to audit the whole DB.
+1. **One store, thin clients.** The SQLite DB is the single ground truth;
+   CLI, MCP, and web cockpit are thin shells over the same domain functions.
+   Never write to the DB with raw SQL; never re-implement a domain rule in a
+   client.
+2. **§0 — one home per fact-type.** Literature facts are span-anchored
+   `citation`s, measured numbers are `metric` rows from a `run`, reasoning is
+   typed `log_entry`s. This is *provenance* enforcement (write boundary +
+   `log check` audit), not a proof of validity.
+3. **Files are instructions, the store is state.** Markdown = low-churn agent
+   instructions only: this protocol, `templates/writing/` (paper structure,
+   thesis structure, reusable phrasing — read before drafting manuscript
+   text), and the project templates. ALL research state — ideation, theses,
+   contributions, questions, hypotheses, decisions, feedback — lives in the
+   store/graph as claims, log entries, and notes. There is no `ideation.md`
+   and no planning markdown, ever: it would be a second, drifting copy of
+   graph state.
+4. **Layering, not copies (anti-drift).** A project's `AGENTS.md` contains
+   ONLY project-specific overrides and defers to this file. No symlinks
+   (projects are standalone git repos and clones would dangle); no duplicated
+   protocol text.
+5. **Status is derived, never hand-set.** Claim status comes from linked
+   evidence (runs/citations), question status from an answering entry,
+   manuscript numbers and bibliography are woven from the store (`reref
+   weave`). If you want a status to change, produce the evidence.
+6. **The graph is a view of the ledger.** Every canvas gesture maps to a
+   domain write or is refused with the store's reason (e.g. an experiment
+   backs a claim only via a completed run). Node positions are presentation
+   state, nothing more.
+7. **Metric names are standardized via the registry** (`reref metric define`):
+   label, unit, direction, format — rendered identically in CLI, web, and
+   weave. Registration is optional and never blocks a run.
+8. **The cockpit's admin surface edits allowlisted instruction files and
+   settings — never code.** Agent behavior is controlled through AGENTS.md;
+   tool prompts stay in code and defer to it.
+9. **stdlib-first.** The core runs dependency-free; heavy SOTA backends are
+   optional extras.
 
 ## The operating loop
 
-1. **Restore context first.** Before working in a project, read its state:
-   `reref exp list <project>` and `reref log list <project>` (or the `status`
-   tool). Never start work blind to what was already tried.
-2. **Source every claim.** A statement about prior work → `cite_claim`. A
-   statement about a result → it must come from a recorded run. No exceptions.
-3. **Log before you pivot.** Any change of direction is a `decision` entry with a
-   rationale (`body_md`), written *before* the work — not reconstructed after.
-4. **One experiment, one question.** New hypothesis → `create_experiment` (set
-   `parent` to chain it onto the DAG). Don't mutate a finished experiment; branch.
-5. **Results are generated, never typed.** Numbers flow `run → metric → paper`.
-   The runner contract: your entrypoint reads `REREF_RUN_DIR` + `REREF_PARAMS`
-   (JSON) from the environment and writes `metrics.json` (a flat `{name: value}`)
-   plus any artifact files into `REREF_RUN_DIR`.
-6. **Snapshot for git.** After meaningful changes, `reref export` writes the
-   deterministic JSONL snapshot that is the committed record of state.
+1. **Restore context first**: `reref exp list <project>` + `reref log list
+   <project>` (or the `status` tool) before any work.
+2. **Source every claim**: prior work → `cite_claim`; results → a recorded
+   run. No exceptions.
+3. **Log before you pivot**: direction changes are `decision` entries written
+   *before* the work. Open items are `question` entries (answer them later
+   with `--answers <id>`); external input is `feedback` with a `--source`.
+4. **One experiment, one question**: new hypothesis → new experiment,
+   `--parent` chains the DAG. Branch; don't mutate finished experiments.
+5. **Results are generated, never typed**: entrypoints read
+   `REREF_RUN_DIR`/`REREF_PARAMS`, write `metrics.json`; numbers flow
+   run → metric → paper via `reref weave`.
+6. **Snapshot for git**: `reref export` after meaningful changes.
 
-## Tool reference
+## Finding things
 
-CLI (`uv run reref …`) and MCP tools are 1:1:
-
-| Do | CLI | MCP tool |
-|---|---|---|
-| init / migrate DB | `db init` | — |
-| new project | `project new <slug>` | `create_project` |
-| corpus state / project state | `status [project]` | `status` |
-| retrieve spans (RAG) | `resolve "<q>"` | `search_corpus` |
-| cite + verify a claim | `cite "<claim>" <project>` | `cite_claim` |
-| new experiment | `exp new <project> <slug> [--parent]` | `create_experiment` |
-| the DAG + metrics | `exp list <project>` | `list_experiments` |
-| experiment + its runs | `exp show <project> <slug>` | `get_experiment` |
-| run (reproducible) | `exp run <project> <slug> --entrypoint …` | `run_experiment` |
-| log a decision/result | `log add <project> <type> "<body>"` | `log_decision` |
-| read the log | `log list <project>` | `list_log` |
-| audit §0 | `log check` | `check_invariants` |
-| meeting note | `note add <project> "<body>"` | `add_note` |
-| register eval data | `dataset add <slug> [--path]` | `register_dataset` |
-| read-only SQL | — | `query` |
-| export for git | `export` | — |
-
-The MCP server is registered in `.mcp.json` (`reref` server). `query` is
-read-only; all write tools enforce the §0 constraints above.
-
-## Where knowledge lives: files are instructions, the store is state
-
-- **Markdown files are low-churn instructions for agents**: this protocol, the
-  writing guides in `templates/writing/` (paper structure, thesis structure,
-  reusable phrasing — read them *before drafting manuscript text*), and the
-  project templates. They change rarely and load straight into context.
-- **All research state lives in the store and its graph** — ideation, theses,
-  contributions, open questions, hypotheses, decisions, results, feedback —
-  as claims / log entries / notes. There is no `ideation.md`: state the thesis
-  as a claim, risks as `question` entries, the evaluation design as a
-  `decision` entry *before* building.
-- **Layering, not copies.** Each project's `AGENTS.md` holds ONLY
-  project-specific overrides and defers to this file. Never duplicate protocol
-  text into a project — that is how drift starts.
+CLI and MCP tools are 1:1 — discover them with `uv run reref --help` (or the
+MCP tool list; server `reref` in `.mcp.json`). `query` is read-only SQL over
+the whole store. The web cockpit (`reref web`) is the human's view of the
+same state.
 
 ## Where state lives
 
-- `library/` — shared reference corpus (papers). Indexed once into `.reref/`.
-- `.research/env.db` — the single ground truth (ignored by git; the JSONL export
-  under `.research/export/` is the committed artifact).
-- `projects/<name>/` — one paper: `src/` (experiment code), `text/` (manuscript),
-  `runs/<id>/` (run artifacts). Each project is its own git repo.
+- `library/` — shared reference corpus, indexed into `.reref/` (derived).
+- `.research/env.db` — the ground truth (gitignored); `.research/export/`
+  JSONL is the committed snapshot.
+- `projects/<slug>/` — one paper: `src/`, `text/`, `runs/` — its own git repo.

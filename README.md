@@ -16,6 +16,13 @@ checked that the span actually supports the claim, and emitted as a LaTeX
 > (W3C TextQuoteSelector), so it is self-verifying and survives re-indexing and
 > new document versions. It is engineering reuse, not a novelty claim.
 
+> **Working on this repo — human or agent?** Read [`AGENTS.md`](AGENTS.md)
+> first: it records the **load-bearing architecture decisions** (one store as
+> ground truth; §0 provenance; *files are instructions, the store is state* —
+> no planning markdown; layering instead of copied protocol text; derived
+> statuses) and the minimal operating protocol. Per-project `AGENTS.md` files
+> contain only overrides.
+
 ## Architecture: one shared corpus, many projects
 
 The **engine** (`reref/`) and a single **shared corpus** (`library/` + `.reref/`)

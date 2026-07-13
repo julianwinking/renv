@@ -92,9 +92,28 @@ export default function App() {
     getMetricDefs().then(setDefs)
   }, [loadOverview])
 
+  const debounceRef = useRef(null)
   const runSearch = async (q) => {
     if (!q.trim()) { setHits(null); return }
     setHits(await search(q))
+  }
+  const onSearchInput = (q) => {   // live search while typing
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => runSearch(q), 220)
+  }
+
+  const openHit = (h) => {   // a result click deep-links into its view
+    if (h.project) setSlug(h.project)
+    const go = {
+      paper: () => '#/papers/' + encodeURIComponent(h.ref),
+      card: () => '#/papers/' + encodeURIComponent(String(h.ref).split('/')[0]),
+      claim: () => '#/claims/' + h.ref,
+      log: () => '#/timeline/' + encodeURIComponent('log-' + h.ref),
+      note: () => '#/timeline/' + encodeURIComponent('note-' + h.ref),
+    }[h.kind]
+    if (go) location.hash = go()
+    setHits(null)
+    if (searchRef.current) { searchRef.current.value = ''; searchRef.current.blur() }
   }
 
   const project = overview?.projects.find((p) => p.slug === slug)
@@ -185,6 +204,7 @@ export default function App() {
             <input
               ref={searchRef}
               placeholder="Search papers, claims, log, notes…"
+              onChange={(e) => onSearchInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') runSearch(e.target.value); if (e.key === 'Escape') { setHits(null); e.target.value = ''; e.target.blur() } }}
               onBlur={() => setTimeout(() => setHits(null), 200)}
             />
@@ -192,8 +212,9 @@ export default function App() {
             {hits && (
               <div className="search-pop">
                 {hits.map((h, i) => (
-                  <div key={i} className="search-hit">
+                  <div key={i} className="search-hit" onMouseDown={() => openHit(h)}>
                     <span className="chip">{h.kind}</span> <b>{h.title}</b>
+                    {h.project && h.project !== slug && <span className="faint"> · {h.project}</span>}
                     <div className="snippet" dangerouslySetInnerHTML={{
                       __html: (h.snippet || '').replace(/</g, '&lt;').replace(/\[/g, '<b>').replace(/\]/g, '</b>'),
                     }} />

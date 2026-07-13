@@ -23,7 +23,7 @@ const MINI = Object.fromEntries(KINDS)
 
 // The canvas is a planning surface over the ledger: every gesture maps to a
 // domain write (or is refused with the store's reason). Nothing is drawn free-form.
-function AddPanel({ kind, slug, onClose, onDone, experiments }) {
+function AddPanel({ kind, slug, onClose, onDone, experiments, at }) {
   const [f, setF] = useState({})
   const [err, setErr] = useState(null)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -48,9 +48,17 @@ function AddPanel({ kind, slug, onClose, onDone, experiments }) {
     onDone(nodeId)
   }
 
+  // open where the user right-clicked (clamped so the panel stays on screen)
+  const pos = at ? {
+    position: 'fixed',
+    left: Math.min(at.x, window.innerWidth - 320),
+    top: Math.min(at.y, window.innerHeight - 380),
+    right: 'auto',
+  } : null
+
   return (
-    <div className="gpanel">
-      <div className="eyebrow" style={{ margin: '0 0 8px' }}>new {kind}</div>
+    <div className="gpanel" style={pos}>
+      <div className="eyebrow" style={{ margin: '0 0 8px' }}>New {kind}</div>
       {kind === 'experiment' && (
         <>
           <input className="text" placeholder="slug, e.g. 004-dimension-sweep" onChange={set('slug')} autoFocus />
@@ -148,7 +156,8 @@ export default function GraphView({ slug, defs, onMutate }) {
   const [busy, setBusy] = useState(true)
   const [adding, setAdding] = useState(null)         // 'experiment' | 'claim' | 'question' | 'note'
   const [pendingEdge, setPendingEdge] = useState(null)
-  const [menu, setMenu] = useState(null)             // {x, y, flowPos}
+  const [menu, setMenu] = useState(null)             // {x, y}
+  const [menuAt, setMenuAt] = useState(null)         // where the add panel should open
   const [toast, setToast] = useState(null)
   const [legendOpen, setLegendOpen] = useState(() => localStorage.getItem('reref-legend') !== 'closed')
   const flowRef = React.useRef(null)
@@ -211,8 +220,8 @@ export default function GraphView({ slug, defs, onMutate }) {
     const go = (h) => { location.hash = h }
     if (k === 'exp') go('#/experiments/' + encodeURIComponent(node.data.label))
     else if (k === 'claim') go('#/claims/' + id)
-    else if (k === 'log') go('#/timeline/' + encodeURIComponent('log-' + id))
-    else if (k === 'note') go('#/timeline/' + encodeURIComponent('note-' + id))
+    else if (k === 'log') go('#/log/' + encodeURIComponent('log-' + id))
+    else if (k === 'note') go('#/log/' + encodeURIComponent('note-' + id))
     else if (k === 'paper') go('#/papers/' + encodeURIComponent(node.data.label))
     else if (k === 'finding') go('#/findings')
   }, [])
@@ -222,6 +231,7 @@ export default function GraphView({ slug, defs, onMutate }) {
     const inst = flowRef.current
     dropPos.current = inst ? inst.screenToFlowPosition({ x: e.clientX, y: e.clientY }) : null
     setMenu({ x: e.clientX, y: e.clientY })
+    setMenuAt({ x: e.clientX, y: e.clientY })
   }, [])
 
   const addDone = async (nodeId) => {
@@ -264,7 +274,7 @@ export default function GraphView({ slug, defs, onMutate }) {
       </ReactFlow>
 
       {adding && (
-        <AddPanel kind={adding} slug={slug} experiments={expSlugs}
+        <AddPanel kind={adding} slug={slug} experiments={expSlugs} at={menuAt}
                   onClose={() => setAdding(null)} onDone={addDone} />
       )}
       {pendingEdge && (
@@ -278,7 +288,7 @@ export default function GraphView({ slug, defs, onMutate }) {
             ['question', 'var(--warn)'], ['hypothesis', 'var(--citation)'],
             ['feedback', 'var(--code-kind)'], ['note', 'var(--line-strong)']].map(([k, c]) => (
             <button key={k} onClick={() => { setAdding(k); setMenu(null) }}>
-              <span className="sw" style={{ background: c }} />new {k}
+              <span className="sw" style={{ background: c }} />New {k}
             </button>
           ))}
         </div>

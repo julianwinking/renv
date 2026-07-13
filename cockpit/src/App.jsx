@@ -7,6 +7,7 @@ import Papers from './views/Papers.jsx'
 import Claims from './views/Claims.jsx'
 import Findings from './views/Findings.jsx'
 import Timeline from './views/Timeline.jsx'
+import Plan from './views/Plan.jsx'
 import { Instructions, Templates, Settings } from './views/Admin.jsx'
 
 const I = {
@@ -15,14 +16,15 @@ const I = {
   templates: <path d="M2 2.5h11v3H2zM2 7.5h4.5V13H2zM8.5 7.5H13V13H8.5z" fill="none" stroke="currentColor" strokeWidth="1.1" />,
   settings: <path d="M2.5 4.5h7M11.5 4.5h1M9.5 3.2v2.6M2.5 10.5h1M5.5 10.5h7M5.5 9.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
   graph: <path d="M2 7h3M9 4h3M9 10h3M5 7c2 0 2-3 4-3M5 7c2 0 2 3 4 3M2.5 7m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0M12 4m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0M12 10m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0" fill="none" stroke="currentColor" strokeWidth="1.2" />,
+  timeline: <path d="M2 3h6v2.2H2zM4.5 6.4h7v2.2h-7zM7 9.8h6V12H7z" />,
   experiments: <path d="M6 2v4L2.5 12a1 1 0 0 0 .9 1.5h8.2a1 1 0 0 0 .9-1.5L9 6V2M4.5 2h6M5 9.5h5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
   papers: <path d="M3.5 1.5h6L12 4v9.5a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1zM5 6h5M5 8.5h5M5 11h3" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />,
   claims: <path d="M7.5 1.5 13 4.5v6l-5.5 3-5.5-3v-6zM7.5 7.5V13M7.5 7.5 13 4.5M7.5 7.5 2 4.5" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />,
   findings: <path d="M7.5 2 14 13H1zM7.5 6v3.2M7.5 11.2v.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />,
-  timeline: <path d="M7.5 7.5m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M7.5 4.5v3l2.2 1.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
+  log: <path d="M7.5 7.5m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M7.5 4.5v3l2.2 1.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
 }
 
-const VIEWS = ['overview', 'graph', 'experiments', 'papers', 'claims', 'findings', 'timeline']
+const VIEWS = ['overview', 'graph', 'timeline', 'experiments', 'papers', 'claims', 'findings', 'log']
 const ADMIN = ['instructions', 'templates', 'settings']
 const ALL_VIEWS = [...VIEWS, ...ADMIN]
 
@@ -136,8 +138,8 @@ export default function App() {
       paper: () => '#/papers/' + encodeURIComponent(h.ref),
       card: () => '#/papers/' + encodeURIComponent(String(h.ref).split('/')[0]),
       claim: () => '#/claims/' + h.ref,
-      log: () => '#/timeline/' + encodeURIComponent('log-' + h.ref),
-      note: () => '#/timeline/' + encodeURIComponent('note-' + h.ref),
+      log: () => '#/log/' + encodeURIComponent('log-' + h.ref),
+      note: () => '#/log/' + encodeURIComponent('note-' + h.ref),
     }[h.kind]
     if (go) location.hash = go()
     setHits(null)
@@ -383,11 +385,12 @@ export default function App() {
           {!slug && <div className="loading">no project selected</div>}
           {slug && view === 'overview' && <Overview slug={slug} project={project} defs={defs} counts={counts} />}
           {slug && view === 'graph' && <GraphView slug={slug} defs={defs} onMutate={loadOverview} />}
+          {slug && view === 'timeline' && <Plan slug={slug} />}
           {slug && view === 'experiments' && <Experiments slug={slug} defs={defs} focus={focus} />}
           {view === 'papers' && <Papers focus={focus} />}
           {slug && view === 'claims' && <Claims slug={slug} focus={focus} />}
           {slug && view === 'findings' && <Findings slug={slug} />}
-          {slug && view === 'timeline' && <Timeline slug={slug} focus={focus} />}
+          {slug && view === 'log' && <Timeline slug={slug} focus={focus} />}
           {slug && view === 'instructions' && <Instructions slug={slug} />}
           {view === 'templates' && <Templates slug={slug} />}
           {slug && view === 'settings' && <Settings slug={slug} project={project} onMutate={loadOverview} />}

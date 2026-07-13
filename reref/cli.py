@@ -368,6 +368,54 @@ def cmd_metric_list(args):
               + (f"  — {d['description']}" if d["description"] else ""))
 
 
+def cmd_plan_add(args):
+    from . import plan
+    con = db.connect(args.corpus)
+    try:
+        it = plan.add_item(con, args.project, args.title, due=args.due,
+                           kind="milestone" if args.milestone else "phase",
+                           start=args.start, note=args.note)
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    span = f"{it['start']} → {it['due']}" if it["start"] else it["due"]
+    print(f"plan #{it['id']} [{it['kind']}] {it['title']}  ({span})")
+
+
+def cmd_plan_list(args):
+    from . import plan
+    con = db.connect(args.corpus)
+    items = plan.list_items(con, args.project)
+    if not items:
+        print("(no plan yet — `reref plan add <project> \"<title>\" --due YYYY-MM-DD`)")
+        return
+    today = db.now()[:10]
+    for it in items:
+        mark = ("✓" if it["status"] == "done"
+                else "!" if it["due"] < today else "·")
+        span = f"{it['start']} → {it['due']}" if it["start"] else f"      due {it['due']}"
+        print(f"  {mark} #{it['id']} [{it['kind']:9}] {span}  {it['title']}")
+
+
+def cmd_plan_done(args):
+    from . import plan
+    con = db.connect(args.corpus)
+    try:
+        it = plan.update_item(con, args.id, status="done")
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    print(f"plan #{it['id']} done: {it['title']}")
+
+
+def cmd_plan_rm(args):
+    from . import plan
+    con = db.connect(args.corpus)
+    try:
+        plan.delete_item(con, args.id)
+    except KeyError as exc:
+        sys.exit(f"! {exc}")
+    print(f"plan #{args.id} removed")
+
+
 def cmd_new(args):
     """Scaffold a project from templates/project/, register it, and git-init its repo."""
     from . import authoring
@@ -796,6 +844,26 @@ def main(argv=None):
     da.set_defaults(func=cmd_dataset_add)
     dl = pds.add_parser("list", help="list datasets")
     dl.set_defaults(func=cmd_dataset_list)
+
+    ppl = sub.add_parser("plan", help="project plan: phases + deadlines (Gantt)").add_subparsers(
+        dest="plan_cmd", required=True)
+    pa = ppl.add_parser("add", help="add a phase or milestone")
+    pa.add_argument("project")
+    pa.add_argument("title")
+    pa.add_argument("--due", required=True, help="YYYY-MM-DD (end date / the deadline)")
+    pa.add_argument("--start", default=None, help="YYYY-MM-DD (phases)")
+    pa.add_argument("--milestone", action="store_true", help="a single-date deadline")
+    pa.add_argument("--note", default=None)
+    pa.set_defaults(func=cmd_plan_add)
+    pll = ppl.add_parser("list", help="the plan, date-ordered")
+    pll.add_argument("project")
+    pll.set_defaults(func=cmd_plan_list)
+    pd = ppl.add_parser("done", help="mark an item done")
+    pd.add_argument("id", type=int)
+    pd.set_defaults(func=cmd_plan_done)
+    pr = ppl.add_parser("rm", help="remove an item (plans are intent, not evidence)")
+    pr.add_argument("id", type=int)
+    pr.set_defaults(func=cmd_plan_rm)
 
     pmet = sub.add_parser("metric", help="metric definitions (standardized display)").add_subparsers(
         dest="metric_cmd", required=True)

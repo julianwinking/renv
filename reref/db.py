@@ -358,8 +358,28 @@ ALTER TABLE log_entry ADD COLUMN edited TEXT;
 ALTER TABLE note ADD COLUMN edited TEXT;
 """
 
+# v10: project planning — phases (start→due) and milestones (a date), e.g.
+# conference deadlines. Deliberately decoupled from claims/log: a plan is
+# intent ("what should be done until when"), not evidence. Status is stored
+# only as planned|done; active/overdue are DERIVED from dates in the clients.
+_SCHEMA_V10 = """
+CREATE TABLE plan_item (
+    id         INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'phase' CHECK(kind IN ('phase','milestone')),
+    start      TEXT,
+    due        TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned','done')),
+    note       TEXT,
+    created    TEXT NOT NULL,
+    edited     TEXT
+);
+CREATE INDEX idx_plan_project ON plan_item(project_id);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
-              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9]
+              _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10]
 
 
 # --- time & hashing ----------------------------------------------------------

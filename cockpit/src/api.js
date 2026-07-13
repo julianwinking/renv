@@ -49,3 +49,7 @@ export const saveProjectSettings = (slug, settings) =>
 export const getRubric = () => api('/api/rubric')
 export const getHealth = (slug) => api('/api/health/' + encodeURIComponent(slug))
 export const getSources = () => api('/api/sources')
+export const getPlan = (slug) => api('/api/plan/' + encodeURIComponent(slug))
+export const addPlanItem = (project, item) => post('/api/plan', { project, ...item })
+export const updatePlanItem = (id, fields) => post('/api/plan/update', { id, ...fields })
+export const deletePlanItem = (id) => post('/api/plan/delete', { id })

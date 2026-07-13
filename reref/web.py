@@ -401,6 +401,9 @@ class Handler(BaseHTTPRequestHandler):
             return {"content": p.read_text(encoding="utf-8") if p.exists() else ""}
         if parts[:2] == ["api", "health"] and len(parts) == 3:
             return _health(con, self.root, unquote(parts[2]))
+        if parts[:2] == ["api", "plan"] and len(parts) == 3:
+            from . import plan as planmod
+            return planmod.list_items(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 4 and parts[3] == "runs":
             return _runs(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 3:
@@ -445,6 +448,19 @@ class Handler(BaseHTTPRequestHandler):
             return logmod.add_entry(con, d["project"], d["type"], d["body"],
                                     experiment=d.get("experiment"),
                                     answers=d.get("answers"), source=d.get("source"))
+        if path == "/api/plan":
+            from . import plan as planmod
+            return planmod.add_item(con, d["project"], d["title"], due=d["due"],
+                                    kind=d.get("kind", "phase"),
+                                    start=d.get("start"), note=d.get("note"))
+        if path == "/api/plan/update":
+            from . import plan as planmod
+            fields = {k: d[k] for k in ("title", "start", "due", "status", "note") if k in d}
+            return planmod.update_item(con, d["id"], **fields)
+        if path == "/api/plan/delete":
+            from . import plan as planmod
+            planmod.delete_item(con, d["id"])
+            return {"deleted": d["id"]}
         if path == "/api/log/edit":
             return logmod.update_entry(con, d["id"], d["body"])
         if path == "/api/note/edit":

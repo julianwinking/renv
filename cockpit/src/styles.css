@@ -392,6 +392,52 @@ select.text {
 
 .loading { color: var(--faint); padding: 30px; text-align: center; font-family: var(--mono); font-size: 12px; }
 
+/* Gantt plan */
+.gantt { display: flex; border-top: 1px solid var(--line); }
+.gantt-labels { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); }
+.gantt-head { height: 26px; border-bottom: 1px solid var(--line); position: relative; }
+.gantt-label {
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px;
+  border-bottom: 1px solid var(--line); font-size: 12px; cursor: pointer;
+}
+.gantt-label:hover { background: var(--surface2); }
+.gantt-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.gantt-chart { flex: 1; overflow-x: auto; }
+.gantt-month {
+  position: absolute; top: 5px; font-size: 10px; font-family: var(--mono);
+  color: var(--faint); letter-spacing: 0.05em; text-transform: uppercase;
+  border-left: 1px solid var(--line-strong); padding-left: 5px; line-height: 1.5;
+}
+.gantt-body {
+  position: relative;
+  background-image: linear-gradient(to right, var(--line) 1px, transparent 1px);
+}
+.gantt-row { position: relative; height: 34px; border-bottom: 1px solid var(--line); }
+.gantt-today {
+  position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent);
+  opacity: 0.55; z-index: 2; pointer-events: none;
+}
+.gantt-bar {
+  position: absolute; top: 8px; height: 18px; border-radius: 5px; border: 1px solid;
+  cursor: pointer; padding: 0; z-index: 1;
+}
+.gantt-bar.bar-future { background: var(--surface2); border-color: var(--line-strong); }
+.gantt-bar.bar-active { background: var(--accent-soft); border-color: var(--accent); }
+.gantt-bar.bar-done { background: var(--ok-soft); border-color: var(--ok); }
+.gantt-bar.bar-overdue { background: var(--bad-soft); border-color: var(--bad); }
+.gantt-ms {
+  position: absolute; top: 11px; width: 12px; height: 12px; transform: rotate(45deg);
+  border: 1px solid; border-radius: 2px; cursor: pointer; padding: 0; z-index: 1;
+}
+.gantt-ms.bar-future { background: var(--surface); border-color: var(--line-strong); }
+.gantt-ms.bar-active { background: var(--accent-soft); border-color: var(--accent); }
+.gantt-ms.bar-done { background: var(--ok-soft); border-color: var(--ok); }
+.gantt-ms.bar-overdue { background: var(--bad-soft); border-color: var(--bad); }
+.gantt-dot {
+  position: absolute; top: 50%; transform: translateY(-50%); border-radius: 50%;
+  background: var(--citation); opacity: 0.75;
+}
+
 /* admin file editor */
 .filetabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .filetabs .active-tab { color: var(--accent); border-color: var(--accent); }

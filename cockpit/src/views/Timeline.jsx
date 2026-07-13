@@ -60,7 +60,7 @@ export default function Timeline({ slug, focus }) {
   return (
     <>
       <div className="pagehead">
-        <h1>Timeline</h1>
+        <h1>Log</h1>
         <div className="sub">the reasoning log — what was decided, observed, asked, and measured, in order</div>
       </div>
 

@@ -285,6 +285,18 @@ def h_link_claim_evidence(root, a):
                                note=a.get("note"))
 
 
+def h_add_plan_item(root, a):
+    from . import plan
+    return plan.add_item(_conn(root), a["project"], a["title"], due=a["due"],
+                         kind=a.get("kind", "phase"), start=a.get("start"),
+                         note=a.get("note"))
+
+
+def h_list_plan(root, a):
+    from . import plan
+    return plan.list_items(_conn(root), a["project"])
+
+
 def h_relate_claims(root, a):
     from . import claim
     return claim.relate(_conn(root), a["claim_id"], a["related_id"],
@@ -449,6 +461,13 @@ TOOLS = [
      "inputSchema": _obj({"claim_id": _I, "citation_id": _I, "run_id": _I,
                           "stance": {"type": "string", "enum": ["supports", "refutes"]}, "note": _S},
                          ["claim_id"]), "handler": h_link_claim_evidence},
+    {"name": "add_plan_item", "description": "Add a plan phase (start→due) or milestone/deadline (due only) — intent, not evidence.",
+     "inputSchema": _obj({"project": _S, "title": _S, "due": _S, "start": _S,
+                          "kind": {"type": "string", "enum": ["phase", "milestone"]},
+                          "note": _S},
+                         ["project", "title", "due"]), "handler": h_add_plan_item},
+    {"name": "list_plan", "description": "The project plan (phases + deadlines), date-ordered — check this to know what is due when.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_list_plan},
     {"name": "relate_claims", "description": "Chain two claims (depends_on/contradicts) — argument structure, not proof; never changes derived status.",
      "inputSchema": _obj({"claim_id": _I, "related_id": _I,
                           "kind": {"type": "string", "enum": ["depends_on", "contradicts"]},

@@ -61,3 +61,27 @@ def delete_region(con: sqlite3.Connection, region_id: int) -> None:
         raise KeyError(f"no region #{region_id}")
     con.execute("DELETE FROM graph_region WHERE id=?", (region_id,))
     con.commit()
+
+
+# approximate graph node box (matches cockpit layout.js SIZE)
+_NODE_W, _NODE_H = 220, 96
+
+
+def membership(con: sqlite3.Connection, project: str) -> dict[str, dict]:
+    """node_id → the region that geometrically contains it (by its saved
+    position's center). Only nodes with a saved graph_layout position can be
+    in a region — a node is placed into a region by dragging it there."""
+    from .db import project_id
+    pid = project_id(con, project)
+    regs = list_regions(con, project)
+    if not regs:
+        return {}
+    out: dict[str, dict] = {}
+    for r in con.execute(
+            "SELECT node_id, x, y FROM graph_layout WHERE project_id=?", (pid,)):
+        cx, cy = r["x"] + _NODE_W / 2, r["y"] + _NODE_H / 2
+        for reg in regs:
+            if reg["x"] <= cx <= reg["x"] + reg["w"] and reg["y"] <= cy <= reg["y"] + reg["h"]:
+                out[r["node_id"]] = {"id": reg["id"], "label": reg["label"], "color": reg["color"]}
+                break
+    return out

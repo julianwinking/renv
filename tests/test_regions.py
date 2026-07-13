@@ -25,6 +25,22 @@ def test_region_lifecycle(tmp_path):
     assert regions.list_regions(con, "p") == []
 
 
+def test_membership_is_geometric(tmp_path):
+    from reref import db as dbmod
+    con = _proj(tmp_path)
+    reg = regions.add_region(con, "p", x=0, y=0, w=400, h=300, label="Phase 1")
+    pid = dbmod.project_id(con, "p")
+    # a node dropped inside the box, and one outside
+    con.execute("INSERT INTO graph_layout (project_id, node_id, x, y) VALUES (?,?,?,?)",
+                (pid, "log:5", 100, 100))       # center ~(210,148) → inside
+    con.execute("INSERT INTO graph_layout (project_id, node_id, x, y) VALUES (?,?,?,?)",
+                (pid, "claim:9", 900, 900))     # far outside
+    con.commit()
+    mem = regions.membership(con, "p")
+    assert mem["log:5"]["id"] == reg["id"] and mem["log:5"]["label"] == "Phase 1"
+    assert "claim:9" not in mem
+
+
 def test_region_validation(tmp_path):
     con = _proj(tmp_path)
     with pytest.raises(ValueError):

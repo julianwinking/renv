@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getProject, getClaim, addClaim, editClaim, getArgument } from '../api.js'
-import { Stamp, Section, Empty, Mono, Modal } from '../ui.jsx'
+import { Stamp, Section, Empty, Mono, Modal, RegionTag } from '../ui.jsx'
 
 export default function Claims({ slug, focus }) {
   const [claims, setClaims] = useState(null)
@@ -91,6 +91,7 @@ export default function Claims({ slug, focus }) {
                   {c.text}
                 </div>
               )}
+              <RegionTag region={c.region} />
               <span className="chip">{c.kind}</span>
             </div>
             {detail[c.id] && (

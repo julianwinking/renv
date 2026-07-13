@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getProject, getRuns, addExperiment, editExperiment } from '../api.js'
-import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance, Modal } from '../ui.jsx'
+import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance, Modal, RegionTag } from '../ui.jsx'
 
 function Run({ run, defs }) {
   const where = run.remote
@@ -122,6 +122,7 @@ export default function Experiments({ slug, defs, focus }) {
                   </div>
                 )}
                 <Metrics defs={defs} metrics={e.metrics} />
+                <RegionTag region={e.region} />
                 <Stamp value={e.status} />
               </div>
               {isOpen && (

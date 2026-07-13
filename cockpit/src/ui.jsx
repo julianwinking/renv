@@ -73,6 +73,16 @@ export function Mono({ children, title }) {
   return <span className="mono" title={title}>{children}</span>
 }
 
+// A region membership chip (a graph node's location). Empty when unplaced.
+export function RegionTag({ region }) {
+  if (!region) return null
+  return (
+    <span className={`region-tag region-${region.color || 'slate'}`}>
+      {region.label || 'region'}
+    </span>
+  )
+}
+
 export function timeAgo(iso) {
   if (!iso) return ''
   const s = (Date.now() - new Date(iso).getTime()) / 1000

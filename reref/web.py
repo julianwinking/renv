@@ -284,15 +284,29 @@ def _runs(con, slug):
 
 
 def _project(con, slug):
+    from . import regions as regionsmod
     pid = db.project_id(con, slug)
     notes = [dict(r) for r in con.execute(
         "SELECT * FROM note WHERE project_id=? ORDER BY id DESC", (pid,))]
+    log = logmod.list_entries(con, slug, limit=100)
+    experiments = experiment.list_experiments(con, slug)
+    claims = claimmod.list_claims(con, slug)
+    # which region each graph node sits in (log:/note:/exp:/claim:<id>)
+    mem = regionsmod.membership(con, slug)
+    for e in log:
+        e["region"] = mem.get(f"log:{e['id']}")
+    for n in notes:
+        n["region"] = mem.get(f"note:{n['id']}")
+    for x in experiments:
+        x["region"] = mem.get(f"exp:{x['id']}")
+    for c in claims:
+        c["region"] = mem.get(f"claim:{c['id']}")
     return {
         "slug": slug,
-        "experiments": experiment.list_experiments(con, slug),
+        "experiments": experiments,
         "findings": findmod.list_findings(con, slug),
-        "claims": claimmod.list_claims(con, slug),
-        "log": logmod.list_entries(con, slug, limit=100),
+        "claims": claims,
+        "log": log,
         "notes": notes,
     }
 

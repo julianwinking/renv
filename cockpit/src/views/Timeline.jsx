@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getProject, addNote, addLog, editLog, editNote, getSources } from '../api.js'
-import { asArray, Stamp, Section, Empty, timeAgo } from '../ui.jsx'
+import { asArray, Stamp, Section, Empty, timeAgo, RegionTag } from '../ui.jsx'
 
 // 'result' is deliberately absent: measured numbers enter via runs (§0).
 const COMPOSER_TYPES = ['note', 'decision', 'hypothesis', 'observation', 'question', 'feedback', 'blocker']
@@ -37,6 +37,7 @@ export default function Timeline({ slug, focus }) {
       raw_body: n.body_md,
       body_md: n.title ? `${n.title}\n${n.body_md}` : n.body_md })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1))
+  const anyRegion = entries.some((e) => e.region)
   const shown = entries.filter((e) => filter === 'all' || e.kind === filter)
 
   const save = async () => {
@@ -156,6 +157,7 @@ export default function Timeline({ slug, focus }) {
                 <span className="when" title="Last edited">✎ {timeAgo(e.edited)}</span>
               )}
             </div>
+            {anyRegion && <div className="tl-region"><RegionTag region={e.region} /></div>}
             <div className="tl-body">
               {e.source && <div className="faint" style={{ fontSize: 11.5 }}>{e.source}</div>}
               {editing === e.fkey ? (

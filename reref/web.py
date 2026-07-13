@@ -5,15 +5,24 @@ that mirrors what an agent does via MCP. Every write goes through the same domai
 functions as the CLI, so the §0 constraints hold whoever acts, and the page and the
 agent see identical live state. Binds to 127.0.0.1 only.
 
-Views: dashboard, papers + citation usage map, the experiment branch (DAG)
-explorer, findings with accept/reject adjudication, the claim/evidence graph, and a
-timeline of decisions + notes.
+On-demand serving (macOS): ``reref web install`` registers a launchd
+LaunchAgent with SOCKET ACTIVATION — launchd holds the listening socket at
+near-zero cost, starts this server on the first browser request, and the
+server exits itself after ``--idle-exit`` seconds without traffic; launchd
+then re-arms the socket. Deliberately NOT Docker: this server must read/write
+the repo working tree (instructions, scaffolding, git health), and a container
+would add mounts and drift for zero isolation benefit on a localhost tool.
 """
 
 from __future__ import annotations
 
+import ctypes
 import json
 import re
+import socket as socketmod
+import sys
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -316,9 +325,14 @@ def _config_listing(root, con, project=None):
 
 class Handler(BaseHTTPRequestHandler):
     root = "."
+    last_activity = time.monotonic()
 
     def log_message(self, *a):  # keep the console quiet
         pass
+
+    def handle_one_request(self):
+        Handler.last_activity = time.monotonic()   # any traffic resets the idle clock
+        super().handle_one_request()
 
     def _send(self, obj, status=200, ctype="application/json", cache=None):
         body = obj if isinstance(obj, (bytes, bytearray)) else json.dumps(obj, default=str).encode()
@@ -554,12 +568,98 @@ class Handler(BaseHTTPRequestHandler):
         raise ValueError(f"unknown endpoint {path}")
 
 
-def serve(root=".", port: int = 8765, host: str = "127.0.0.1") -> None:
+def _launchd_socket() -> int:
+    """First listening fd handed over by launchd socket activation ("Listeners")."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    fds = ctypes.POINTER(ctypes.c_int)()
+    count = ctypes.c_size_t(0)
+    rc = libc.launch_activate_socket(b"Listeners", ctypes.byref(fds), ctypes.byref(count))
+    if rc != 0 or count.value == 0:
+        raise OSError(rc, "launch_activate_socket failed — not started by launchd?")
+    fd = fds[0]
+    libc.free(fds)
+    return fd
+
+
+def serve(root=".", port: int = 8765, host: str = "127.0.0.1", *,
+          idle_exit: int | None = None, launchd: bool = False) -> None:
     db.connect(root).close()  # ensure DB exists/migrated
     Handler.root = root
-    httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"reref cockpit → http://{host}:{port}   (Ctrl-C to stop)")
+    if launchd:
+        # launchd already bound + listens; adopt its socket instead of binding
+        httpd = ThreadingHTTPServer((host, port), Handler, bind_and_activate=False)
+        httpd.socket = socketmod.socket(fileno=_launchd_socket())
+        print(f"reref cockpit (launchd-activated, idle-exit {idle_exit or '-'}s)")
+    else:
+        httpd = ThreadingHTTPServer((host, port), Handler)
+        print(f"reref cockpit → http://{host}:{port}   (Ctrl-C to stop)")
+    if idle_exit:
+        Handler.last_activity = time.monotonic()
+
+        def watchdog():
+            interval = max(1, min(15, idle_exit // 2))
+            while True:
+                time.sleep(interval)
+                if time.monotonic() - Handler.last_activity > idle_exit:
+                    print(f"idle {idle_exit}s — exiting (launchd re-arms the socket)")
+                    httpd.shutdown()
+                    return
+
+        threading.Thread(target=watchdog, daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         httpd.shutdown()
+
+
+# --- on-demand install (launchd LaunchAgent + socket activation) -------------
+_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>Label</key><string>com.reref.web</string>
+    <key>ProgramArguments</key><array>
+        <string>{python}</string><string>-m</string><string>reref.cli</string>
+        <string>web</string><string>--launchd</string>
+        <string>--idle-exit</string><string>{idle}</string>
+    </array>
+    <key>WorkingDirectory</key><string>{root}</string>
+    <key>Sockets</key><dict><key>Listeners</key><dict>
+        <key>SockNodeName</key><string>127.0.0.1</string>
+        <key>SockServiceName</key><string>{port}</string>
+    </dict></dict>
+    <key>StandardOutPath</key><string>{root}/.research/web.log</string>
+    <key>StandardErrorPath</key><string>{root}/.research/web.log</string>
+    <key>RunAtLoad</key><false/>
+</dict></plist>
+"""
+
+
+def install_launch_agent(root=".", *, domain: str = "research.test",
+                         port: int = 80, idle: int = 1800) -> Path:
+    """Write + load the LaunchAgent so the cockpit starts on first request and
+    stops itself when idle. Returns the plist path; /etc/hosts needs one
+    manual sudo line (printed by the caller) — we never edit it silently."""
+    import subprocess
+    root = str(Path(root).resolve())
+    plist = Path.home() / "Library" / "LaunchAgents" / "com.reref.web.plist"
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text(_PLIST.format(python=sys.executable, root=root,
+                                   port=port, idle=idle))
+    uid = __import__("os").getuid()
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.reref.web"],
+                   capture_output=True)   # reload-safe: drop any old version
+    subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(plist)],
+                   check=True, capture_output=True, text=True)
+    return plist
+
+
+def uninstall_launch_agent() -> bool:
+    import subprocess
+    plist = Path.home() / "Library" / "LaunchAgents" / "com.reref.web.plist"
+    uid = __import__("os").getuid()
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/com.reref.web"],
+                   capture_output=True)
+    if plist.exists():
+        plist.unlink()
+        return True
+    return False

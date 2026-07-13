@@ -65,8 +65,14 @@ through the same code paths, so the rules below hold either way.
 
 CLI and MCP tools are 1:1 — discover them with `uv run reref --help` (or the
 MCP tool list; server `reref` in `.mcp.json`). `query` is read-only SQL over
-the whole store. The web cockpit (`reref web`) is the human's view of the
-same state.
+the whole store.
+
+**Web cockpit:** `http://research.test/` — starts ON DEMAND (launchd socket
+activation) on the first request and exits after 30 min idle, so never start
+it manually when the agent is set up. Manual fallback: `uv run reref web`
+(→ 127.0.0.1:8765). One-time setup: `uv run reref web install` (+ the printed
+/etc/hosts line). It is a plain local process, not Docker — it must read/write
+this repo's working tree.
 
 ## Where state lives
 

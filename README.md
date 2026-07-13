@@ -158,8 +158,17 @@ not hand-set. `reref review` flags any thesis/contribution claim still `open`.
 ## The web cockpit
 
 ```bash
-uv run reref web                 # → http://127.0.0.1:8765
+uv run reref web                 # → http://127.0.0.1:8765 (manual)
+
+# on-demand (macOS): starts on the first browser request, exits after 30 min idle
+uv run reref web install         # launchd socket activation on 127.0.0.1:80
+echo '127.0.0.1 research.test' | sudo tee -a /etc/hosts   # once
+open http://research.test/
 ```
+
+No Docker on purpose: the cockpit reads/writes this repo's working tree
+(instructions, scaffolding, git health), and launchd's socket activation gives
+start-on-demand + stop-when-idle natively at near-zero idle cost.
 
 There are two frontends over the same JSON API (the store is the single source of
 truth either way; every edit goes through the same domain functions as CLI/MCP):

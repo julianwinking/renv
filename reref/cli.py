@@ -721,8 +721,30 @@ def cmd_search(args):
 
 
 def cmd_web(args):
-    from .web import serve
-    serve(args.corpus, port=args.port, host=args.host)
+    from . import web as webmod
+    if args.action == "install":
+        try:
+            plist = webmod.install_launch_agent(
+                args.corpus, domain=args.domain, port=args.domain_port,
+                idle=args.idle_exit or 1800)
+        except Exception as exc:
+            sys.exit(f"! launchd install failed: {exc}")
+        print(f"launchd agent loaded ({plist})")
+        print(f"  on-demand: starts on the first request, exits after {args.idle_exit or 1800}s idle")
+        hosts = Path("/etc/hosts").read_text() if Path("/etc/hosts").exists() else ""
+        if args.domain not in hosts:
+            print(f"  one manual step (sudo, we never edit /etc/hosts silently):")
+            print(f"    echo '127.0.0.1 {args.domain}' | sudo tee -a /etc/hosts")
+        print(f"  then: http://{args.domain}"
+              + (f":{args.domain_port}" if args.domain_port != 80 else "") + "/")
+        return
+    if args.action == "uninstall":
+        removed = webmod.uninstall_launch_agent()
+        print("launchd agent removed" if removed else "no launchd agent installed")
+        return
+    webmod.serve(args.corpus, port=args.port, host=args.host,
+                 idle_exit=args.idle_exit if args.idle_exit > 0 else None,
+                 launchd=args.launchd)
 
 
 def cmd_mcp(args):
@@ -1020,9 +1042,21 @@ def main(argv=None):
     psr.add_argument("--limit", type=int, default=30)
     psr.set_defaults(func=cmd_search)
 
-    pweb = sub.add_parser("web", help="launch the local web cockpit (dashboard + branches + findings)")
+    pweb = sub.add_parser("web", help="the local web cockpit (serve, or install on-demand launchd start)")
+    pweb.add_argument("action", nargs="?", default="serve",
+                      choices=["serve", "install", "uninstall"],
+                      help="install = launchd socket activation: starts on first "
+                           "request at http://research.test, exits when idle")
     pweb.add_argument("--port", type=int, default=8765)
     pweb.add_argument("--host", default="127.0.0.1")
+    pweb.add_argument("--idle-exit", type=int, default=0, metavar="SECONDS",
+                      help="exit after this long without a request (0 = never)")
+    pweb.add_argument("--launchd", action="store_true",
+                      help="adopt the socket from launchd (used by the agent, not by hand)")
+    pweb.add_argument("--domain", default="research.test",
+                      help="local domain for install (.test is IETF-reserved; never a real TLD)")
+    pweb.add_argument("--domain-port", type=int, default=80,
+                      help="port the launchd socket listens on (80 → no :port in the URL)")
     pweb.set_defaults(func=cmd_web)
 
     pm = sub.add_parser("mcp", help="run the local stdio MCP server (for Claude Code)")

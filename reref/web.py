@@ -90,6 +90,22 @@ def _graph(con, root, slug):
                       "target": f"claim:{rel['related_id']}", "kind": rel["kind"],
                       "note": rel["note"]})
 
+    # soft context links (feedback relates-to a claim, note about an experiment…)
+    from . import links as linksmod
+    _LOGKINDS = {"feedback", "question", "hypothesis", "thought"}
+
+    def _ctx_id(kind, id_):
+        if kind == "experiment":
+            return f"exp:{id_}"
+        if kind in _LOGKINDS:
+            return f"log:{id_}"
+        return f"{kind}:{id_}"
+
+    for lk in linksmod.list_links(con, slug):
+        edges.append({"source": _ctx_id(lk["from_kind"], lk["from_id"]),
+                      "target": _ctx_id(lk["to_kind"], lk["to_id"]),
+                      "kind": lk["relation"], "note": lk["note"], "context": True})
+
     # thinking made visible: questions / hypotheses / feedback join the graph,
     # wired to the experiment they concern and to the entries that answer them
     thought_rows = con.execute(
@@ -411,6 +427,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/rubric":
             from .review import RUBRIC
             return RUBRIC
+        if path == "/api/connections":
+            from . import links as linksmod
+            return [{"from": f, "to": t,
+                     "options": [{"value": v, "label": lbl, "mode": m}
+                                 for v, lbl, m in rels]}
+                    for (f, t), rels in linksmod.CONNECTIONS.items()]
         if path == "/api/config/files":
             from urllib.parse import parse_qs
             q = parse_qs(urlparse(self.path).query)
@@ -494,6 +516,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/claim":
             return claimmod.add_claim(con, d["project"], d["text"],
                                       kind=d.get("kind", "assertion"))
+        if path == "/api/link":
+            from . import links as linksmod
+            return linksmod.add_link(con, d["project"], from_kind=d["from_kind"],
+                                     from_id=d["from_id"], to_kind=d["to_kind"],
+                                     to_id=d["to_id"], relation=d["relation"],
+                                     note=d.get("note"))
+        if path == "/api/link/delete":
+            from . import links as linksmod
+            linksmod.delete_link(con, d["id"])
+            return {"deleted": d["id"]}
         if path == "/api/claim/edit":
             return claimmod.update_text(con, d["id"], d["text"])
         if path == "/api/claim/link":

@@ -326,6 +326,14 @@ def h_relate_claims(root, a):
                         kind=a.get("kind", "depends_on"), note=a.get("note"))
 
 
+def h_link_context(root, a):
+    from . import links
+    return links.add_link(_conn(root), a["project"], from_kind=a["from_kind"],
+                          from_id=a["from_id"], to_kind=a["to_kind"],
+                          to_id=a["to_id"], relation=a.get("relation", "relates_to"),
+                          note=a.get("note"))
+
+
 def h_list_claims(root, a):
     from . import claim
     return claim.list_claims(_conn(root), a["project"], status=a.get("status"))
@@ -512,6 +520,11 @@ TOOLS = [
                          ["claim_id", "related_id"]), "handler": h_relate_claims},
     {"name": "list_claims", "description": "Claims of a project with derived status + evidence counts.",
      "inputSchema": _obj({"project": _S, "status": _S}, ["project"]), "handler": h_list_claims},
+    {"name": "link_context", "description": "Soft, non-evidential link between graph entities (e.g. feedback relates_to a claim, note about an experiment). Never changes derived status. Kinds: claim/experiment/paper/finding/feedback/note/question/hypothesis/thought.",
+     "inputSchema": _obj({"project": _S, "from_kind": _S, "from_id": _I,
+                          "to_kind": _S, "to_id": _I, "relation": _S, "note": _S},
+                         ["project", "from_kind", "from_id", "to_kind", "to_id"]),
+     "handler": h_link_context},
     {"name": "get_claim", "description": "A claim with its evidence edges.",
      "inputSchema": _obj({"id": _I}, ["id"]), "handler": h_get_claim},
     {"name": "set_experiment_status", "description": "Set an experiment's status (e.g. abandon a dead branch).",

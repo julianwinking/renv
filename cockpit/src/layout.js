@@ -28,29 +28,34 @@ export function toFlow(graph, dir = 'LR') {
     }
   })
 
-  const stroke = (kind) =>
-    kind === 'refutes' || kind === 'contradicts' ? 'var(--bad)'
-    : kind === 'supports' ? 'var(--ok)'
-    : kind === 'answers' ? 'var(--ok)'
-    : kind === 'depends_on' ? 'var(--claim)'
-    : kind === 'parent' ? 'var(--line-strong)'
+  const CONTEXT = new Set(['relates_to', 'about', 'motivates'])
+  const stroke = (e) =>
+    e.kind === 'refutes' || e.kind === 'contradicts' ? 'var(--bad)'
+    : e.kind === 'supports' || e.kind === 'answers' ? 'var(--ok)'
+    : e.kind === 'depends_on' ? 'var(--claim)'
+    : e.context || CONTEXT.has(e.kind) ? 'var(--faint)'
+    : e.kind === 'parent' ? 'var(--line-strong)'
     : 'var(--line)'
 
-  const LABELLED = new Set(['supports', 'refutes', 'depends_on', 'contradicts', 'answers'])
+  const LABELLED = new Set(['supports', 'refutes', 'depends_on', 'contradicts',
+                            'answers', 'relates_to', 'about', 'motivates'])
   const edges = graph.edges.map((e, i) => {
-    const base = LABELLED.has(e.kind) ? e.kind.replace('_', ' ') : ''
+    const isContext = e.context || CONTEXT.has(e.kind)
+    const base = LABELLED.has(e.kind) ? e.kind.replace(/_/g, ' ') : ''
     const note = e.note ? ` — ${e.note.length > 30 ? e.note.slice(0, 30) + '…' : e.note}` : ''
+    const s = stroke(e)
     return {
       id: `e${i}`,
       source: e.source,
       target: e.target,
       label: base ? base + note : '',
       animated: e.kind === 'refutes' || e.kind === 'contradicts',
-      markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: stroke(e.kind) },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: s },
       style: {
-        stroke: stroke(e.kind),
+        stroke: s,
         strokeWidth: e.kind === 'parent' ? 1.6 : 1.2,
-        strokeDasharray: e.kind === 'depends_on' || e.kind === 'contradicts' ? '5 4' : undefined,
+        strokeDasharray: (e.kind === 'depends_on' || e.kind === 'contradicts') ? '5 4'
+          : isContext ? '2 3' : undefined,
       },
     }
   })

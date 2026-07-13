@@ -434,9 +434,29 @@ _SCHEMA_V14 = """
 ALTER TABLE plan_item ADD COLUMN parent_id INTEGER REFERENCES plan_item(id) ON DELETE CASCADE;
 """
 
+# v15: context links — soft, annotative connections between graph entities
+# (feedback relates-to a claim, a note is about an experiment, a question
+# concerns a paper). NOT evidence: they never change a claim's derived status;
+# they just record that two things are related. Evidence (claim_evidence) and
+# argument structure (claim_relation) stay the strong, typed connections.
+_SCHEMA_V15 = """
+CREATE TABLE context_link (
+    id         INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    from_kind  TEXT NOT NULL,
+    from_id    INTEGER NOT NULL,
+    to_kind    TEXT NOT NULL,
+    to_id      INTEGER NOT NULL,
+    relation   TEXT NOT NULL,
+    note       TEXT,
+    created    TEXT NOT NULL
+);
+CREATE INDEX idx_ctxlink_project ON context_link(project_id);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
               _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
-              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13, _SCHEMA_V14]
+              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13, _SCHEMA_V14, _SCHEMA_V15]
 
 
 # --- time & hashing ----------------------------------------------------------

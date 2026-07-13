@@ -3,7 +3,7 @@ import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState 
 import {
   getGraph, addExperiment, addClaim, addLog, addNote,
   setExperimentParent, relateClaims, linkExperimentToClaim, saveLayout,
-  editClaim, editLog, editNote,
+  editClaim, editLog, editNote, getConnections, addContextLink,
 } from '../api.js'
 import { toFlow } from '../layout.js'
 import { nodeTypes } from '../nodes.jsx'
@@ -105,46 +105,55 @@ function AddPanel({ kind, slug, onClose, onDone, experiments, at }) {
   )
 }
 
-// Confirm a drawn edge: stance/kind + an optional comment stored on the link.
-function EdgePanel({ pending, onClose, onDone }) {
-  const [choice, setChoice] = useState(pending.type === 'evidence' ? 'supports' : 'depends_on')
+// Registry-driven connect panel. `pending` carries the source/target nodes and
+// the list of allowed relation options (from /api/connections). The user picks
+// one; dispatch() routes it to the right store write by the option's mode.
+function ConnectPanel({ pending, slug, onClose, onDone }) {
+  const { source, target, options } = pending
+  const [choice, setChoice] = useState(options[0].value)
   const [note, setNote] = useState('')
   const [err, setErr] = useState(null)
+  const opt = options.find((o) => o.value === choice)
+  const srcId = Number(source.id.split(':')[1])
+  const tgtId = Number(target.id.split(':')[1])
+  const srcKind = source.type
+  const tgtKind = target.type
 
   const save = async () => {
     setErr(null)
-    const r = pending.type === 'evidence'
-      ? await linkExperimentToClaim(pending.slug, pending.experiment, pending.claimId, choice, note.trim() || undefined)
-      : await relateClaims(pending.claimId, pending.relatedId, choice, note.trim() || undefined)
+    const n = note.trim() || undefined
+    let r
+    if (opt.mode === 'parent') {
+      r = await setExperimentParent(slug, target.data.label, source.data.label)
+    } else if (opt.mode === 'evidence') {
+      r = await linkExperimentToClaim(slug, source.data.label, tgtId, choice, n)
+    } else if (opt.mode === 'relation') {
+      r = await relateClaims(srcId, tgtId, choice, n)
+    } else {   // context
+      r = await addContextLink({
+        project: slug, from_kind: srcKind, from_id: srcId,
+        to_kind: tgtKind, to_id: tgtId, relation: choice, note: n,
+      })
+    }
     if (r && r.error) { setErr(r.error); return }
     onDone()
   }
 
   return (
     <div className="gpanel">
-      <div className="eyebrow" style={{ margin: '0 0 8px' }}>
-        {pending.type === 'evidence'
-          ? `${pending.experiment} → claim #${pending.claimId}`
-          : `claim #${pending.claimId} → claim #${pending.relatedId}`}
-      </div>
-      <select className="text" value={choice} onChange={(e) => setChoice(e.target.value)}>
-        {pending.type === 'evidence' ? (
-          <>
-            <option value="supports">Supports (via latest done run)</option>
-            <option value="refutes">Refutes (via latest done run)</option>
-          </>
-        ) : (
-          <>
-            <option value="depends_on">Depends on</option>
-            <option value="contradicts">Contradicts</option>
-          </>
-        )}
-      </select>
-      <textarea placeholder="Comment on this edge (optional) — why does it hold?"
+      <div className="eyebrow" style={{ margin: '0 0 8px' }}>{srcKind} → {tgtKind}</div>
+      {options.length > 1 ? (
+        <select className="text" value={choice} onChange={(e) => setChoice(e.target.value)}>
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : (
+        <div className="muted" style={{ fontSize: 12 }}>{options[0].label}</div>
+      )}
+      <textarea placeholder="Comment on this connection (optional)"
                 value={note} onChange={(e) => setNote(e.target.value)} />
       {err && <div style={{ color: 'var(--bad)', marginTop: 6, fontSize: 12 }}>{err}</div>}
       <div className="gnode-actions">
-        <button className="btn" onClick={save}>Link</button>
+        <button className="btn" onClick={save}>Connect</button>
         <button className="btn ghost" onClick={onClose}>Cancel</button>
       </div>
     </div>
@@ -161,7 +170,12 @@ export default function GraphView({ slug, defs, onMutate }) {
   const [menuAt, setMenuAt] = useState(null)         // where the add panel should open
   const [toast, setToast] = useState(null)
   const [legendOpen, setLegendOpen] = useState(() => localStorage.getItem('reref-legend') !== 'closed')
+  const [conns, setConns] = useState([])            // the connection registry
   const flowRef = React.useRef(null)
+
+  useEffect(() => { getConnections().then((c) => setConns(Array.isArray(c) ? c : [])) }, [])
+  const optionsFor = (from, to) =>
+    (conns.find((c) => c.from === from && c.to === to) || {}).options || []
   const dropPos = React.useRef(null)                 // where a right-click add should land
 
   const load = useCallback(async () => {
@@ -202,23 +216,20 @@ export default function GraphView({ slug, defs, onMutate }) {
     saveLayout(slug, positions)
   }, [slug])
 
-  // Drawing an edge writes through the domain layer — or is refused with the reason.
+  // Drawing an edge consults the central connection registry: the node kinds
+  // decide which relations are possible. 0 → refuse; ≥1 → a panel to choose
+  // + comment; a single obvious option still shows so you can annotate it.
   const onConnect = useCallback(async ({ source, target }) => {
-    const [sk, sid] = source.split(':')
-    const [tk, tid] = target.split(':')
-    const nodeOf = (id) => nodes.find((n) => n.id === id)
-    if (sk === 'exp' && tk === 'exp') {
-      const r = await setExperimentParent(slug, nodeOf(target)?.data.label, nodeOf(source)?.data.label)
-      if (r && r.error) say(r.error, true)
-      else { say(`${nodeOf(target)?.data.label} now branches off ${nodeOf(source)?.data.label}`); load(); onMutate && onMutate() }
-    } else if (sk === 'exp' && tk === 'claim') {
-      setPendingEdge({ type: 'evidence', slug, experiment: nodeOf(source)?.data.label, claimId: Number(tid) })
-    } else if (sk === 'claim' && tk === 'claim') {
-      setPendingEdge({ type: 'relation', claimId: Number(sid), relatedId: Number(tid) })
-    } else {
-      say(`a ${sk}→${tk} edge has no meaning in the store`, true)
+    const src = nodes.find((n) => n.id === source)
+    const tgt = nodes.find((n) => n.id === target)
+    if (!src || !tgt) return
+    const options = optionsFor(src.type, tgt.type)
+    if (!options.length) {
+      say(`A ${src.type} → ${tgt.type} connection has no meaning in the store`, true)
+      return
     }
-  }, [nodes, slug, load, onMutate])
+    setPendingEdge({ source: src, target: tgt, options })
+  }, [nodes, conns])
 
   // Double-click opens the entity's page (hash deep-link into its view).
   const onNodeDoubleClick = useCallback((_, node) => {
@@ -284,9 +295,9 @@ export default function GraphView({ slug, defs, onMutate }) {
                   onClose={() => setAdding(null)} onDone={addDone} />
       )}
       {pendingEdge && (
-        <EdgePanel pending={pendingEdge}
-                   onClose={() => setPendingEdge(null)}
-                   onDone={() => { setPendingEdge(null); load(); onMutate && onMutate() }} />
+        <ConnectPanel pending={pendingEdge} slug={slug}
+                      onClose={() => setPendingEdge(null)}
+                      onDone={() => { setPendingEdge(null); load(); onMutate && onMutate() }} />
       )}
       {menu && (
         <div className="gmenu" style={{ left: menu.x, top: menu.y }}>

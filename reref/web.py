@@ -470,6 +470,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "argument"] and len(parts) == 3:
             from . import argument
             return argument.analyze(con, unquote(parts[2]))
+        if parts[:2] == ["api", "regions"] and len(parts) == 3:
+            from . import regions
+            return regions.list_regions(con, unquote(parts[2]))
         if path.startswith("/api/search"):
             from urllib.parse import parse_qs
             from . import search as searchmod
@@ -548,6 +551,19 @@ class Handler(BaseHTTPRequestHandler):
             return claimmod.link_evidence(con, d["claim_id"], citation_id=d.get("citation_id"),
                                           run_id=d.get("run_id"), stance=d.get("stance", "supports"),
                                           note=d.get("note"))
+        if path == "/api/region":
+            from . import regions
+            return regions.add_region(con, d["project"], x=d["x"], y=d["y"],
+                                      w=d.get("w", 360), h=d.get("h", 240),
+                                      label=d.get("label", ""), color=d.get("color", "slate"))
+        if path == "/api/region/update":
+            from . import regions
+            fields = {k: d[k] for k in ("label", "color", "x", "y", "w", "h") if k in d}
+            return regions.update_region(con, d["id"], **fields)
+        if path == "/api/region/delete":
+            from . import regions
+            regions.delete_region(con, d["id"])
+            return {"deleted": d["id"]}
         if path == "/api/graph/layout":
             pid = db.project_id(con, d["project"])
             for nid, p in (d.get("positions") or {}).items():

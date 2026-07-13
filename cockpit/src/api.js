@@ -40,6 +40,10 @@ export const linkCitationToClaim = (claim_id, citation_id, stance, note) =>
   post('/api/claim/link', { claim_id, citation_id, stance, note })
 export const saveLayout = (project, positions) =>
   post('/api/graph/layout', { project, positions })
+export const getRegions = (slug) => api('/api/regions/' + encodeURIComponent(slug))
+export const addRegion = (project, r) => post('/api/region', { project, ...r })
+export const updateRegion = (id, fields) => post('/api/region/update', { id, ...fields })
+export const deleteRegion = (id) => post('/api/region/delete', { id })
 export const search = (q) => api('/api/search?q=' + encodeURIComponent(q))
 export const getConfigFiles = (project) =>
   api('/api/config/files' + (project ? '?project=' + encodeURIComponent(project) : ''))

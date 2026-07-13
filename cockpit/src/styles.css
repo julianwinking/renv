@@ -398,6 +398,46 @@ select.text {
 .gnode-actions button { font-size: 11px; padding: 3px 9px; }
 .gnode textarea { margin-top: 7px; font-size: 11.5px; min-height: 46px; }
 .gnode-edit { width: 100%; font: inherit; font-size: 11.5px; line-height: 1.45; min-height: 44px; margin-top: 3px; }
+/* graph top-right tools (region add) */
+.gtools { position: absolute; top: 14px; right: 14px; z-index: 6; display: flex; gap: 8px; }
+
+/* region frames */
+.region {
+  width: 100%; height: 100%; border: 1.5px solid; border-radius: 12px;
+  background: var(--region-fill); border-color: var(--region-line);
+}
+.region-bar {
+  display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px;
+  cursor: grab; position: relative;
+}
+.region-bar:active { cursor: grabbing; }
+.region-name {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--region-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.region-input {
+  flex: 1; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--region-line); border-radius: 5px; padding: 2px 6px;
+}
+.region-btn {
+  background: none; border: 0; color: var(--region-text); cursor: pointer;
+  font-size: 12px; padding: 2px 4px; opacity: 0.6;
+}
+.region:hover .region-btn { opacity: 1; }
+.region-menu {
+  position: absolute; top: 100%; right: 4px; z-index: 10; display: flex; gap: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 7px;
+  padding: 5px; box-shadow: var(--shadow);
+}
+.region-swatch { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--region-line); background: var(--region-fill); cursor: pointer; }
+.region-slate  { --region-fill: color-mix(in srgb, var(--line-strong) 12%, transparent); --region-line: var(--line-strong); --region-text: var(--muted); }
+.region-teal   { --region-fill: var(--accent-soft); --region-line: var(--accent); --region-text: var(--accent); }
+.region-violet { --region-fill: color-mix(in srgb, var(--claim) 12%, transparent); --region-line: var(--claim); --region-text: var(--claim); }
+.region-amber  { --region-fill: var(--warn-soft); --region-line: var(--warn); --region-text: var(--warn); }
+.region-rose   { --region-fill: var(--bad-soft); --region-line: var(--bad); --region-text: var(--bad); }
+.region-blue   { --region-fill: color-mix(in srgb, var(--citation) 12%, transparent); --region-line: var(--citation); --region-text: var(--citation); }
+
 .react-flow__handle {
   width: 9px; height: 9px; background: var(--accent); border: 2px solid var(--surface);
   opacity: 0; transition: opacity 0.12s;

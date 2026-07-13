@@ -4,6 +4,7 @@ import {
   getGraph, addExperiment, addClaim, addLog, addNote,
   setExperimentParent, relateClaims, linkExperimentToClaim, saveLayout,
   editClaim, editLog, editNote, getConnections, addContextLink, linkCitationToClaim,
+  getRegions, addRegion, updateRegion,
 } from '../api.js'
 import { toFlow } from '../layout.js'
 import { nodeTypes } from '../nodes.jsx'
@@ -189,12 +190,13 @@ export default function GraphView({ slug, defs, onMutate }) {
 
   const load = useCallback(async () => {
     setBusy(true)
-    const g = await getGraph(slug)
+    const [g, regions] = await Promise.all([getGraph(slug), getRegions(slug)])
     const flow = toFlow(g)
+    const after = () => { load(); onMutate && onMutate() }
     flow.nodes.forEach((n) => {
       n.data.defs = defs
+      n.zIndex = 1                       // entity nodes sit above region frames
       const [k, id] = n.id.split(':')
-      const after = () => { load(); onMutate && onMutate() }
       if (k === 'claim') n.data.onSaveText = (t) => editClaim(Number(id), t).then(after)
       else if (k === 'log') n.data.onSaveText = (t) => editLog(Number(id), t).then(after)
       else if (k === 'note') n.data.onSaveText = (t) => editNote(Number(id), t).then(after)
@@ -203,7 +205,14 @@ export default function GraphView({ slug, defs, onMutate }) {
         n.data.onDone = after
       }
     })
-    setNodes(flow.nodes)
+    // region frames as background nodes: dragged by their label bar, resizable
+    const regionNodes = (Array.isArray(regions) ? regions : []).map((r) => ({
+      id: `region:${r.id}`, type: 'region', position: { x: r.x, y: r.y },
+      style: { width: r.w, height: r.h }, zIndex: 0, draggable: true,
+      dragHandle: '.region-bar', selectable: false,
+      data: { label: r.label, color: r.color, onChange: after },
+    }))
+    setNodes([...regionNodes, ...flow.nodes])
     setEdges(flow.edges)
     setBusy(false)
     // fit AFTER the async data lands — the mount-time fitView saw an empty canvas
@@ -218,12 +227,28 @@ export default function GraphView({ slug, defs, onMutate }) {
     setTimeout(() => setToast(null), 5000)
   }
 
-  const persistPositions = useCallback(() => {
+  const persistPositions = useCallback((_, node) => {
+    if (node?.id?.startsWith('region:')) {   // regions persist to their own table
+      updateRegion(Number(node.id.split(':')[1]), { x: node.position.x, y: node.position.y })
+      return
+    }
     const inst = flowRef.current
     if (!inst) return
-    const positions = Object.fromEntries(inst.getNodes().map((n) => [n.id, n.position]))
+    const positions = Object.fromEntries(inst.getNodes()
+      .filter((n) => !n.id.startsWith('region:'))
+      .map((n) => [n.id, n.position]))
     saveLayout(slug, positions)
   }, [slug])
+
+  const addRegionAtCenter = useCallback(async () => {
+    const inst = flowRef.current
+    let p = { x: 0, y: 0 }
+    if (inst?.screenToFlowPosition) {
+      p = inst.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    }
+    await addRegion(slug, { x: p.x - 180, y: p.y - 120, w: 360, h: 240, label: '' })
+    load()
+  }, [slug, load])
 
   // Drawing an edge consults the central connection registry: the node kinds
   // decide which relations are possible. 0 → refuse; ≥1 → a panel to choose
@@ -310,6 +335,10 @@ export default function GraphView({ slug, defs, onMutate }) {
         <Controls showInteractive={false} />
       </ReactFlow>
 
+      <div className="gtools">
+        <button className="gtool" onClick={addRegionAtCenter} title="Add a region frame">+ Region</button>
+      </div>
+
       {adding && (
         <AddPanel kind={adding} slug={slug} experiments={expSlugs} at={menuAt}
                   onClose={() => setAdding(null)} onDone={addDone} />
@@ -328,6 +357,9 @@ export default function GraphView({ slug, defs, onMutate }) {
               <span className="sw" style={{ background: c }} />New {k}
             </button>
           ))}
+          <button onClick={() => { addRegionAtCenter(); setMenu(null) }}>
+            <span className="sw" style={{ background: 'var(--line-strong)' }} />New region
+          </button>
         </div>
       )}
 

@@ -454,9 +454,29 @@ CREATE TABLE context_link (
 CREATE INDEX idx_ctxlink_project ON context_link(project_id);
 """
 
+# v16: graph regions — labeled, colored frames on the canvas for visual
+# grouping by phase or field. Pure presentation: membership is geometric (a
+# node inside the box reads as grouped), never a stored join, so the graph
+# stays a view of the store.
+_SCHEMA_V16 = """
+CREATE TABLE graph_region (
+    id         INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    label      TEXT NOT NULL DEFAULT '',
+    color      TEXT NOT NULL DEFAULT 'slate',
+    x          REAL NOT NULL,
+    y          REAL NOT NULL,
+    w          REAL NOT NULL,
+    h          REAL NOT NULL,
+    created    TEXT NOT NULL
+);
+CREATE INDEX idx_region_project ON graph_region(project_id);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
               _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
-              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13, _SCHEMA_V14, _SCHEMA_V15]
+              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13, _SCHEMA_V14, _SCHEMA_V15,
+              _SCHEMA_V16]
 
 
 # --- time & hashing ----------------------------------------------------------

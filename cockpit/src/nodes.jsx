@@ -1,7 +1,53 @@
 import React, { useState } from 'react'
-import { Handle, Position } from '@xyflow/react'
-import { adjudicate } from './api.js'
+import { Handle, Position, NodeResizer } from '@xyflow/react'
+import { adjudicate, updateRegion, deleteRegion } from './api.js'
 import { Stamp, Metrics } from './ui.jsx'
+
+export const REGION_COLORS = ['slate', 'teal', 'violet', 'amber', 'rose', 'blue']
+
+// A labeled frame for grouping the canvas by phase/field. Drag it by the
+// label bar (the rest is click-through so nodes on top stay usable); resize
+// with the handles; rename inline; recolor; delete.
+export function RegionNode({ id, data }) {
+  const rid = Number(id.split(':')[1])
+  const [editing, setEditing] = useState(false)
+  const [label, setLabel] = useState(data.label || '')
+  const [menu, setMenu] = useState(false)
+
+  const saveLabel = () => {
+    setEditing(false)
+    if (label !== data.label) { updateRegion(rid, { label }); data.onChange?.() }
+  }
+  const setColor = (c) => { setMenu(false); updateRegion(rid, { color: c }).then(() => data.onChange?.()) }
+  const remove = () => deleteRegion(rid).then(() => data.onChange?.())
+
+  return (
+    <div className={`region region-${data.color || 'slate'}`}>
+      <NodeResizer minWidth={140} minHeight={90} color="var(--line-strong)"
+                   onResizeEnd={(_, p) => { updateRegion(rid, { x: p.x, y: p.y, w: p.width, h: p.height }); data.onChange?.() }} />
+      <div className="region-bar">
+        {editing ? (
+          <input className="region-input nodrag" autoFocus value={label}
+                 onChange={(e) => setLabel(e.target.value)} onBlur={saveLabel}
+                 onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { setLabel(data.label || ''); setEditing(false) } }} />
+        ) : (
+          <span className="region-name" onDoubleClick={() => setEditing(true)}>
+            {data.label || 'Untitled region'}
+          </span>
+        )}
+        <button className="region-btn nodrag" title="Color" onClick={() => setMenu(!menu)}>◑</button>
+        <button className="region-btn nodrag" title="Delete region" onClick={remove}>✕</button>
+        {menu && (
+          <div className="region-menu nodrag">
+            {REGION_COLORS.map((c) => (
+              <button key={c} className={`region-swatch region-${c}`} title={c} onClick={() => setColor(c)} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function Shell({ kind, children }) {
   return (
@@ -172,6 +218,7 @@ function ThoughtNode(kind) {
 }
 
 export const nodeTypes = {
+  region: RegionNode,
   experiment: ExperimentNode,
   finding: FindingNode,
   claim: ClaimNode,

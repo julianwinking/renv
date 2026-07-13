@@ -348,6 +348,16 @@ export default function Plan({ slug }) {
                     : (it.kind === 'deadline' || it.end_deadline)
                       ? <Stamp value={it.prepared ? 'prepared' : 'unprepared'} tone={it.prepared ? 'ok' : 'warn'} />
                       : null}
+                  {it.kind === 'phase' && !it._sub && (
+                    <span className="gantt-subadd" title={`Add a sub-item to “${it.title}”`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSel(null)
+                            setDraft({ kind: 'phase', parent_id: it.id })
+                          }}>
+                      +
+                    </span>
+                  )}
                 </button>
               ))}
               {activity && <div className="gantt-label tall muted" style={{ cursor: 'default' }}>Activity</div>}

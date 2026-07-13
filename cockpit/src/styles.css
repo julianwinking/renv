@@ -475,6 +475,12 @@ select.text {
 .gantt-row.tall, .gantt-label.tall { height: 68px; }
 .gantt-caret { color: var(--faint); font-size: 10px; cursor: pointer; margin-right: -3px; }
 .gantt-caret:hover { color: var(--ink); }
+.gantt-subadd {
+  opacity: 0; color: var(--faint); font-size: 13px; line-height: 1; padding: 0 3px;
+  cursor: pointer; flex-shrink: 0;
+}
+.gantt-label:hover .gantt-subadd { opacity: 1; }
+.gantt-subadd:hover { color: var(--accent); }
 .gantt-label.add { color: var(--faint); }
 .gantt-label.add:hover { color: var(--accent); }
 .gantt-row.add { cursor: pointer; }

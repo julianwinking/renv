@@ -159,7 +159,6 @@ export function Settings({ slug, project, onMutate }) {
     <>
       <div className="pagehead">
         <h1>Settings</h1>
-        <div className="sub">project metadata and the metric registry (standardized display everywhere)</div>
       </div>
 
       <Section title="Project" aside={slug}>

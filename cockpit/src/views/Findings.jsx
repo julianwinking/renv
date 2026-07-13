@@ -67,7 +67,6 @@ export default function Findings({ slug }) {
     <>
       <div className="pagehead">
         <h1>Findings</h1>
-        <div className="sub">review output awaiting your verdict — rejections are remembered so no agent re-raises them</div>
       </div>
       <Section title="Open" aside={`${open.length} awaiting adjudication`}>
         {open.map((f) => <OpenFinding key={f.id} f={f} onDone={load} />)}

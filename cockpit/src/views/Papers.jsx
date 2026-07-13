@@ -28,7 +28,6 @@ export default function Papers({ focus }) {
     <>
       <div className="pagehead">
         <h1>Papers</h1>
-        <div className="sub">the shared corpus — select one to see everywhere it is used</div>
       </div>
       <div className="grid cols-2">
         <Section title="Corpus" aside={`${papers.length} papers`}>

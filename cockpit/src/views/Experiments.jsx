@@ -63,7 +63,6 @@ export default function Experiments({ slug, defs, focus }) {
     <>
       <div className="pagehead">
         <h1>Experiments</h1>
-        <div className="sub">the branch DAG — one experiment, one question; children branch off their parent</div>
       </div>
       <Section title="Branches" aside={`${exps.length} experiments · ${runs.length} runs`}>
         {exps.map((e) => {

@@ -258,7 +258,6 @@ export default function Plan({ slug }) {
     <>
       <div className="pagehead">
         <h1>Timeline</h1>
-        <div className="sub">what should be done until when — deadlines, submission phases, work blocks</div>
       </div>
 
       <Section

@@ -32,7 +32,6 @@ export default function Claims({ slug, focus }) {
     <>
       <div className="pagehead">
         <h1>Claims</h1>
-        <div className="sub">every assertion traces to evidence; status is derived, never hand-set</div>
       </div>
       <Section title="Claim ledger" aside={`${claims.length} claims`}>
         {claims.map((c) => (

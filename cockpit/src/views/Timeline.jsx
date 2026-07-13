@@ -61,7 +61,6 @@ export default function Timeline({ slug, focus }) {
     <>
       <div className="pagehead">
         <h1>Log</h1>
-        <div className="sub">the reasoning log — what was decided, observed, asked, and measured, in order</div>
       </div>
 
       <Section title={answering ? `Answer question #${answering.id}` : 'Add an entry'}>

@@ -301,7 +301,7 @@ export default function GraphView({ slug, defs, onMutate }) {
           localStorage.setItem('reref-legend', next ? 'open' : 'closed')
         }}>
           <span className="eyebrow" style={{ margin: 0 }}>legend</span>
-          <span className="faint">{legendOpen ? '▾' : '▸'}</span>
+          <span className="faint">{legendOpen ? '▾' : '▴'}</span>
         </button>
         {legendOpen && (
           <>

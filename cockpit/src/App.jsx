@@ -24,7 +24,7 @@ const I = {
   log: <path d="M7.5 7.5m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M7.5 4.5v3l2.2 1.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
 }
 
-const VIEWS = ['overview', 'graph', 'timeline', 'experiments', 'papers', 'claims', 'findings', 'log']
+const VIEWS = ['overview', 'graph', 'experiments', 'papers', 'claims', 'findings', 'timeline', 'log']
 const ADMIN = ['instructions', 'templates', 'settings']
 const ALL_VIEWS = [...VIEWS, ...ADMIN]
 

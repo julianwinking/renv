@@ -154,8 +154,8 @@ export function Settings({ slug, project, onMutate }) {
         <div style={{ padding: '4px 16px 14px', display: 'grid', gap: 8, maxWidth: 480 }}>
           <input className="text" placeholder="title" value={title} onChange={(e) => setTitle(e.target.value)} />
           <select className="text" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="active">active</option>
-            <option value="archived">archived</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
           </select>
           {msg && <div style={{ color: msg.bad ? 'var(--bad)' : 'var(--ok)', fontSize: 12 }}>{msg.text}</div>}
           <div className="gnode-actions" style={{ marginTop: 0 }}>

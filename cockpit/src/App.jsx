@@ -9,6 +9,7 @@ import Findings from './views/Findings.jsx'
 import Timeline from './views/Timeline.jsx'
 import Plan from './views/Plan.jsx'
 import { Instructions, Templates, Settings } from './views/Admin.jsx'
+import { ErrorBoundary } from './ui.jsx'
 
 const I = {
   overview: <path d="M2 2h4.5v6.5H2zM8.5 2H13v4H8.5zM8.5 7.5H13V13H8.5zM2 10h4.5v3H2z" />,
@@ -383,6 +384,7 @@ export default function App() {
         </div>
 
         <div className={`content ${view === 'graph' ? 'full' : ''}`}>
+          <ErrorBoundary key={view + '|' + slug}>
           {!slug && <div className="loading">no project selected</div>}
           {slug && view === 'overview' && <Overview slug={slug} project={project} defs={defs} counts={counts} />}
           {slug && view === 'graph' && <GraphView slug={slug} defs={defs} onMutate={loadOverview} />}
@@ -395,6 +397,7 @@ export default function App() {
           {slug && view === 'instructions' && <Instructions slug={slug} />}
           {view === 'templates' && <Templates slug={slug} />}
           {slug && view === 'settings' && <Settings slug={slug} project={project} onMutate={loadOverview} />}
+          </ErrorBoundary>
         </div>
       </div>
     </div>

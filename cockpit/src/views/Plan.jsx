@@ -4,7 +4,7 @@
 // can see when what kind of progress actually happened.
 import React, { useEffect, useMemo, useState } from 'react'
 import { getPlan, addPlanItem, updatePlanItem, deletePlanItem, getProject } from '../api.js'
-import { Stamp, Section, Empty, Confirm, timeAgo } from '../ui.jsx'
+import { asArray, Stamp, Section, Empty, Confirm, timeAgo } from '../ui.jsx'
 
 const DAY = 86400000
 const ZOOMS = [10, 18, 26, 42, 64]              // px per day
@@ -125,7 +125,7 @@ export default function Plan({ slug }) {
 
   const today = iso(new Date())
 
-  const load = () => getPlan(slug).then(setItems)
+  const load = () => getPlan(slug).then((i) => setItems(asArray(i)))
   useEffect(() => {
     setItems(null); setSel(null); setErr(null)
     load()

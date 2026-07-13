@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getProject, getRuns } from '../api.js'
-import { Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
+import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
 
 function Run({ run, defs }) {
   const where = run.remote
@@ -46,7 +46,7 @@ export default function Experiments({ slug, defs, focus }) {
           document.getElementById(`exp-${focus}`)?.scrollIntoView({ block: 'center' }))
       }
     })
-    getRuns(slug).then((r) => live && setRuns(r))
+    getRuns(slug).then((r) => live && setRuns(asArray(r)))
     return () => { live = false }
   }, [slug, focus])
 

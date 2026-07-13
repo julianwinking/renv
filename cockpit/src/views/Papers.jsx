@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getPapers, getPaperUsage } from '../api.js'
-import { Stamp, Section, Empty, Mono } from '../ui.jsx'
+import { asArray, Stamp, Section, Empty, Mono } from '../ui.jsx'
 
 export default function Papers({ focus }) {
   const [papers, setPapers] = useState(null)
@@ -11,7 +11,7 @@ export default function Papers({ focus }) {
 
   useEffect(() => {
     let live = true
-    getPapers().then((p) => live && setPapers(p))
+    getPapers().then((p) => live && setPapers(asArray(p)))
     return () => { live = false }
   }, [])
 

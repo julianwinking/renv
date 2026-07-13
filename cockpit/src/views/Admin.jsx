@@ -9,7 +9,7 @@ import {
   getConfigFiles, getConfigFile, saveConfigFile, getMetricDefs, defineMetric,
   saveProjectSettings, getRubric, getRemotes, addRemote,
 } from '../api.js'
-import { Stamp, Section, Empty, Mono } from '../ui.jsx'
+import { asArray, Stamp, Section, Empty, Mono } from '../ui.jsx'
 
 function FileEditor({ scopes, slug, banner }) {
   const [files, setFiles] = useState(null)
@@ -22,7 +22,7 @@ function FileEditor({ scopes, slug, banner }) {
     let live = true
     getConfigFiles(slug).then((all) => {
       if (!live) return
-      const mine = all.filter((f) => scopes.includes(f.scope))
+      const mine = asArray(all).filter((f) => scopes.includes(f.scope))
       setFiles(mine)
       setSel((cur) => cur || mine[0] || null)
     })
@@ -132,7 +132,7 @@ export function Settings({ slug, project, onMutate }) {
   useEffect(() => { setTitle(project?.title || ''); setStatus(project?.status || 'active') }, [project])
   useEffect(() => {
     getMetricDefs().then(setDefs)
-    getRemotes().then(setRemotes)
+    getRemotes().then((r) => setRemotes(asArray(r)))
   }, [])
 
   const saveRemote = async () => {

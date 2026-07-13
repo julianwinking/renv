@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getProject, addNote, addLog, editLog, editNote, getSources } from '../api.js'
-import { Stamp, Section, Empty, timeAgo } from '../ui.jsx'
+import { asArray, Stamp, Section, Empty, timeAgo } from '../ui.jsx'
 
 // 'result' is deliberately absent: measured numbers enter via runs (§0).
 const COMPOSER_TYPES = ['note', 'decision', 'hypothesis', 'observation', 'question', 'feedback', 'blocker']
@@ -21,7 +21,7 @@ export default function Timeline({ slug, focus }) {
 
   const load = () => getProject(slug).then(setData)
   useEffect(() => { setData(null); setAnswering(null); load() }, [slug])
-  useEffect(() => { getSources().then(setSources) }, [slug])
+  useEffect(() => { getSources().then((s) => setSources(asArray(s))) }, [slug])
   useEffect(() => {   // deep link from the graph: scroll to one entry
     if (focus && data) {
       requestAnimationFrame(() =>

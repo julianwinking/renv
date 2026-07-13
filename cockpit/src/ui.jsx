@@ -82,6 +82,42 @@ export function timeAgo(iso) {
   return new Date(iso).toISOString().slice(0, 10)
 }
 
+// A crashed view must never white the whole app: render the error where the
+// view would be, keep the shell alive. Keyed per view so navigation resets it.
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="card" style={{ margin: 22, padding: '14px 16px' }}>
+        <div className="eyebrow" style={{ margin: '0 0 8px' }}>this view crashed</div>
+        <div className="mono" style={{ color: 'var(--bad)', fontSize: 12 }}>
+          {String(this.state.error)}
+        </div>
+        <div className="muted" style={{ marginTop: 8 }}>
+          Often a stale server after an update — it exits when idle and the next
+          request starts the new one. Try again, or restart with <span className="mono">reref web</span>.
+        </div>
+        <div className="gnode-actions">
+          <button className="btn" onClick={() => location.reload()}>Reload</button>
+        </div>
+      </div>
+    )
+  }
+}
+
+// Normalize API list responses: a stale/erroring server returns {error: …} —
+// render that as empty, never crash a .map on it.
+export const asArray = (x) => (Array.isArray(x) ? x : [])
+
 // Minimal reusable confirm dialog — for actions worth a second look
 // (e.g. moving a deadline). Renders nothing when closed.
 export function Confirm({ open, title, body, confirmLabel = 'Confirm', danger, onConfirm, onCancel }) {

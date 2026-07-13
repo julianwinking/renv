@@ -457,6 +457,14 @@ def connect(root=".", *, read_only: bool = False) -> sqlite3.Connection:
     client can run arbitrary write SQL against the ground truth.
     """
     path = db_path(root)
+    if not path.exists():
+        # refuse to create a NEW store inside an existing env (e.g. running
+        # from cockpit/): the silent empty-DB-in-a-subdir failure mode.
+        for anc in Path(root).resolve().parents:
+            if (anc / DB_DIRNAME).is_dir():
+                raise RuntimeError(
+                    f"refusing to create {path} — an env already exists at {anc}; "
+                    "run from the env root or pass --corpus")
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row

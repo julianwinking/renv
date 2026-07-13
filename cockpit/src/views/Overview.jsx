@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getProject, getRuns, getPlan } from '../api.js'
-import { Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
+import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
 
 export default function Overview({ slug, project, defs, counts }) {
   const [data, setData] = useState(null)
@@ -10,8 +10,8 @@ export default function Overview({ slug, project, defs, counts }) {
   useEffect(() => {
     let live = true
     getProject(slug).then((d) => live && setData(d))
-    getRuns(slug).then((r) => live && setRuns(r))
-    getPlan(slug).then((p) => live && setPlan(p))
+    getRuns(slug).then((r) => live && setRuns(asArray(r)))
+    getPlan(slug).then((p) => live && setPlan(asArray(p)))
     return () => { live = false }
   }, [slug])
 

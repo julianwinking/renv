@@ -36,13 +36,14 @@ export default function Conferences({ slug }) {
     })
   }, [])
 
+  const syncPlanned = () => getPlan(slug).then((p) => {
+    const map = {}
+    for (const it of asArray(p)) map[it.title] = it.id
+    setPlanned(map)
+  })
+
   useEffect(() => {   // which conferences are already adopted into the plan?
-    if (!slug) return
-    getPlan(slug).then((p) => {
-      const map = {}
-      for (const it of asArray(p)) map[it.title] = it.id
-      setPlanned(map)
-    })
+    if (slug) syncPlanned()
   }, [slug])
 
   useEffect(() => { localStorage.setItem('reref-conf-subs', JSON.stringify(subs)) }, [subs])
@@ -66,14 +67,13 @@ export default function Conferences({ slug }) {
     const pid = planned[key]
     if (pid) {
       await deletePlanItem(pid)
-      setPlanned((m) => { const n = { ...m }; delete n[key]; return n })
-      return
+    } else {
+      await addPlanItem(slug, {
+        title: key, kind: 'deadline', due: (c.deadline || '').slice(0, 10),
+        note: c.link,
+      })
     }
-    const r = await addPlanItem(slug, {
-      title: key, kind: 'deadline', due: (c.deadline || '').slice(0, 10),
-      note: c.link,
-    })
-    if (!r.error) setPlanned((m) => ({ ...m, [key]: r.id }))
+    syncPlanned()   // the store decides — never trust optimistic local state
   }
 
   if (err) {

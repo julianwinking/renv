@@ -35,10 +35,6 @@ export default function Overview({ slug, project, defs, counts }) {
     <>
       <div className="pagehead">
         <h1>{project?.title || slug}</h1>
-        <div className="sub">
-          {data.experiments.length} experiments · {runs.length} runs ·{' '}
-          {supported}/{claims.length} claims supported
-        </div>
       </div>
 
       <div className="stats">

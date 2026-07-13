@@ -379,12 +379,14 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/"):
                 con = db.connect(self.root)
                 try:
-                    return self._send(self._get_api(con, path))
+                    # no-store: browsers heuristically cache header-less JSON,
+                    # which resurrects deleted rows after a refresh
+                    return self._send(self._get_api(con, path), cache="no-store")
                 finally:
                     con.close()
             self._serve_app(path)
         except Exception as exc:
-            self._send({"error": f"{type(exc).__name__}: {exc}"}, 400)
+            self._send({"error": f"{type(exc).__name__}: {exc}"}, 400, cache="no-store")
 
     def _get_api(self, con, path):
         parts = path.strip("/").split("/")           # ['api', ...]
@@ -452,11 +454,11 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(n) or b"{}")
             con = db.connect(self.root)
             try:
-                self._send(self._post_api(con, path, data))
+                self._send(self._post_api(con, path, data), cache="no-store")
             finally:
                 con.close()
         except Exception as exc:
-            self._send({"error": f"{type(exc).__name__}: {exc}"}, 400)
+            self._send({"error": f"{type(exc).__name__}: {exc}"}, 400, cache="no-store")
 
     def _post_api(self, con, path, d):
         if path == "/api/finding/adjudicate":

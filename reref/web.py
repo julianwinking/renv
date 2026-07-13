@@ -171,6 +171,61 @@ def _overview(con):
             "invariants": {"clean": not violations, "violations": len(violations)}}
 
 
+def _health(con, root, slug):
+    """A few load-bearing project-health checks — deliberately NOT a metrics
+    wall: §0 ledger, the project's git repo, and export freshness. Each row is
+    actionable or it doesn't belong here."""
+    import subprocess
+    checks = []
+
+    v = logmod.check_invariants(con)
+    checks.append({"id": "ledger", "label": "§0 ledger",
+                   "status": "ok" if not v else "bad",
+                   "detail": "every result entry traces to a run" if not v
+                   else f"{len(v)} violation(s) — run `reref log check`"})
+
+    proot = Path(root) / "projects" / slug
+    if not (proot / ".git").exists():
+        checks.append({"id": "repo", "label": "GitHub repo", "status": "bad",
+                       "detail": f"no git repo — `git init` in projects/{slug}"})
+    else:
+        dirty = remotes = ""
+        try:
+            dirty = subprocess.run(["git", "-C", str(proot), "status", "--porcelain"],
+                                   capture_output=True, text=True, timeout=5).stdout.strip()
+            remotes = subprocess.run(["git", "-C", str(proot), "remote", "-v"],
+                                     capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:
+            pass
+        if not remotes:
+            st, detail = "warn", "repo exists, no remote — `git remote add origin <url>`"
+        elif dirty:
+            st, detail = "warn", f"{len(dirty.splitlines())} uncommitted change(s)"
+        else:
+            st, detail = "ok", "clean, remote linked"
+        checks.append({"id": "repo", "label": "GitHub repo", "status": st, "detail": detail})
+
+    dbp, wal = Path(root) / ".research" / "env.db", Path(root) / ".research" / "env.db-wal"
+    store_m = max((p.stat().st_mtime for p in (dbp, wal) if p.exists()), default=0)
+    exports = list((Path(root) / ".research" / "export").glob("*.jsonl"))
+    if not exports:
+        checks.append({"id": "export", "label": "Committed snapshot", "status": "warn",
+                       "detail": "no export yet — `reref export` writes the git-committed record"})
+    else:
+        exp_m = max(f.stat().st_mtime for f in exports)
+        if exp_m + 5 >= store_m:
+            checks.append({"id": "export", "label": "Committed snapshot", "status": "ok",
+                           "detail": "export is current with the store"})
+        else:
+            age = int((store_m - exp_m) / 60)
+            checks.append({"id": "export", "label": "Committed snapshot", "status": "warn",
+                           "detail": f"store changed ~{max(age, 1)} min after last export — `reref export`"})
+
+    order = {"bad": 0, "warn": 1, "ok": 2}
+    return {"checks": checks,
+            "status": min((c["status"] for c in checks), key=lambda s: order[s])}
+
+
 def _runs(con, slug):
     """All runs of a project (newest first) with params, dataset, and metrics —
     the raw material for the cockpit's runs ledger."""
@@ -338,6 +393,8 @@ class Handler(BaseHTTPRequestHandler):
             p = _config_path(self.root, con, q["scope"][0], q["name"][0],
                              (q.get("project", [None])[0]))
             return {"content": p.read_text(encoding="utf-8") if p.exists() else ""}
+        if parts[:2] == ["api", "health"] and len(parts) == 3:
+            return _health(con, self.root, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 4 and parts[3] == "runs":
             return _runs(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 3:

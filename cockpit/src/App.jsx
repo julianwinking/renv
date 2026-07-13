@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { getOverview, getMetricDefs, search, createProject } from './api.js'
+import { getOverview, getMetricDefs, search, createProject, getHealth } from './api.js'
 import Overview from './views/Overview.jsx'
 import GraphView from './views/GraphView.jsx'
 import Experiments from './views/Experiments.jsx'
@@ -53,6 +53,9 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('reref-sidebar') === 'collapsed')
   const [sideW, setSideW] = useState(() => Number(localStorage.getItem('reref-sidebar-w')) || 228)
   const [hits, setHits] = useState(null)
+  const [health, setHealth] = useState(null)
+  const [healthOpen, setHealthOpen] = useState(false)
+  const [hpos, setHpos] = useState({ top: 46, right: 12 })
   const [switcher, setSwitcher] = useState(false)   // false | 'list' | 'create'
   const [spos, setSpos] = useState({ top: 130, left: 12 })  // anchored under the switcher
   const [pfilter, setPfilter] = useState('')
@@ -113,6 +116,10 @@ export default function App() {
     getMetricDefs().then(setDefs)
   }, [loadOverview])
 
+  useEffect(() => {
+    if (slug) getHealth(slug).then(setHealth)
+  }, [slug, view])
+
   const debounceRef = useRef(null)
   const runSearch = async (q) => {
     if (!q.trim()) { setHits(null); return }
@@ -139,7 +146,6 @@ export default function App() {
 
   const project = overview?.projects.find((p) => p.slug === slug)
   const counts = overview?.counts || {}
-  const inv = overview?.invariants
   const openFindings = project?.open_findings || 0
 
   const clampW = (w) => Math.min(400, Math.max(180, w))
@@ -283,7 +289,8 @@ export default function App() {
             </button>
           )}
           <h2>
-            {project ? project.slug : 'reref'} <span className="crumb">/ {view}</span>
+            {project ? project.slug : 'reref'}{' '}
+            <span className="crumb">/ {view.charAt(0).toUpperCase() + view.slice(1)}</span>
           </h2>
           <div className="searchbox">
             <input
@@ -309,12 +316,38 @@ export default function App() {
               </div>
             )}
           </div>
-          {inv && (
-            <span className={`ledger ${inv.clean ? '' : 'dirty'}`}
-                  title={inv.clean ? 'every result entry traces to a run' : `${inv.violations} §0 violation(s) — run reref log check`}>
-              <span className="lamp" />
-              §0 ledger {inv.clean ? 'clean' : `${inv.violations} violation${inv.violations > 1 ? 's' : ''}`}
-            </span>
+          {health && (
+            <button className="iconbtn" style={{ marginLeft: 'auto' }} title="Project health"
+                    onClick={async (e) => {
+                      const r = e.currentTarget.getBoundingClientRect()
+                      setHpos({ top: r.bottom + 6, right: window.innerWidth - r.right })
+                      setHealth(await getHealth(slug))
+                      setHealthOpen(!healthOpen)
+                    }}>
+              <span className={`lamp lamp-${health.status}`} />
+            </button>
+          )}
+          {healthOpen && (
+            <>
+              <div className="backdrop" onClick={() => setHealthOpen(false)} />
+              <div className="pdialog" style={{ top: hpos.top, left: 'auto', right: hpos.right, width: 330 }}>
+                <div className="find" style={{ padding: '9px 12px' }}>
+                  <span className="eyebrow" style={{ margin: 0 }}>project health</span>
+                  <span className="mono faint" style={{ marginLeft: 'auto', fontSize: 10.5 }}>{slug}</span>
+                </div>
+                <div className="list">
+                  {health.checks.map((c) => (
+                    <div key={c.id} className="item" style={{ cursor: 'default', alignItems: 'flex-start' }}>
+                      <span className={`lamp lamp-${c.status}`} style={{ marginTop: 5 }} />
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{c.label}</div>
+                        <div className="muted" style={{ fontSize: 11.5 }}>{c.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
           <button className="iconbtn" title="Toggle theme"
                   onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>

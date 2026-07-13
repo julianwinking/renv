@@ -192,12 +192,10 @@ aside {
 .search-hit .snippet { color: var(--muted); font-size: 12px; }
 .search-hit .snippet b { color: var(--accent); }
 
-.ledger {
-  display: flex; align-items: center; gap: 7px; margin-left: auto;
-  font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap;
-}
-.ledger .lamp { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
-.ledger.dirty .lamp { background: var(--bad); }
+.lamp { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; display: inline-block; }
+.lamp-ok { background: var(--ok); }
+.lamp-warn { background: var(--warn); }
+.lamp-bad { background: var(--bad); }
 .iconbtn {
   background: none; border: 0; border-radius: 7px; cursor: pointer;
   color: var(--muted); width: 28px; height: 28px; display: grid; place-items: center;
@@ -292,11 +290,17 @@ button.btn:hover { filter: brightness(1.06); }
 button.btn.ghost { background: none; color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
 button.btn.ghost:hover { color: var(--ink); border-color: var(--line-strong); }
 button.btn.danger { background: var(--bad-soft); color: var(--bad); }
-textarea, input.text {
+textarea, input.text, select.text {
   width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink);
   border-radius: 7px; padding: 7px 10px; font: inherit; resize: vertical;
 }
 textarea::placeholder, input.text::placeholder { color: var(--faint); }
+select.text {
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898f96' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+  padding-right: 30px;
+}
 
 .empty-state { padding: 18px 16px 14px; color: var(--muted); border-top: 1px solid var(--line); }
 .empty-state code {
@@ -391,7 +395,6 @@ textarea.fileedit {
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   padding: 14px; box-shadow: var(--shadow); display: grid; gap: 8px;
 }
-.gpanel select.text { appearance: auto; }
 .gmenu {
   position: fixed; z-index: 60; min-width: 150px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 9px;

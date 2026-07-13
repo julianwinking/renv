@@ -45,3 +45,4 @@ export const defineMetric = (def) => post('/api/metric_def', def)
 export const saveProjectSettings = (slug, settings) =>
   post('/api/project/settings', { slug, ...settings })
 export const getRubric = () => api('/api/rubric')
+export const getHealth = (slug) => api('/api/health/' + encodeURIComponent(slug))

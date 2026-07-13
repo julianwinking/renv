@@ -646,7 +646,8 @@ class Handler(BaseHTTPRequestHandler):
             return experiment.set_parent(con, d["project"], d["slug"], d.get("parent"))
         if path == "/api/experiment/update":
             return experiment.update_meta(con, d["project"], d["slug"],
-                                          title=d.get("title"), hypothesis=d.get("hypothesis"))
+                                          title=d.get("title"), hypothesis=d.get("hypothesis"),
+                                          new_slug=d.get("new_slug"))
         # graph gesture: experiment→claim becomes claim evidence via the
         # experiment's latest DONE run — §0: an edge needs a recorded run.
         if path == "/api/claim/link_experiment":

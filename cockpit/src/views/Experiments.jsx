@@ -46,6 +46,16 @@ export default function Experiments({ slug, defs, focus }) {
     load()
   }
 
+  const commitSlug = async (e) => {
+    const t = editText.trim()
+    if (t && t !== e.slug) {
+      const r = await editExperiment(slug, e.slug, { new_slug: t })
+      if (r && r.error) setErr(r.error)
+    }
+    setEditing(null)
+    load()
+  }
+
   const commitHyp = async (e) => {
     const t = editText.trim()
     if (t !== (e.hypothesis || '')) await editExperiment(slug, e.slug, { hypothesis: t })
@@ -102,11 +112,25 @@ export default function Experiments({ slug, defs, focus }) {
           return (
             <div key={e.id} id={`exp-${e.slug}`} className={focus === e.slug ? 'flash' : ''}>
               <div className="row" style={{ paddingLeft: 16 + depth(e) * 22 }}>
-                <button className="rowbtn" style={{ width: 'auto', display: 'flex', gap: 10, alignItems: 'baseline' }}
+                <button className="rowbtn" style={{ width: 'auto' }}
                         onClick={() => setOpen({ ...open, [e.id]: !isOpen })} title="Show runs">
                   <span className="faint mono">{isOpen ? '▾' : '▸'}</span>
-                  <Mono>{e.slug}</Mono>
                 </button>
+                {editing === `slug:${e.slug}` ? (
+                  <input className="inline-edit mono" autoFocus value={editText}
+                         size={Math.max(editText.length, 6)} style={{ fontSize: 13, width: 'auto' }}
+                         onChange={(ev) => setEditText(ev.target.value)}
+                         onBlur={() => commitSlug(e)}
+                         onKeyDown={(ev) => {
+                           if (ev.key === 'Enter') { ev.preventDefault(); commitSlug(e) }
+                           if (ev.key === 'Escape') setEditing(null)
+                         }} />
+                ) : (
+                  <span className="inline-target mono" title="Click to rename" style={{ flex: '0 0 auto' }}
+                        onClick={() => { setEditing(`slug:${e.slug}`); setEditText(e.slug) }}>
+                    {e.slug}
+                  </span>
+                )}
                 {editing === e.slug ? (
                   <textarea className="inline-edit" autoFocus value={editText}
                             onChange={(ev) => setEditText(ev.target.value)}

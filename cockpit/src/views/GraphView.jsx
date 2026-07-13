@@ -4,7 +4,7 @@ import {
   getGraph, addExperiment, addClaim, addLog, addNote,
   setExperimentParent, relateClaims, linkExperimentToClaim, saveLayout,
   editClaim, editLog, editNote, getConnections, addContextLink, linkCitationToClaim,
-  getRegions, addRegion, updateRegion,
+  getRegions, addRegion, updateRegion, editExperiment,
 } from '../api.js'
 import { toFlow } from '../layout.js'
 import { nodeTypes } from '../nodes.jsx'
@@ -179,7 +179,9 @@ export default function GraphView({ slug, defs, onMutate }) {
   const [menu, setMenu] = useState(null)             // {x, y}
   const [menuAt, setMenuAt] = useState(null)         // where the add panel should open
   const [toast, setToast] = useState(null)
-  const [legendOpen, setLegendOpen] = useState(() => localStorage.getItem('reref-legend') !== 'closed')
+  const [showRegions, setShowRegions] = useState(() => localStorage.getItem('reref-regions') !== 'off')
+  const showRegionsRef = React.useRef(showRegions)
+  showRegionsRef.current = showRegions
   const [conns, setConns] = useState([])            // the connection registry
   const flowRef = React.useRef(null)
 
@@ -200,6 +202,7 @@ export default function GraphView({ slug, defs, onMutate }) {
       if (k === 'claim') n.data.onSaveText = (t) => editClaim(Number(id), t).then(after)
       else if (k === 'log') n.data.onSaveText = (t) => editLog(Number(id), t).then(after)
       else if (k === 'note') n.data.onSaveText = (t) => editNote(Number(id), t).then(after)
+      else if (k === 'exp') n.data.onSaveText = (t) => editExperiment(slug, n.data.label, { title: t }).then(after)
       if (n.type === 'finding') {
         n.data.id = Number(id)
         n.data.onDone = after
@@ -209,7 +212,7 @@ export default function GraphView({ slug, defs, onMutate }) {
     const regionNodes = (Array.isArray(regions) ? regions : []).map((r) => ({
       id: `region:${r.id}`, type: 'region', position: { x: r.x, y: r.y },
       style: { width: r.w, height: r.h }, zIndex: 0, draggable: true,
-      dragHandle: '.region-bar', selectable: false,
+      dragHandle: '.region-bar', selectable: false, hidden: !showRegionsRef.current,
       data: { label: r.label, color: r.color, onChange: after },
     }))
     setNodes([...regionNodes, ...flow.nodes])
@@ -221,6 +224,12 @@ export default function GraphView({ slug, defs, onMutate }) {
   }, [slug, defs, onMutate, setNodes, setEdges])
 
   useEffect(() => { load() }, [load])
+
+  // toggle region visibility without a full reload
+  useEffect(() => {
+    setNodes((ns) => ns.map((n) =>
+      n.id.startsWith('region:') ? { ...n, hidden: !showRegions } : n))
+  }, [showRegions, setNodes])
 
   const say = (msg, bad) => {
     setToast({ msg, bad })
@@ -335,10 +344,6 @@ export default function GraphView({ slug, defs, onMutate }) {
         <Controls showInteractive={false} />
       </ReactFlow>
 
-      <div className="gtools">
-        <button className="gtool" onClick={addRegionAtCenter} title="Add a region frame">+ Region</button>
-      </div>
-
       {adding && (
         <AddPanel kind={adding} slug={slug} experiments={expSlugs} at={menuAt}
                   onClose={() => setAdding(null)} onDone={addDone} />
@@ -363,24 +368,16 @@ export default function GraphView({ slug, defs, onMutate }) {
         </div>
       )}
 
-      <div className={`glegend ${legendOpen ? '' : 'closed'}`}>
-        <button className="glegend-head" onClick={() => {
-          const next = !legendOpen
-          setLegendOpen(next)
-          localStorage.setItem('reref-legend', next ? 'open' : 'closed')
-        }}>
-          <span className="eyebrow" style={{ margin: 0 }}>legend</span>
-          <span className="glegend-caret">{legendOpen ? '▾' : '▴'}</span>
+      <div className="glegend closed">
+        <button className="glegend-head" title="Show or hide region frames"
+                onClick={() => {
+                  const next = !showRegions
+                  setShowRegions(next)
+                  localStorage.setItem('reref-regions', next ? 'on' : 'off')
+                }}>
+          <span className="lamp" style={{ background: showRegions ? 'var(--accent)' : 'var(--line-strong)' }} />
+          <span className="eyebrow" style={{ margin: 0 }}>Regions</span>
         </button>
-        {legendOpen && (
-          <>
-            {KINDS.map(([k, c]) => (
-              <div className="li" key={k}><span className="sw" style={{ background: c }} />{k[0].toUpperCase() + k.slice(1)}</div>
-            ))}
-            <div className="li faint" style={{ marginTop: 4 }}>Drag node→node connects · double-click opens</div>
-            <div className="li faint">Right-click adds · positions are saved</div>
-          </>
-        )}
       </div>
 
       {toast && (

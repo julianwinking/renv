@@ -129,14 +129,32 @@ def set_status(con: sqlite3.Connection, project: str, slug: str, status: str) ->
     con.commit()
 
 
+import re as _re
+_SLUG_RE = _re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
 def update_meta(con: sqlite3.Connection, project: str, slug: str, *,
-                title: str | None = None, hypothesis: str | None = None) -> dict:
-    """Edit an experiment's title/hypothesis (its identity slug is immutable)."""
+                title: str | None = None, hypothesis: str | None = None,
+                new_slug: str | None = None) -> dict:
+    """Edit an experiment's title/hypothesis, and optionally rename its slug.
+
+    Renaming is safe: runs and log entries link by the integer id, not the
+    slug — the slug is a human label (must stay unique in the project). Only
+    on-disk run directories keep their old-slug names, which is cosmetic.
+    """
     pid = project_id(con, project)
     row = con.execute("SELECT id FROM experiment WHERE project_id=? AND slug=?",
                       (pid, slug)).fetchone()
     if not row:
         raise KeyError(f"no experiment {slug!r} in {project!r}")
+    if new_slug is not None and new_slug != slug:
+        if not _SLUG_RE.match(new_slug):
+            raise ValueError("slug must be lowercase letters/digits/-/_ , e.g. 004-sweep")
+        if con.execute("SELECT 1 FROM experiment WHERE project_id=? AND slug=?",
+                       (pid, new_slug)).fetchone():
+            raise ValueError(f"experiment {new_slug!r} already exists in {project!r}")
+        con.execute("UPDATE experiment SET slug=? WHERE id=?", (new_slug, row["id"]))
+        slug = new_slug
     if title is not None:
         con.execute("UPDATE experiment SET title=? WHERE id=?", (title, row["id"]))
     if hypothesis is not None:

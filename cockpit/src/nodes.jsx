@@ -60,7 +60,7 @@ function Shell({ kind, children }) {
   )
 }
 
-// Double-click a node's text to rename it inline (saves to the store).
+// Click a node's text to rename it inline (single click, no layout jump).
 // Falls back to a plain span when the node kind has no editor.
 function EditableText({ value, onSave, className, style, clamp = 3 }) {
   const [editing, setEditing] = useState(false)
@@ -69,7 +69,8 @@ function EditableText({ value, onSave, className, style, clamp = 3 }) {
   if (editing) {
     return (
       <textarea
-        className="nodrag gnode-edit" autoFocus value={text}
+        className={`nodrag gnode-edit ${className}`} autoFocus value={text}
+        style={style}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => { setEditing(false); if (text.trim() && text !== value) onSave(text.trim()) }}
         onKeyDown={(e) => {
@@ -80,9 +81,9 @@ function EditableText({ value, onSave, className, style, clamp = 3 }) {
     )
   }
   return (
-    <div className={className} title="Double-click to edit"
+    <div className={className} title="Click to edit"
          style={{ ...style, WebkitLineClamp: clamp, cursor: 'text' }}
-         onDoubleClick={(e) => { e.stopPropagation(); setText(value); setEditing(true) }}>
+         onClick={(e) => { e.stopPropagation(); setText(value); setEditing(true) }}>
       {value}
     </div>
   )
@@ -97,7 +98,7 @@ export function ExperimentNode({ data }) {
         <b className="mono">{data.label}</b>
         <span style={{ marginLeft: 'auto' }}><Stamp value={data.status} /></span>
       </div>
-      <div className="gnode-sub">{data.title}</div>
+      <EditableText className="gnode-sub" value={data.title} onSave={data.onSaveText} clamp={2} />
       <Metrics defs={data.defs} metrics={data.metrics} />
       {open && data.hypothesis && (
         <div className="gnode-sub" style={{ WebkitLineClamp: 6, marginTop: 6 }}>

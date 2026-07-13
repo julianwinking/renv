@@ -398,7 +398,15 @@ select.text {
 .gnode-actions { margin-top: 8px; display: flex; gap: 6px; }
 .gnode-actions button { font-size: 11px; padding: 3px 9px; }
 .gnode textarea { margin-top: 7px; font-size: 11.5px; min-height: 46px; }
-.gnode-edit { width: 100%; font: inherit; font-size: 11.5px; line-height: 1.45; min-height: 44px; margin-top: 3px; }
+/* inline editor matches the display .gnode-sub EXACTLY (same font-size, color,
+   line-height) so clicking to edit changes nothing but the caret */
+textarea.gnode-edit {
+  display: block; width: 100%;
+  font-family: var(--sans); font-size: 11.5px; line-height: 1.45; color: var(--muted);
+  background: none; border: 0; padding: 0; margin: 3px 0 0;
+  resize: none; field-sizing: content; outline: none; min-height: 0;
+  -webkit-line-clamp: unset;
+}
 /* graph top-right tools (region add) */
 .gtools { position: absolute; top: 14px; right: 14px; z-index: 6; display: flex; gap: 8px; }
 

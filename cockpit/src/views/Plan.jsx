@@ -39,6 +39,34 @@ export default function Plan({ slug }) {
   const [err, setErr] = useState(null)
   const [zoom, setZoom] = useState(2)              // index into ZOOMS
   const PX = ZOOMS[zoom]
+  const chartRef = React.useRef(null)
+  const zoomRef = React.useRef(zoom)
+  zoomRef.current = zoom
+
+  // trackpad pinch (arrives as ctrl+wheel) zooms, anchored on the cursor date
+  useEffect(() => {
+    const el = chartRef.current
+    if (!el) return
+    let acc = 0
+    const onWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      acc += e.deltaY
+      if (Math.abs(acc) < 20) return
+      const dir = acc > 0 ? -1 : 1
+      acc = 0
+      const z = zoomRef.current
+      const nz = Math.min(ZOOMS.length - 1, Math.max(0, z + dir))
+      if (nz === z) return
+      const rect = el.getBoundingClientRect()
+      const cx = e.clientX - rect.left
+      const days = (el.scrollLeft + cx) / ZOOMS[z]
+      setZoom(nz)
+      requestAnimationFrame(() => { el.scrollLeft = days * ZOOMS[nz] - cx })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [items === null])
   const [preview, setPreview] = useState(null)     // live dates while dragging
   const [confirm, setConfirm] = useState(null)     // pending deadline move
   const justDragged = React.useRef(false)
@@ -132,12 +160,19 @@ export default function Plan({ slug }) {
   const x = (dateStr) => ((parse(dateStr) - range.min) / DAY) * PX
   const width = range.days * PX
 
-  // month labels across the axis
+  // axis: months always; finer ticks appear as the zoom deepens
   const months = []
+  const ticks = []
   for (let d = new Date(range.min); d < range.max; d = addDays(d, 1)) {
+    const left = ((d - range.min) / DAY) * PX
     if (d.getUTCDate() === 1 || +d === +range.min) {
-      months.push({ left: ((d - range.min) / DAY) * PX,
-                    label: d.toLocaleDateString('en', { month: 'short', year: 'numeric', timeZone: 'UTC' }) })
+      months.push({ left, label: d.toLocaleDateString('en', { month: 'short', year: 'numeric', timeZone: 'UTC' }) })
+    }
+    const dow = d.getUTCDay()
+    if (PX >= 42) {                                  // daily numbers, weekends faint
+      ticks.push({ left, label: String(d.getUTCDate()), faint: dow === 0 || dow === 6 })
+    } else if (PX >= 18 && dow === 1) {              // Mondays with the date
+      ticks.push({ left, label: `${d.getUTCDate()}.${d.getUTCMonth() + 1}`, faint: false })
     }
   }
 
@@ -274,15 +309,19 @@ export default function Plan({ slug }) {
               {showActivity && activity && <div className="gantt-label muted" style={{ cursor: 'default' }}>activity</div>}
             </div>
 
-            <div className="gantt-chart">
+            <div className="gantt-chart" ref={chartRef}>
               <div style={{ width, position: 'relative' }}>
                 <div className="gantt-head" style={{ width }}>
                   {months.map((m, i) => (
                     <span key={i} className="gantt-month" style={{ left: m.left }}>{m.label}</span>
                   ))}
+                  {ticks.map((t, i) => (
+                    <span key={`t${i}`} className={`gantt-tick ${t.faint ? 'faint' : ''}`}
+                          style={{ left: t.left }}>{t.label}</span>
+                  ))}
                 </div>
                 <div className="gantt-body"
-                     style={{ width, backgroundSize: `${PX * 7}px 100%` }}>
+                     style={{ width, backgroundSize: `${PX >= 42 ? PX : PX * 7}px 100%` }}>
                   <div className="gantt-today" style={{ left: x(today) + PX / 2 }} title={`today · ${today}`} />
                   {items.map((it) => {
                     const state = itemState(it, today)
@@ -309,7 +348,7 @@ export default function Plan({ slug }) {
                                   onMouseDown={(e) => beginDrag(e, it, 'due')} />
                           </div>
                         )}
-                        {(it.kind !== 'phase' || it.end_deadline) && (
+                        {(it.kind !== 'phase' || !!it.end_deadline) && (
                           <button
                             className={`gantt-ms bar-${state} ${dl && !it.prepared && it.status !== 'done' ? 'ms-unprepared' : ''}`}
                             style={{ left: x(disp.due) + PX / 2 - 6 }}

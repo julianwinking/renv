@@ -109,7 +109,7 @@ function AddPanel({ kind, slug, onClose, onDone, experiments, at }) {
 // the list of allowed relation options (from /api/connections). The user picks
 // one; dispatch() routes it to the right store write by the option's mode.
 function ConnectPanel({ pending, slug, onClose, onDone }) {
-  const { source, target, options } = pending
+  const { source, target, options, at } = pending
   const [choice, setChoice] = useState(options[0].value)
   const [note, setNote] = useState('')
   const [err, setErr] = useState(null)
@@ -139,8 +139,15 @@ function ConnectPanel({ pending, slug, onClose, onDone }) {
     onDone()
   }
 
+  // center the ~280px panel on the midpoint, clamped to the viewport
+  const style = at ? {
+    left: Math.max(12, Math.min(at.x - 150, window.innerWidth - 312)),
+    top: Math.max(12, Math.min(at.y - 90, window.innerHeight - 240)),
+    right: 'auto',
+  } : undefined
+
   return (
-    <div className="gpanel">
+    <div className="gpanel" style={style}>
       <div className="eyebrow" style={{ margin: '0 0 8px' }}>{srcKind} → {tgtKind}</div>
       {options.length > 1 ? (
         <select className="text" value={choice} onChange={(e) => setChoice(e.target.value)}>
@@ -228,7 +235,18 @@ export default function GraphView({ slug, defs, onMutate }) {
       say(`A ${src.type} → ${tgt.type} connection has no meaning in the store`, true)
       return
     }
-    setPendingEdge({ source: src, target: tgt, options })
+    // open the panel centered between the two nodes (screen space)
+    let at = null
+    const inst = flowRef.current
+    if (inst?.flowToScreenPosition) {
+      const c = (n) => ({
+        x: n.position.x + (n.measured?.width || n.width || 220) / 2,
+        y: n.position.y + (n.measured?.height || n.height || 90) / 2,
+      })
+      const a = c(src), b = c(tgt)
+      at = inst.flowToScreenPosition({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+    }
+    setPendingEdge({ source: src, target: tgt, options, at })
   }, [nodes, conns])
 
   // Double-click opens the entity's page (hash deep-link into its view).

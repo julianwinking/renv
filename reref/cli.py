@@ -403,7 +403,7 @@ def cmd_plan_add(args):
     try:
         it = plan.add_item(con, args.project, args.title, due=args.due,
                            kind=kind, start=args.start, note=args.note,
-                           end_deadline=args.end_deadline)
+                           end_deadline=args.end_deadline, parent_id=args.parent)
     except (ValueError, KeyError) as exc:
         sys.exit(f"! {exc}")
     span = f"{it['start']} → {it['due']}" if it["start"] else it["due"]
@@ -990,6 +990,8 @@ def main(argv=None):
                     help="a single-date DEADLINE (can be marked prepared)")
     pa.add_argument("--end-deadline", action="store_true",
                     help="this phase ends in a deadline")
+    pa.add_argument("--parent", type=int, default=None,
+                    help="id of the phase this is a sub-item of")
     pa.add_argument("--note", default=None)
     pa.set_defaults(func=cmd_plan_add)
     pll = ppl.add_parser("list", help="the plan, date-ordered")

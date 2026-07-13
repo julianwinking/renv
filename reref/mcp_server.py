@@ -311,7 +311,8 @@ def h_add_plan_item(root, a):
                          kind=a.get("kind", "phase"), start=a.get("start"),
                          note=a.get("note"),
                          end_deadline=bool(a.get("end_deadline")),
-                         prepared=bool(a.get("prepared")))
+                         prepared=bool(a.get("prepared")),
+                         parent_id=a.get("parent_id"))
 
 
 def h_list_plan(root, a):
@@ -499,6 +500,7 @@ TOOLS = [
                           "kind": {"type": "string", "enum": ["phase", "milestone", "deadline"]},
                           "end_deadline": {"type": "boolean"},
                           "prepared": {"type": "boolean"},
+                          "parent_id": _I,
                           "note": _S},
                          ["project", "title", "due"]), "handler": h_add_plan_item},
     {"name": "list_plan", "description": "The project plan (phases + deadlines), date-ordered — check this to know what is due when.",

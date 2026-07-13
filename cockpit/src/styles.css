@@ -405,7 +405,7 @@ select.text {
 .gtool {
   display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
-  box-shadow: var(--shadow); cursor: pointer; font-family: var(--mono);
+  cursor: pointer; font-family: var(--mono);
   font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--muted);
 }
@@ -473,6 +473,8 @@ select.text {
 /* unprepared deadlines are unmistakably yellow, not a hollow outline */
 .gantt-ms.ms-unprepared { background: var(--warn-dot); border-color: var(--warn); }
 .gantt-row.tall, .gantt-label.tall { height: 68px; }
+.gantt-caret { color: var(--faint); font-size: 10px; cursor: pointer; margin-right: -3px; }
+.gantt-caret:hover { color: var(--ink); }
 .gantt-label.add { color: var(--faint); }
 .gantt-label.add:hover { color: var(--accent); }
 .gantt-row.add { cursor: pointer; }

@@ -428,9 +428,15 @@ CREATE TABLE remote (
 );
 """
 
+# v14: plan sub-items — a phase can contain child items (steps, sub-phases);
+# deleting the phase cascades. One level of nesting is the intent.
+_SCHEMA_V14 = """
+ALTER TABLE plan_item ADD COLUMN parent_id INTEGER REFERENCES plan_item(id) ON DELETE CASCADE;
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
               _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
-              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13]
+              _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13, _SCHEMA_V14]
 
 
 # --- time & hashing ----------------------------------------------------------

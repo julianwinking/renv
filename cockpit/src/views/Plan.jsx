@@ -36,6 +36,7 @@ export default function Plan({ slug }) {
   const [draft, setDraft] = useState(null)         // new-item form
   const [sel, setSel] = useState(null)             // item being edited
   const [err, setErr] = useState(null)
+  const [collapsed, setCollapsed] = useState({})   // phase id → children hidden
   const [zoom, setZoom] = useState(2)              // index into ZOOMS
   const PX = ZOOMS[zoom]
   const [labelW, setLabelW] = useState(() =>
@@ -190,6 +191,16 @@ export default function Plan({ slug }) {
   const x = (dateStr) => ((parse(dateStr) - range.min) / DAY) * PX
   const width = range.days * PX
 
+  // one level of nesting: phases can contain sub-items, rows collapse
+  const visible = []
+  for (const r of items.filter((i) => !i.parent_id)) {
+    const kids = items.filter((i) => i.parent_id === r.id)
+    visible.push({ ...r, _kids: kids.length })
+    if (kids.length && !collapsed[r.id]) {
+      visible.push(...kids.map((k) => ({ ...k, _sub: true })))
+    }
+  }
+
   // axis: months always; finer ticks appear as the zoom deepens
   const months = []
   const ticks = []
@@ -212,6 +223,7 @@ export default function Plan({ slug }) {
       prepared: draft.kind === 'deadline' || (draft.kind === 'phase' && draft.end_deadline)
         ? (draft.prepared ? 1 : 0) : 0,
       end_deadline: draft.kind === 'phase' && draft.end_deadline ? 1 : 0,
+      ...(!draft.id && draft.parent_id ? { parent_id: Number(draft.parent_id) } : {}),
     }
     const r = draft.id
       ? await updatePlanItem(draft.id, { title: draft.title, start: draft.kind === 'phase' ? draft.start || null : null, due: draft.due, note: draft.note, ...extras })
@@ -260,6 +272,15 @@ export default function Plan({ slug }) {
           already prepared for it
         </label>
       )}
+      {!draft.id && (
+        <select className="text" value={draft.parent_id || ''}
+                onChange={(e) => setDraft({ ...draft, parent_id: e.target.value || null })}>
+          <option value="">top-level item</option>
+          {items.filter((i) => i.kind === 'phase' && !i.parent_id).map((p) => (
+            <option key={p.id} value={p.id}>sub-item of {p.title}</option>
+          ))}
+        </select>
+      )}
       <input className="text" placeholder="note (optional)" value={draft.note || ''}
              onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
       {err && <div style={{ color: 'var(--bad)', fontSize: 12 }}>{err}</div>}
@@ -306,8 +327,19 @@ export default function Plan({ slug }) {
             <div className="gantt-labels" style={{ width: labelW }}>
               <div className="side-resize" onMouseDown={startLabelResize} title="Drag to resize" />
               <div className="gantt-head" />
-              {items.map((it) => (
-                <button key={it.id} className="gantt-label rowbtn" onClick={() => setDraft({ ...it })}>
+              {visible.map((it) => (
+                <button key={it.id} className="gantt-label rowbtn"
+                        style={it._sub ? { paddingLeft: 30 } : null}
+                        onClick={() => setDraft({ ...it })}>
+                  {it._kids > 0 && (
+                    <span className="gantt-caret"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCollapsed((c) => ({ ...c, [it.id]: !c[it.id] }))
+                          }}>
+                      {collapsed[it.id] ? '▸' : '▾'}
+                    </span>
+                  )}
                   <span className="gantt-swatch" style={{ background: TONE_COLOR[itemState(it, today)] }} />
                   <span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.title}
@@ -339,7 +371,7 @@ export default function Plan({ slug }) {
                 <div className="gantt-body"
                      style={{ width, backgroundSize: `${PX >= 42 ? PX : PX * 7}px 100%` }}>
                   <div className="gantt-today" style={{ left: x(today) + PX / 2 }} title={`today · ${today}`} />
-                  {items.map((it) => {
+                  {visible.map((it) => {
                     const state = itemState(it, today)
                     const dl = it.kind === 'deadline' || it.end_deadline
                     const prep = dl ? (it.prepared ? '\nprepared ✓' : '\nNOT prepared') : ''

@@ -476,7 +476,8 @@ class Handler(BaseHTTPRequestHandler):
                                     kind=d.get("kind", "phase"),
                                     start=d.get("start"), note=d.get("note"),
                                     end_deadline=bool(d.get("end_deadline")),
-                                    prepared=bool(d.get("prepared")))
+                                    prepared=bool(d.get("prepared")),
+                                    parent_id=d.get("parent_id"))
         if path == "/api/plan/update":
             from . import plan as planmod
             fields = {k: d[k] for k in ("title", "start", "due", "status", "note",

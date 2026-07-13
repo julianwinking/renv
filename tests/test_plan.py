@@ -43,6 +43,23 @@ def test_deadlines_and_prepared(tmp_path):
         plan.add_item(con, "p", "x", due="2026-08-01", kind="milestone", prepared=True)
 
 
+def test_sub_items_nest_one_level_and_cascade(tmp_path):
+    con = _con(tmp_path)
+    ph = plan.add_item(con, "p", "Parent phase", due="2026-08-10", start="2026-08-01")
+    sub = plan.add_item(con, "p", "Step 1", due="2026-08-03", start="2026-08-01",
+                        parent_id=ph["id"])
+    assert sub["parent_id"] == ph["id"]
+    ms = plan.add_item(con, "p", "MS", due="2026-08-05", kind="milestone")
+    with pytest.raises(ValueError):   # only phases can contain sub-items
+        plan.add_item(con, "p", "x", due="2026-08-05", parent_id=ms["id"])
+    with pytest.raises(ValueError):   # one level only
+        plan.add_item(con, "p", "x", due="2026-08-02", parent_id=sub["id"])
+    with pytest.raises(KeyError):     # parent must exist
+        plan.add_item(con, "p", "x", due="2026-08-02", parent_id=999)
+    plan.delete_item(con, ph["id"])   # deleting the phase cascades to sub-items
+    assert all(i["id"] != sub["id"] for i in plan.list_items(con, "p"))
+
+
 def test_validation(tmp_path):
     con = _con(tmp_path)
     with pytest.raises(ValueError):   # bad date format

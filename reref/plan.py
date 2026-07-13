@@ -30,7 +30,7 @@ def _check_date(value: str | None, field: str, *, required: bool = False) -> Non
 def add_item(con: sqlite3.Connection, project: str, title: str, *,
              due: str, kind: str = "phase", start: str | None = None,
              note: str | None = None, end_deadline: bool = False,
-             prepared: bool = False) -> dict:
+             prepared: bool = False, parent_id: int | None = None) -> dict:
     if kind not in ("phase", "milestone", "deadline"):
         raise ValueError(f"kind must be phase|milestone|deadline, got {kind!r}")
     if not title.strip():
@@ -45,11 +45,21 @@ def add_item(con: sqlite3.Connection, project: str, title: str, *,
     if prepared and not (kind == "deadline" or end_deadline):
         raise ValueError("prepared only applies to deadlines (standalone or a phase's end)")
     pid = project_id(con, project)
+    if parent_id is not None:
+        prow = con.execute("SELECT * FROM plan_item WHERE id=?", (parent_id,)).fetchone()
+        if not prow:
+            raise KeyError(f"no plan item #{parent_id}")
+        if prow["project_id"] != pid:
+            raise ValueError(f"plan item #{parent_id} belongs to another project")
+        if prow["kind"] != "phase":
+            raise ValueError("only phases can contain sub-items")
+        if prow["parent_id"]:
+            raise ValueError("sub-items nest one level only")
     cur = con.execute(
         "INSERT INTO plan_item (project_id, title, kind, start, due, note, "
-        "end_deadline, prepared, created) VALUES (?,?,?,?,?,?,?,?,?)",
+        "end_deadline, prepared, created, parent_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (pid, title.strip(), kind, start, due, note,
-         int(end_deadline), int(prepared), now()))
+         int(end_deadline), int(prepared), now(), parent_id))
     con.commit()
     return row_to_dict(con.execute(
         "SELECT * FROM plan_item WHERE id=?", (cur.lastrowid,)).fetchone())

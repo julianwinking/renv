@@ -317,7 +317,7 @@ export default function App() {
             )}
           </div>
           {health && (
-            <button className="iconbtn" style={{ marginLeft: 'auto' }} title="Project health"
+            <button className="healthbtn" title="Project health checks"
                     onClick={async (e) => {
                       const r = e.currentTarget.getBoundingClientRect()
                       setHpos({ top: r.bottom + 6, right: window.innerWidth - r.right })
@@ -325,6 +325,7 @@ export default function App() {
                       setHealthOpen(!healthOpen)
                     }}>
               <span className={`lamp lamp-${health.status}`} />
+              Project health
             </button>
           )}
           {healthOpen && (

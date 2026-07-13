@@ -129,6 +129,32 @@ def set_status(con: sqlite3.Connection, project: str, slug: str, status: str) ->
     con.commit()
 
 
+def set_parent(con: sqlite3.Connection, project: str, slug: str,
+               parent: str | None) -> dict:
+    """Re-parent an experiment onto the DAG (None detaches). Refuses cycles."""
+    pid = project_id(con, project)
+    row = con.execute("SELECT id FROM experiment WHERE project_id=? AND slug=?",
+                      (pid, slug)).fetchone()
+    if not row:
+        raise KeyError(f"no experiment {slug!r} in {project!r}")
+    parent_id = None
+    if parent is not None:
+        prow = con.execute("SELECT id FROM experiment WHERE project_id=? AND slug=?",
+                           (pid, parent)).fetchone()
+        if not prow:
+            raise KeyError(f"no experiment {parent!r} in {project!r}")
+        parent_id = prow["id"]
+        walk = parent_id
+        while walk is not None:
+            if walk == row["id"]:
+                raise ValueError(f"{parent!r} descends from {slug!r} — would create a cycle")
+            nxt = con.execute("SELECT parent_id FROM experiment WHERE id=?", (walk,)).fetchone()
+            walk = nxt["parent_id"] if nxt else None
+    con.execute("UPDATE experiment SET parent_id=? WHERE id=?", (parent_id, row["id"]))
+    con.commit()
+    return get_experiment(con, project, slug)
+
+
 def list_experiments(con: sqlite3.Connection, project: str) -> list[dict]:
     """All experiments of a project, parents before children (DAG-friendly order)."""
     pid = project_id(con, project)
@@ -153,6 +179,46 @@ def latest_metrics(con: sqlite3.Connection, experiment_id: int) -> dict:
         "SELECT name, value FROM metric WHERE run_id=?", (run["id"],)
     ).fetchall()
     return {r["name"]: r["value"] for r in rows}
+
+
+# --- metric definitions (standardized display across projects) ----------------
+def define_metric(con: sqlite3.Connection, name: str, *, label: str | None = None,
+                  unit: str | None = None, direction: str = "maximize",
+                  fmt: str = ".3f", description: str | None = None) -> dict:
+    """Register (or update) how a metric NAME is rendered and compared everywhere.
+
+    Optional by design: unregistered metrics still record and display raw —
+    a run is never blocked on missing display metadata.
+    """
+    if direction not in ("maximize", "minimize", "info"):
+        raise ValueError(f"direction must be maximize|minimize|info, got {direction!r}")
+    format(0.0, fmt)  # fail fast on a bad format spec
+    con.execute(
+        "INSERT INTO metric_def (name, label, unit, direction, fmt, description) "
+        "VALUES (?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET label=excluded.label, "
+        "unit=excluded.unit, direction=excluded.direction, fmt=excluded.fmt, "
+        "description=excluded.description",
+        (name, label, unit, direction, fmt, description))
+    con.commit()
+    return row_to_dict(con.execute(
+        "SELECT * FROM metric_def WHERE name=?", (name,)).fetchone())
+
+
+def metric_defs(con: sqlite3.Connection) -> dict[str, dict]:
+    """All metric definitions, keyed by metric name."""
+    return {r["name"]: row_to_dict(r)
+            for r in con.execute("SELECT * FROM metric_def ORDER BY name")}
+
+
+def fmt_metric(defs: dict[str, dict], name: str, value) -> str:
+    """Render one metric value per its definition (fallback: 4 significant digits)."""
+    if not isinstance(value, (int, float)):
+        return str(value)
+    d = defs.get(name)
+    if not d:
+        return f"{value:.4g}"
+    out = format(value, d["fmt"] or ".3f")
+    return f"{out}{d['unit']}" if d["unit"] else out
 
 
 # --- runs (reproducible execution) -------------------------------------------

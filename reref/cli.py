@@ -224,13 +224,15 @@ def cmd_exp_list(args):
         return
     by_id = {r["id"]: r for r in rows}
     mark = {"planned": "·", "running": "▶", "done": "✓", "abandoned": "✗"}
+    defs = experiment.metric_defs(con)
     for r in rows:
         depth = 0
         p = r["parent_id"]
         while p in by_id:
             depth += 1
             p = by_id[p]["parent_id"]
-        metrics = "  ".join(f"{k}={v}" for k, v in (r["metrics"] or {}).items())
+        metrics = "  ".join(f"{k}={experiment.fmt_metric(defs, k, v)}"
+                            for k, v in (r["metrics"] or {}).items())
         print(f"{'  ' * depth}{mark.get(r['status'], '?')} {r['slug']}"
               f"  {r['title']}" + (f"   [{metrics}]" if metrics else ""))
 
@@ -251,9 +253,10 @@ def cmd_exp_run(args):
     )
     print(f"run {run['id']} [{run['status']}]  git={run['git_sha'] or '-'}  "
           f"seed={run['seed']}")
+    defs = experiment.metric_defs(con)
     for m in experiment.get_metrics(con, run["id"]):
         split = f" ({m['split']})" if m["split"] else ""
-        print(f"  {m['name']}{split} = {m['value']}")
+        print(f"  {m['name']}{split} = {experiment.fmt_metric(defs, m['name'], m['value'])}")
 
 
 def cmd_exp_show(args):
@@ -264,11 +267,12 @@ def cmd_exp_show(args):
     print(f"{e['slug']}  [{e['status']}]  {e['title']}")
     if e["hypothesis"]:
         print(f"  hypothesis: {e['hypothesis']}")
+    defs = experiment.metric_defs(con)
     for run in experiment.list_runs(con, e["id"]):
         print(f"  run {run['id']} [{run['status']}] {run['started']}  "
               f"git={run['git_sha'] or '-'}")
         for m in experiment.get_metrics(con, run["id"]):
-            print(f"      {m['name']} = {m['value']}")
+            print(f"      {m['name']} = {experiment.fmt_metric(defs, m['name'], m['value'])}")
 
 
 def cmd_log_add(args):
@@ -276,7 +280,8 @@ def cmd_log_add(args):
     runs, cites = _parse_evidence(args.evidence)
     try:
         e = log.add_entry(con, args.project, args.type, args.body,
-                          experiment=args.exp, runs=runs, citations=cites)
+                          experiment=args.exp, runs=runs, citations=cites,
+                          answers=args.answers, source=args.source)
     except ValueError as exc:
         sys.exit(f"! {exc}")
     print(f"logged [{e['type']}] #{e['id']} at {e['ts']}")
@@ -292,7 +297,12 @@ def cmd_log_list(args):
                 [f"run:{r}" for r in ev["runs"]] + [f"cite:{c}" for c in ev["citations"]]
             )
         head = e["body_md"].splitlines()[0] if e["body_md"] else ""
-        print(f"{e['ts']}  [{e['type']}] {head}{tail}")
+        mark = f" <{e['source']}>" if e.get("source") else ""
+        if e["type"] == "question":
+            mark += f" (answered by #{e['answered_by']})" if e.get("answered_by") else " (open)"
+        elif e.get("answers"):
+            mark += f" (answers #{e['answers']})"
+        print(f"{e['ts']}  [{e['type']}]{mark} {head}{tail}")
 
 
 def cmd_log_check(args):
@@ -324,6 +334,29 @@ def cmd_dataset_list(args):
     con = db.connect(args.corpus)
     for d in list_datasets(con):
         print(f"  {d['slug']}@{d['version']}  {d['description'] or ''}")
+
+
+def cmd_metric_define(args):
+    con = db.connect(args.corpus)
+    d = experiment.define_metric(
+        con, args.name, label=args.label, unit=args.unit,
+        direction=args.direction, fmt=args.fmt, description=args.description)
+    arrow = {"maximize": "↑", "minimize": "↓", "info": "·"}[d["direction"]]
+    print(f"metric {d['name']} {arrow}  label={d['label'] or d['name']}  "
+          f"fmt={d['fmt']}" + (f"  unit={d['unit']}" if d["unit"] else ""))
+
+
+def cmd_metric_list(args):
+    con = db.connect(args.corpus)
+    defs = experiment.metric_defs(con)
+    if not defs:
+        print("(no metric definitions — `reref metric define <name>`)")
+        return
+    arrow = {"maximize": "↑", "minimize": "↓", "info": "·"}
+    for d in defs.values():
+        print(f"  {d['name']} {arrow[d['direction']]}  {d['label'] or ''}"
+              + (f"  [{d['unit']}]" if d["unit"] else "")
+              + (f"  — {d['description']}" if d["description"] else ""))
 
 
 def cmd_new(args):
@@ -522,6 +555,16 @@ def cmd_claim_link(args):
     print(f"claim #{c['id']} → {c['status']}  ({len(c['evidence'])} evidence)")
 
 
+def cmd_claim_relate(args):
+    from . import claim
+    con = db.connect(args.corpus)
+    try:
+        c = claim.relate(con, args.id, args.related, kind=args.kind)
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    print(f"claim #{args.id} {args.kind} #{args.related}  ({len(c['relations'])} relations)")
+
+
 def cmd_claim_list(args):
     from . import claim
     con = db.connect(args.corpus)
@@ -707,6 +750,10 @@ def main(argv=None):
     la.add_argument("body")
     la.add_argument("--exp", default=None, help="related experiment slug")
     la.add_argument("--evidence", default=None, help="run:1,cite:2")
+    la.add_argument("--answers", type=int, default=None,
+                    help="id of the open question this entry answers")
+    la.add_argument("--source", default=None,
+                    help='who wrote it, e.g. "advisor: Prof. X" (feedback entries)')
     la.set_defaults(func=cmd_log_add)
     ll = pl.add_parser("list", help="recent log entries")
     ll.add_argument("project")
@@ -733,6 +780,21 @@ def main(argv=None):
     da.set_defaults(func=cmd_dataset_add)
     dl = pds.add_parser("list", help="list datasets")
     dl.set_defaults(func=cmd_dataset_list)
+
+    pmet = sub.add_parser("metric", help="metric definitions (standardized display)").add_subparsers(
+        dest="metric_cmd", required=True)
+    md = pmet.add_parser("define", help="register/update how a metric renders everywhere")
+    md.add_argument("name")
+    md.add_argument("--label", default=None, help="display label (default: the name)")
+    md.add_argument("--unit", default=None, help="unit suffix, e.g. %% or ms")
+    md.add_argument("--direction", default="maximize",
+                    choices=["maximize", "minimize", "info"],
+                    help="is bigger better? (info = neither)")
+    md.add_argument("--fmt", default=".3f", help="python format spec (default .3f)")
+    md.add_argument("--description", default=None)
+    md.set_defaults(func=cmd_metric_define)
+    ml = pmet.add_parser("list", help="list metric definitions")
+    ml.set_defaults(func=cmd_metric_list)
 
     pnew = sub.add_parser("new", help="scaffold a project from templates/project/ (+ git init)")
     pnew.add_argument("slug")
@@ -819,6 +881,11 @@ def main(argv=None):
     cll.add_argument("--stance", default="supports", choices=["supports", "refutes"])
     cll.add_argument("--note", default=None)
     cll.set_defaults(func=cmd_claim_link)
+    clr = pcl.add_parser("relate", help="chain claims (argument structure, not proof)")
+    clr.add_argument("id", type=int)
+    clr.add_argument("related", type=int)
+    clr.add_argument("--kind", default="depends_on", choices=["depends_on", "contradicts"])
+    clr.set_defaults(func=cmd_claim_relate)
     cll2 = pcl.add_parser("list", help="list claims + status")
     cll2.add_argument("project")
     cll2.add_argument("--status", default=None, choices=["open", "supported", "refuted"])

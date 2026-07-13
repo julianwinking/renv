@@ -66,12 +66,55 @@ def _recompute_status(con: sqlite3.Connection, claim_id: int) -> None:
     con.execute("UPDATE claim SET status=? WHERE id=?", (status, claim_id))
 
 
+def relate(con: sqlite3.Connection, claim_id: int, related_id: int,
+           kind: str = "depends_on") -> dict:
+    """Link two claims into a chain of argument (depends_on / contradicts).
+
+    Structure, not proof: relations never change a claim's derived status —
+    only citation/run evidence does.
+    """
+    if kind not in ("depends_on", "contradicts"):
+        raise ValueError(f"kind must be depends_on/contradicts, got {kind!r}")
+    if claim_id == related_id:
+        raise ValueError("a claim cannot relate to itself")
+    for cid in (claim_id, related_id):
+        if not con.execute("SELECT 1 FROM claim WHERE id=?", (cid,)).fetchone():
+            raise KeyError(f"no claim #{cid}")
+    # walk depends_on ancestry to refuse cycles (chains must stay acyclic)
+    if kind == "depends_on":
+        frontier, seen = {related_id}, set()
+        while frontier:
+            nxt = frontier.pop()
+            if nxt == claim_id:
+                raise ValueError(f"relation would create a cycle (#{claim_id} ⇄ #{related_id})")
+            if nxt in seen:
+                continue
+            seen.add(nxt)
+            frontier.update(r["related_id"] for r in con.execute(
+                "SELECT related_id FROM claim_relation WHERE claim_id=? AND kind='depends_on'",
+                (nxt,)).fetchall())
+    con.execute(
+        "INSERT OR IGNORE INTO claim_relation (claim_id, related_id, kind) VALUES (?,?,?)",
+        (claim_id, related_id, kind))
+    con.commit()
+    return get_claim(con, claim_id)
+
+
+def list_relations(con: sqlite3.Connection, project: str) -> list[dict]:
+    pid = project_id(con, project)
+    return [row_to_dict(r) for r in con.execute(
+        "SELECT cr.* FROM claim_relation cr JOIN claim c ON c.id=cr.claim_id "
+        "WHERE c.project_id=? ORDER BY cr.id", (pid,)).fetchall()]
+
+
 def get_claim(con: sqlite3.Connection, claim_id: int) -> dict | None:
     c = row_to_dict(con.execute("SELECT * FROM claim WHERE id=?", (claim_id,)).fetchone())
     if not c:
         return None
     c["evidence"] = [row_to_dict(r) for r in con.execute(
         "SELECT * FROM claim_evidence WHERE claim_id=? ORDER BY id", (claim_id,)).fetchall()]
+    c["relations"] = [row_to_dict(r) for r in con.execute(
+        "SELECT * FROM claim_relation WHERE claim_id=? ORDER BY id", (claim_id,)).fetchall()]
     return c
 
 

@@ -13,9 +13,12 @@ timeline of decisions + notes.
 from __future__ import annotations
 
 import json
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+_LOCAL_ORIGIN = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
 
 from . import claim as claimmod
 from . import db, experiment, ingest
@@ -68,6 +71,37 @@ def _graph(con, root, slug):
                     edges.append({"source": f"exp:{r['experiment_id']}", "target": f"claim:{c['id']}", "kind": ev["stance"]})
             if ev["citation_id"]:
                 edges.append({"source": f"cite:{ev['citation_id']}", "target": f"claim:{c['id']}", "kind": ev["stance"]})
+    for rel in claimmod.list_relations(con, slug):
+        edges.append({"source": f"claim:{rel['claim_id']}",
+                      "target": f"claim:{rel['related_id']}", "kind": rel["kind"]})
+
+    # thinking made visible: questions / hypotheses / feedback join the graph,
+    # wired to the experiment they concern and to the entries that answer them
+    thought_rows = con.execute(
+        "SELECT * FROM log_entry WHERE project_id=? AND ("
+        "type IN ('question','hypothesis','feedback') OR answers IS NOT NULL) "
+        "ORDER BY id", (pid,)).fetchall()
+    for e in thought_rows:
+        answered = None
+        if e["type"] == "question":
+            a = con.execute("SELECT 1 FROM log_entry WHERE answers=?", (e["id"],)).fetchone()
+            answered = bool(a)
+        node(f"log:{e['id']}", e["type"] if e["type"] in ("question", "hypothesis", "feedback")
+             else "thought",
+             f"#{e['id']}", {"text": e["body_md"], "type": e["type"],
+                             "source": e["source"], "answered": answered})
+    for e in thought_rows:
+        if e["experiment_id"]:
+            edges.append({"source": f"log:{e['id']}",
+                          "target": f"exp:{e['experiment_id']}", "kind": "about"})
+        if e["answers"] and f"log:{e['answers']}" in seen:
+            edges.append({"source": f"log:{e['id']}",
+                          "target": f"log:{e['answers']}", "kind": "answers"})
+
+    # meeting notes anchor the timeline side of the graph
+    for n_ in con.execute("SELECT * FROM note WHERE project_id=? ORDER BY id", (pid,)).fetchall():
+        node(f"note:{n_['id']}", "note", n_["title"] or f"note #{n_['id']}",
+             {"text": n_["body_md"], "ts": n_["ts"]})
 
     for f in findmod.list_findings(con, slug, status="open"):
         node(f"finding:{f['id']}", "finding", f["check_id"],
@@ -125,7 +159,29 @@ def _overview(con):
         p["open_findings"] = con.execute(
             "SELECT COUNT(*) n FROM finding WHERE status='open' AND "
             "project_id=(SELECT id FROM project WHERE slug=?)", (p["slug"],)).fetchone()["n"]
-    return {"projects": projects, "counts": counts}
+    # the §0 ledger indicator: does every result entry trace to a run?
+    violations = logmod.check_invariants(con)
+    return {"projects": projects, "counts": counts,
+            "invariants": {"clean": not violations, "violations": len(violations)}}
+
+
+def _runs(con, slug):
+    """All runs of a project (newest first) with params, dataset, and metrics —
+    the raw material for the cockpit's runs ledger."""
+    pid = db.project_id(con, slug)
+    runs = [dict(r) for r in con.execute(
+        "SELECT r.id, r.status, r.started, r.finished, r.seed, r.git_sha, "
+        "       r.dirty, r.provenance, r.entrypoint, e.slug AS experiment, "
+        "       c.params_json, d.slug AS dataset "
+        "FROM run r JOIN experiment e ON e.id = r.experiment_id "
+        "LEFT JOIN config c ON c.id = r.config_id "
+        "LEFT JOIN dataset d ON d.id = r.dataset_id "
+        "WHERE e.project_id=? ORDER BY r.id DESC", (pid,))]
+    for r in runs:
+        r["params"] = json.loads(r.pop("params_json") or "{}")
+        r["metrics"] = {m["name"]: m["value"] for m in con.execute(
+            "SELECT name, value FROM metric WHERE run_id=?", (r["id"],))}
+    return runs
 
 
 def _project(con, slug):
@@ -153,8 +209,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")  # local dev: Vite on :5173
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # CORS: only trust local dev origins (Vite on :5173 etc.) — never `*`.
+        # A wildcard would let any website the browser visits read/write the
+        # research DB via drive-by fetch; same-origin requests need no header.
+        origin = self.headers.get("Origin", "")
+        if _LOCAL_ORIGIN.match(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(body)
 
@@ -193,6 +255,10 @@ class Handler(BaseHTTPRequestHandler):
             return _overview(con)
         if path == "/api/papers":
             return ingest.list_papers(con)
+        if path == "/api/metric_defs":
+            return experiment.metric_defs(con)
+        if parts[:2] == ["api", "project"] and len(parts) == 4 and parts[3] == "runs":
+            return _runs(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 3:
             return _project(con, unquote(parts[2]))
         if parts[:2] == ["api", "graph"] and len(parts) == 3:
@@ -231,10 +297,41 @@ class Handler(BaseHTTPRequestHandler):
                                       by=d.get("by", "cockpit"))
         if path == "/api/note":
             return logmod.add_note(con, d["project"], d["body"], title=d.get("title"))
+        if path == "/api/log":
+            return logmod.add_entry(con, d["project"], d["type"], d["body"],
+                                    experiment=d.get("experiment"),
+                                    answers=d.get("answers"), source=d.get("source"))
+        if path == "/api/claim":
+            return claimmod.add_claim(con, d["project"], d["text"],
+                                      kind=d.get("kind", "assertion"))
         if path == "/api/claim/link":
             return claimmod.link_evidence(con, d["claim_id"], citation_id=d.get("citation_id"),
                                           run_id=d.get("run_id"), stance=d.get("stance", "supports"),
                                           note=d.get("note"))
+        if path == "/api/claim/relate":
+            return claimmod.relate(con, d["claim_id"], d["related_id"],
+                                   kind=d.get("kind", "depends_on"))
+        if path == "/api/experiment":
+            return experiment.create_experiment(con, d["project"], d["slug"],
+                                                title=d.get("title"),
+                                                hypothesis=d.get("hypothesis"),
+                                                parent=d.get("parent"))
+        if path == "/api/experiment/parent":
+            return experiment.set_parent(con, d["project"], d["slug"], d.get("parent"))
+        # graph gesture: experiment→claim becomes claim evidence via the
+        # experiment's latest DONE run — §0: an edge needs a recorded run.
+        if path == "/api/claim/link_experiment":
+            pid = db.project_id(con, d["project"])
+            run = con.execute(
+                "SELECT r.id FROM run r JOIN experiment e ON e.id=r.experiment_id "
+                "WHERE e.project_id=? AND e.slug=? AND r.status='done' "
+                "ORDER BY r.id DESC LIMIT 1", (pid, d["experiment"])).fetchone()
+            if not run:
+                raise ValueError(
+                    f"experiment {d['experiment']!r} has no completed run yet — "
+                    "run it first; claim evidence must be a recorded run (§0)")
+            return claimmod.link_evidence(con, d["claim_id"], run_id=run["id"],
+                                          stance=d.get("stance", "supports"))
         raise ValueError(f"unknown endpoint {path}")
 
 

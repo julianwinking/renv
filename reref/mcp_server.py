@@ -186,7 +186,8 @@ def h_log_decision(root, a):
     return log.add_entry(
         _conn(root), a["project"], a["type"], a["body"],
         experiment=a.get("experiment"),
-        runs=a.get("runs") or [], citations=a.get("citations") or [])
+        runs=a.get("runs") or [], citations=a.get("citations") or [],
+        answers=a.get("answers"), source=a.get("source"))
 
 
 def h_list_log(root, a):
@@ -281,6 +282,12 @@ def h_link_claim_evidence(root, a):
     return claim.link_evidence(_conn(root), a["claim_id"], citation_id=a.get("citation_id"),
                                run_id=a.get("run_id"), stance=a.get("stance", "supports"),
                                note=a.get("note"))
+
+
+def h_relate_claims(root, a):
+    from . import claim
+    return claim.relate(_conn(root), a["claim_id"], a["related_id"],
+                        kind=a.get("kind", "depends_on"))
 
 
 def h_list_claims(root, a):
@@ -386,11 +393,13 @@ TOOLS = [
                          ["project", "slug", "entrypoint"]), "handler": h_start_run},
     {"name": "run_status", "description": "Status + metrics of a run (poll a background run started with start_run).",
      "inputSchema": _obj({"run_id": _I}, ["run_id"]), "handler": h_run_status},
-    {"name": "log_decision", "description": "Append a typed log entry. A 'result' MUST link a run (§0 invariant).",
+    {"name": "log_decision", "description": "Append a typed log entry. A 'result' MUST link a run (§0 invariant); "
+                                            "'answers' closes an open question; 'source' records who wrote it.",
      "inputSchema": _obj({"project": _S, "type": {"type": "string", "enum": list(log.ENTRY_TYPES)},
                           "body": _S, "experiment": _S,
                           "runs": {"type": "array", "items": _I},
-                          "citations": {"type": "array", "items": _I}},
+                          "citations": {"type": "array", "items": _I},
+                          "answers": _I, "source": _S},
                          ["project", "type", "body"]), "handler": h_log_decision},
     {"name": "list_log", "description": "Recent decision-log entries with evidence links.",
      "inputSchema": _obj({"project": _S, "limit": _I}, ["project"]), "handler": h_list_log},
@@ -439,6 +448,10 @@ TOOLS = [
      "inputSchema": _obj({"claim_id": _I, "citation_id": _I, "run_id": _I,
                           "stance": {"type": "string", "enum": ["supports", "refutes"]}, "note": _S},
                          ["claim_id"]), "handler": h_link_claim_evidence},
+    {"name": "relate_claims", "description": "Chain two claims (depends_on/contradicts) — argument structure, not proof; never changes derived status.",
+     "inputSchema": _obj({"claim_id": _I, "related_id": _I,
+                          "kind": {"type": "string", "enum": ["depends_on", "contradicts"]}},
+                         ["claim_id", "related_id"]), "handler": h_relate_claims},
     {"name": "list_claims", "description": "Claims of a project with derived status + evidence counts.",
      "inputSchema": _obj({"project": _S, "status": _S}, ["project"]), "handler": h_list_claims},
     {"name": "get_claim", "description": "A claim with its evidence edges.",

@@ -274,7 +274,68 @@ _SCHEMA_V4 = """
 ALTER TABLE citation ADD COLUMN source_id TEXT;
 """
 
-MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4]
+# v5: metric definitions — a registry standardizing how a metric NAME is
+# rendered and compared everywhere (CLI, web, weave): display label, unit,
+# direction (is bigger better?), printf-style format. Registration is optional:
+# an unregistered metric still records and displays (raw), it just isn't
+# standardized. `metric` rows stay the sole home of the numbers.
+_SCHEMA_V5 = """
+CREATE TABLE metric_def (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    label       TEXT,
+    unit        TEXT,
+    direction   TEXT NOT NULL DEFAULT 'maximize'
+                CHECK(direction IN ('maximize','minimize','info')),
+    fmt         TEXT NOT NULL DEFAULT '.3f',
+    description TEXT
+);
+"""
+
+# v6: log entries gain two types — 'question' (+ an `answers` self-link: a
+# question stays open until a later entry answers it; status DERIVED, like
+# claims) and 'feedback' (external input, e.g. an advisor) — plus a `source`
+# column recording WHO wrote an entry (you / agent / "Prof. X").
+# CHECK constraints can't be altered in place, so this rebuilds log_entry
+# (SQLite's documented recipe; _migrate turns FKs off around the pass so the
+# DROP doesn't cascade into log_evidence).
+_SCHEMA_V6 = """
+CREATE TABLE log_entry_v6 (
+    id        INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    experiment_id INTEGER REFERENCES experiment(id) ON DELETE SET NULL,
+    type      TEXT NOT NULL
+              CHECK(type IN ('decision','hypothesis','observation','result',
+                             'blocker','question','feedback')),
+    ts        TEXT NOT NULL,
+    body_md   TEXT NOT NULL,
+    answers   INTEGER REFERENCES log_entry(id) ON DELETE SET NULL,
+    source    TEXT
+);
+INSERT INTO log_entry_v6 (id, project_id, experiment_id, type, ts, body_md)
+    SELECT id, project_id, experiment_id, type, ts, body_md FROM log_entry;
+DROP TABLE log_entry;
+ALTER TABLE log_entry_v6 RENAME TO log_entry;
+CREATE INDEX idx_log_project ON log_entry(project_id);
+"""
+
+# v7: chains of argument — claim→claim relations so a thesis can depend on
+# lemmas or contradict another claim. Evidence (claim_evidence) still only
+# ever points at citations/runs; relations are structure, not proof.
+_SCHEMA_V7 = """
+CREATE TABLE claim_relation (
+    id         INTEGER PRIMARY KEY,
+    claim_id   INTEGER NOT NULL REFERENCES claim(id) ON DELETE CASCADE,
+    related_id INTEGER NOT NULL REFERENCES claim(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL DEFAULT 'depends_on'
+               CHECK(kind IN ('depends_on','contradicts')),
+    UNIQUE(claim_id, related_id, kind),
+    CHECK(claim_id != related_id)
+);
+"""
+
+MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
+              _SCHEMA_V6, _SCHEMA_V7]
 
 
 # --- time & hashing ----------------------------------------------------------
@@ -318,10 +379,23 @@ def connect(root=".", *, read_only: bool = False) -> sqlite3.Connection:
 
 def _migrate(con: sqlite3.Connection) -> None:
     version = con.execute("PRAGMA user_version").fetchone()[0]
-    for i in range(version, len(MIGRATIONS)):
-        con.executescript(MIGRATIONS[i])
-        con.execute(f"PRAGMA user_version = {i + 1}")
-    con.commit()
+    if version >= len(MIGRATIONS):
+        return
+    # Table-rebuild migrations DROP+rename; with FKs on, the DROP would cascade
+    # into child tables. SQLite's recipe: FKs off for the pass, verify after.
+    con.execute("PRAGMA foreign_keys=OFF")
+    try:
+        for i in range(version, len(MIGRATIONS)):
+            # Each step is atomic (BEGIN…COMMIT around DDL + version bump): a
+            # partial failure rolls back entirely instead of leaving added
+            # columns behind with a stale user_version, bricking the next open.
+            con.executescript(
+                f"BEGIN;\n{MIGRATIONS[i]}\nPRAGMA user_version = {i + 1};\nCOMMIT;")
+        bad = con.execute("PRAGMA foreign_key_check").fetchall()
+        if bad:
+            raise RuntimeError(f"migration left {len(bad)} dangling foreign keys")
+    finally:
+        con.execute("PRAGMA foreign_keys=ON")
 
 
 def schema_version(con: sqlite3.Connection) -> int:

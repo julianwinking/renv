@@ -14,7 +14,8 @@ import sqlite3
 
 from .db import now, project_id, row_to_dict
 
-ENTRY_TYPES = ("decision", "hypothesis", "observation", "result", "blocker")
+ENTRY_TYPES = ("decision", "hypothesis", "observation", "result", "blocker",
+               "question", "feedback")
 
 
 def add_entry(
@@ -26,8 +27,16 @@ def add_entry(
     experiment: str | None = None,
     runs: list[int] | None = None,
     citations: list[int] | None = None,
+    answers: int | None = None,
+    source: str | None = None,
 ) -> dict:
-    """Append a log entry. Raises ValueError if a ``result`` has no run evidence."""
+    """Append a log entry. Raises ValueError if a ``result`` has no run evidence.
+
+    ``answers`` links this entry to an earlier ``question`` entry of the same
+    project; a question's open/answered status is derived from such links.
+    ``source`` records who wrote it (you / agent / "advisor: Prof. X") — most
+    useful for ``feedback`` entries.
+    """
     if type not in ENTRY_TYPES:
         raise ValueError(f"type must be one of {ENTRY_TYPES}, got {type!r}")
     runs = runs or []
@@ -62,10 +71,20 @@ def add_entry(
         if r["status"] != "done":
             raise ValueError(f"run {run_id} is {r['status']!r}, not a completed run")
 
+    if answers is not None:
+        q = con.execute(
+            "SELECT project_id, type FROM log_entry WHERE id=?", (answers,)).fetchone()
+        if not q:
+            raise ValueError(f"entry {answers} does not exist")
+        if q["project_id"] != pid:
+            raise ValueError(f"entry {answers} belongs to another project")
+        if q["type"] != "question":
+            raise ValueError(f"entry {answers} is a {q['type']!r}, not a question")
+
     cur = con.execute(
-        "INSERT INTO log_entry (project_id, experiment_id, type, ts, body_md) "
-        "VALUES (?,?,?,?,?)",
-        (pid, experiment_id, type, now(), body_md),
+        "INSERT INTO log_entry (project_id, experiment_id, type, ts, body_md, "
+        "answers, source) VALUES (?,?,?,?,?,?,?)",
+        (pid, experiment_id, type, now(), body_md, answers, source),
     )
     entry_id = cur.lastrowid
     for run_id in runs:
@@ -100,6 +119,11 @@ def list_entries(con: sqlite3.Connection, project: str, *, limit: int = 50) -> l
             "runs": [e["run_id"] for e in ev if e["run_id"] is not None],
             "citations": [e["citation_id"] for e in ev if e["citation_id"] is not None],
         }
+        if d["type"] == "question":   # derived, never hand-set
+            a = con.execute(
+                "SELECT id FROM log_entry WHERE answers=? ORDER BY id", (r["id"],)
+            ).fetchone()
+            d["answered_by"] = a["id"] if a else None
         out.append(d)
     return out
 

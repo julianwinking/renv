@@ -45,7 +45,7 @@ def test_live_server_get_and_post(tmp_path):
     try:
         base = f"http://127.0.0.1:{port}"
         # index served
-        assert b"reref cockpit" in urllib.request.urlopen(base + "/").read()
+        assert b"research cockpit" in urllib.request.urlopen(base + "/").read()
         # api read
         ov = json.loads(urllib.request.urlopen(base + "/api/overview").read())
         assert ov["counts"]["paper"] == 0

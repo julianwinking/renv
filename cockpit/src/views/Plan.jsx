@@ -33,7 +33,6 @@ function itemState(it, today) {
 export default function Plan({ slug }) {
   const [items, setItems] = useState(null)
   const [activity, setActivity] = useState(null)   // {date: [types]}
-  const [showActivity, setShowActivity] = useState(true)
   const [draft, setDraft] = useState(null)         // new-item form
   const [sel, setSel] = useState(null)             // item being edited
   const [err, setErr] = useState(null)
@@ -294,13 +293,6 @@ export default function Plan({ slug }) {
                   onClick={() => setZoom(Math.max(0, zoom - 1))} title="Zoom out">−</button>
           <button className="gtool sq" disabled={zoom === ZOOMS.length - 1}
                   onClick={() => setZoom(Math.min(ZOOMS.length - 1, zoom + 1))} title="Zoom in">+</button>
-          <button className={`gtool ${showActivity ? 'active' : ''}`}
-                  onClick={() => setShowActivity(!showActivity)}>
-            Activity
-          </button>
-          <button className="gtool" onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}>
-            + Add item
-          </button>
         </span>
       </div>
 
@@ -326,7 +318,11 @@ export default function Plan({ slug }) {
                       : null}
                 </button>
               ))}
-              {showActivity && activity && <div className="gantt-label muted" style={{ cursor: 'default' }}>activity</div>}
+              {activity && <div className="gantt-label tall muted" style={{ cursor: 'default' }}>Activity</div>}
+              <button className="gantt-label add rowbtn"
+                      onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}>
+                + Add item
+              </button>
             </div>
 
             <div className="gantt-chart" ref={chartRef}>
@@ -380,11 +376,11 @@ export default function Plan({ slug }) {
                       </div>
                     )
                   })}
-                  {showActivity && activity && (
-                    <div className="gantt-row">
+                  {activity && (
+                    <div className="gantt-row tall">
                       {Object.entries(activity).map(([day, counts]) => {
                         const total = Object.values(counts).reduce((a, b) => a + b, 0)
-                        const barH = Math.min(8 + total * 3, 28)
+                        const barH = Math.min(10 + total * 5, 60)
                         const tip = `${day}\n` + Object.entries(counts)
                           .map(([t, n]) => `${n}× ${t}`).join(', ')
                         let acc = 0
@@ -407,6 +403,10 @@ export default function Plan({ slug }) {
                       })}
                     </div>
                   )}
+                  <div className="gantt-row add" role="button" tabIndex={0}
+                       title="Add a phase, milestone, or deadline"
+                       onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}
+                       onKeyDown={(e) => e.key === 'Enter' && setDraft({ kind: 'phase' })} />
                 </div>
               </div>
             </div>

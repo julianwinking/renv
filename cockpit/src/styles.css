@@ -470,7 +470,13 @@ select.text {
   position: absolute; bottom: 3px; border-radius: 2px; overflow: hidden;
   display: block; opacity: 0.9;
 }
-.gantt-ms.ms-unprepared { border-width: 2px; border-style: dashed; }
+/* unprepared deadlines are unmistakably yellow, not a hollow outline */
+.gantt-ms.ms-unprepared { background: var(--warn-dot); border-color: var(--warn); }
+.gantt-row.tall, .gantt-label.tall { height: 68px; }
+.gantt-label.add { color: var(--faint); }
+.gantt-label.add:hover { color: var(--accent); }
+.gantt-row.add { cursor: pointer; }
+.gantt-row.add:hover { background: var(--accent-soft); }
 .gantt-ms { cursor: grab; }
 .gantt-ms:active { cursor: grabbing; }
 .gantt-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }

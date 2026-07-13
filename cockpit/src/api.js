@@ -34,3 +34,14 @@ export const linkExperimentToClaim = (project, experiment, claim_id, stance, not
 export const saveLayout = (project, positions) =>
   post('/api/graph/layout', { project, positions })
 export const search = (q) => api('/api/search?q=' + encodeURIComponent(q))
+export const getConfigFiles = (project) =>
+  api('/api/config/files' + (project ? '?project=' + encodeURIComponent(project) : ''))
+export const getConfigFile = (scope, name, project) =>
+  api(`/api/config/file?scope=${scope}&name=${encodeURIComponent(name)}` +
+      (project ? '&project=' + encodeURIComponent(project) : ''))
+export const saveConfigFile = (scope, name, content, project) =>
+  post('/api/config/file', { scope, name, content, project })
+export const defineMetric = (def) => post('/api/metric_def', def)
+export const saveProjectSettings = (slug, settings) =>
+  post('/api/project/settings', { slug, ...settings })
+export const getRubric = () => api('/api/rubric')

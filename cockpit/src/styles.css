@@ -377,6 +377,14 @@ textarea::placeholder, input.text::placeholder { color: var(--faint); }
 
 .loading { color: var(--faint); padding: 30px; text-align: center; font-family: var(--mono); font-size: 12px; }
 
+/* admin file editor */
+.filetabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.filetabs .active-tab { color: var(--accent); border-color: var(--accent); }
+textarea.fileedit {
+  font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  min-height: 420px; white-space: pre; tab-size: 2;
+}
+
 /* graph planning tools */
 .gpanel {
   position: absolute; top: 14px; right: 14px; z-index: 7; width: 300px;

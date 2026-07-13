@@ -7,9 +7,13 @@ import Papers from './views/Papers.jsx'
 import Claims from './views/Claims.jsx'
 import Findings from './views/Findings.jsx'
 import Timeline from './views/Timeline.jsx'
+import { Instructions, Templates, Settings } from './views/Admin.jsx'
 
 const I = {
   overview: <path d="M2 2h4.5v6.5H2zM8.5 2H13v4H8.5zM8.5 7.5H13V13H8.5zM2 10h4.5v3H2z" />,
+  instructions: <path d="M3 2.5h7l2 2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM5 6.5h5M5 9h5M5 11.5h3" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />,
+  templates: <path d="M2 2.5h11v3H2zM2 7.5h4.5V13H2zM8.5 7.5H13V13H8.5z" fill="none" stroke="currentColor" strokeWidth="1.1" />,
+  settings: <path d="M2.5 4.5h7M11.5 4.5h1M9.5 3.2v2.6M2.5 10.5h1M5.5 10.5h7M5.5 9.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
   graph: <path d="M2 7h3M9 4h3M9 10h3M5 7c2 0 2-3 4-3M5 7c2 0 2 3 4 3M2.5 7m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0M12 4m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0M12 10m-1.3 0a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0-2.6 0" fill="none" stroke="currentColor" strokeWidth="1.2" />,
   experiments: <path d="M6 2v4L2.5 12a1 1 0 0 0 .9 1.5h8.2a1 1 0 0 0 .9-1.5L9 6V2M4.5 2h6M5 9.5h5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
   papers: <path d="M3.5 1.5h6L12 4v9.5a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1zM5 6h5M5 8.5h5M5 11h3" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />,
@@ -19,13 +23,15 @@ const I = {
 }
 
 const VIEWS = ['overview', 'graph', 'experiments', 'papers', 'claims', 'findings', 'timeline']
+const ADMIN = ['instructions', 'templates', 'settings']
+const ALL_VIEWS = [...VIEWS, ...ADMIN]
 
 // routes: #/<view> or #/<view>/<focus> — a focus deep-links one entity
 // (experiment slug, claim id, paper key, timeline entry) inside its view
 function parseHash() {
   const seg = location.hash.replace(/^#\//, '').split('/')
   return {
-    view: VIEWS.includes(seg[0]) ? seg[0] : 'overview',
+    view: ALL_VIEWS.includes(seg[0]) ? seg[0] : 'overview',
     focus: seg[1] ? decodeURIComponent(seg[1]) : null,
   }
 }
@@ -253,6 +259,14 @@ export default function App() {
             </button>
           )
         })}
+
+        <div className="eyebrow">Admin</div>
+        {ADMIN.map((v) => (
+          <button key={v} className={`navitem ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
+            <svg viewBox="0 0 15 15" fill="currentColor">{I[v]}</svg>
+            <span style={{ textTransform: 'capitalize' }}>{v}</span>
+          </button>
+        ))}
       </aside>
       )}
 
@@ -320,6 +334,9 @@ export default function App() {
           {slug && view === 'claims' && <Claims slug={slug} focus={focus} />}
           {slug && view === 'findings' && <Findings slug={slug} />}
           {slug && view === 'timeline' && <Timeline slug={slug} focus={focus} />}
+          {slug && view === 'instructions' && <Instructions slug={slug} />}
+          {view === 'templates' && <Templates slug={slug} />}
+          {slug && view === 'settings' && <Settings slug={slug} project={project} onMutate={loadOverview} />}
         </div>
       </div>
     </div>

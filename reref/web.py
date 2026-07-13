@@ -204,6 +204,56 @@ def _project(con, slug):
     }
 
 
+# --- admin control surface: the files agents actually read -------------------
+# STRICT allowlist. These are the real levers of the environment: AGENTS.md is
+# what an agent loads at session start, templates/ is what every `reref new`
+# scaffolds from. The cockpit can edit exactly these — never arbitrary paths,
+# and never code (tool prompts live in code; their designed control point IS
+# AGENTS.md, so that is what we expose).
+_CONFIG_FILES = {
+    "env": {
+        "AGENTS.md": "The operating protocol — every agent reads this at session start.",
+    },
+    "template": {
+        "AGENTS.md": "Per-project agent instructions scaffolded into every NEW project.",
+        "ideation.md": "Research-plan structure every NEW project starts from.",
+        "text/paper.tex": "Paper skeleton — the section structure of every NEW paper.",
+        "README.md": "Readme scaffolded into every NEW project.",
+    },
+    "project": {
+        "AGENTS.md": "THIS project's agent instructions.",
+        "ideation.md": "THIS project's research plan.",
+    },
+}
+_CONFIG_MAX_BYTES = 512 * 1024
+
+
+def _config_path(root, con, scope, name, project=None) -> Path:
+    if name not in (_CONFIG_FILES.get(scope) or {}):
+        raise ValueError(f"not an editable file: {scope}/{name}")
+    base = Path(root)
+    if scope == "env":
+        return base / name
+    if scope == "template":
+        return base / "templates" / "project" / name
+    db.project_id(con, project)   # validates the slug exists — no path games
+    return base / "projects" / project / name
+
+
+def _config_listing(root, con, project=None):
+    out = []
+    for scope, names in _CONFIG_FILES.items():
+        if scope == "project" and not project:
+            continue
+        for name, desc in names.items():
+            p = _config_path(root, con, scope, name, project)
+            out.append({"scope": scope, "name": name, "description": desc,
+                        "project": project if scope == "project" else None,
+                        "exists": p.exists(),
+                        "size": p.stat().st_size if p.exists() else 0})
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     root = "."
 
@@ -270,6 +320,19 @@ class Handler(BaseHTTPRequestHandler):
             return ingest.list_papers(con)
         if path == "/api/metric_defs":
             return experiment.metric_defs(con)
+        if path == "/api/rubric":
+            from .review import RUBRIC
+            return RUBRIC
+        if path == "/api/config/files":
+            from urllib.parse import parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            return _config_listing(self.root, con, (q.get("project", [None])[0]))
+        if path == "/api/config/file":
+            from urllib.parse import parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            p = _config_path(self.root, con, q["scope"][0], q["name"][0],
+                             (q.get("project", [None])[0]))
+            return {"content": p.read_text(encoding="utf-8") if p.exists() else ""}
         if parts[:2] == ["api", "project"] and len(parts) == 4 and parts[3] == "runs":
             return _runs(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 3:
@@ -333,6 +396,29 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/claim/relate":
             return claimmod.relate(con, d["claim_id"], d["related_id"],
                                    kind=d.get("kind", "depends_on"), note=d.get("note"))
+        if path == "/api/config/file":
+            content = d.get("content", "")
+            if len(content.encode()) > _CONFIG_MAX_BYTES:
+                raise ValueError("file too large")
+            p = _config_path(self.root, con, d["scope"], d["name"], d.get("project"))
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+            return {"saved": str(p), "bytes": len(content.encode())}
+        if path == "/api/metric_def":
+            return experiment.define_metric(
+                con, d["name"], label=d.get("label"), unit=d.get("unit"),
+                direction=d.get("direction", "maximize"), fmt=d.get("fmt", ".3f"),
+                description=d.get("description"))
+        if path == "/api/project/settings":
+            if d.get("status") not in (None, "active", "archived"):
+                raise ValueError("status must be active or archived")
+            pid = db.project_id(con, d["slug"])
+            if d.get("title") is not None:
+                con.execute("UPDATE project SET title=? WHERE id=?", (d["title"], pid))
+            if d.get("status") is not None:
+                con.execute("UPDATE project SET status=? WHERE id=?", (d["status"], pid))
+            con.commit()
+            return dict(con.execute("SELECT * FROM project WHERE id=?", (pid,)).fetchone())
         # full project creation — same path as `reref new`: DB row + template
         # scaffold under projects/<slug> + its own git repo
         if path == "/api/project":

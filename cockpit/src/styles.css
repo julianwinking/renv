@@ -19,6 +19,7 @@
   --ok-soft: rgba(29, 122, 79, 0.1);
   --warn: #96690a;
   --warn-soft: rgba(150, 105, 10, 0.11);
+  --warn-dot: #eab308;   /* status lamps need a true yellow — --warn is tuned for text contrast */
   --bad: #bb3540;
   --bad-soft: rgba(187, 53, 64, 0.09);
   --claim: #6350c9;
@@ -46,6 +47,7 @@
   --ok-soft: rgba(85, 192, 139, 0.13);
   --warn: #d7a63f;
   --warn-soft: rgba(215, 166, 63, 0.13);
+  --warn-dot: #f2c744;
   --bad: #e2707b;
   --bad-soft: rgba(226, 112, 123, 0.12);
   --claim: #9d8bec;
@@ -200,7 +202,7 @@ aside {
 .healthbtn:hover { background: var(--surface2); color: var(--ink); }
 .lamp { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; display: inline-block; }
 .lamp-ok { background: var(--ok); }
-.lamp-warn { background: var(--warn); }
+.lamp-warn { background: var(--warn-dot); }
 .lamp-bad { background: var(--bad); }
 .iconbtn {
   background: none; border: 0; border-radius: 7px; cursor: pointer;

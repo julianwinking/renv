@@ -403,7 +403,7 @@ select.text {
 .glegend.closed { padding: 0; }
 .glegend.closed .glegend-head { height: 26px; padding: 0 9px; }
 .glegend-head .eyebrow { color: var(--ink); }
-.glegend-caret { color: var(--ink); font-size: 16px; line-height: 1; display: flex; align-items: center; transform: translateY(-2px); }
+.glegend-caret { color: var(--ink); font-size: 18px; line-height: 1; display: flex; align-items: center; transform: translateY(-1px); }
 .glegend .li { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
 .glegend .sw { width: 8px; height: 8px; border-radius: 2px; }
 

@@ -14,13 +14,12 @@ def _project(tmp_path):
     return con, tmp_path / "projects" / "p"
 
 
-def test_scaffold_ideation_is_idempotent(tmp_path):
-    _, root = _project(tmp_path)
-    root.mkdir(parents=True)
-    first = authoring.scaffold_ideation(root, "A Paper")
-    assert first and first.exists() and "## Thesis" in first.read_text()
-    # never clobber an existing plan
-    assert authoring.scaffold_ideation(root, "A Paper") is None
+def test_seed_ideation_is_store_native_and_idempotent(tmp_path):
+    con, _ = _project(tmp_path)
+    seeded = authoring.seed_ideation(con, "p")
+    assert seeded and seeded["type"] == "question" and "thesis" in seeded["body_md"]
+    # idempotent: a project with any log history is never re-seeded
+    assert authoring.seed_ideation(con, "p") is None
 
 
 def test_scaffold_paper_writes_preamble_and_template(tmp_path):

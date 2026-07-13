@@ -320,6 +320,13 @@ and per-citation `source_sha256` + quoted text.
 
 ## Pillar 4 — Ideate
 
+> **Superseded (2026-07-13):** ideation is now **store-native** — the thesis and
+> contributions are `claim` rows, risks are `question` log entries, the
+> evaluation design is a `decision` entry, positioning is cited papers. There is
+> no `ideation.md`: planning markdown would be a second, drifting copy of graph
+> state. Markdown is reserved for low-churn agent instructions (AGENTS.md,
+> `templates/writing/`). The section below is kept for the historical design.
+
 **Purpose.** Give ideas a structured, corpus-linked home so positioning against
 prior art is a living artifact, not prose you re-argue each time. Today
 `ideation.md` is freeform.

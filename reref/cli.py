@@ -370,6 +370,9 @@ def cmd_new(args):
     written = authoring.scaffold_from_template(args.corpus, args.slug, title)
     print(f"project {args.slug!r} (id {pid}) scaffolded at {root}/")
     print(f"  files: {', '.join(sorted(p.name for p in written)) or '(all already existed)'}")
+    if authoring.seed_ideation(con, args.slug):
+        print("  plan: seeded an open ideation question — thesis/contributions go in as "
+              "claims, risks as questions (`reref claim add`, `reref log add`)")
 
     # each project is its own git repo (the env repo gitignores projects/*)
     if not args.no_git and not (root / ".git").exists():

@@ -10,7 +10,6 @@ writing) retrieve against that one corpus.
         .reref/                   SHARED index + lockfile               DERIVED
         projects/
             <paper>/
-                ideation.md
                 src/              the paper's code
                 text/             the LaTeX being authored
                 citations.json    anchored cites for this paper         OUTPUT
@@ -74,10 +73,6 @@ class Project:
     @property
     def text(self) -> Path:
         return self.root / "text"
-
-    @property
-    def ideation(self) -> Path:
-        return self.root / "ideation.md"
 
     @property
     def citations_path(self) -> Path:

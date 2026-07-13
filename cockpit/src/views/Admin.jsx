@@ -56,7 +56,10 @@ function FileEditor({ scopes, slug, banner }) {
             className={`btn ghost ${sel && sel.scope === f.scope && sel.name === f.name ? 'active-tab' : ''}`}
             onClick={() => setSel(f)}
           >
-            <span className="mono">{f.scope === 'project' ? `${f.project}/` : f.scope === 'template' ? 'template/' : ''}{f.name}</span>
+            <span className="mono">
+              {f.scope === 'project' ? `${f.project}/` : f.scope === 'template' ? 'template/'
+                : f.scope === 'writing' ? 'writing/' : ''}{f.name}
+            </span>
           </button>
         ))}
       </div>
@@ -102,13 +105,13 @@ export function Templates({ slug }) {
   return (
     <>
       <div className="pagehead">
-        <h1>Templates</h1>
+        <h1>Templates & writing</h1>
         <div className="sub">
-          what every new project is scaffolded from — paper structure lives in text/paper.tex
+          how a paper is built, how a thesis argues, sentences worth reusing — plus the project scaffold
         </div>
       </div>
-      <FileEditor scopes={['template']} slug={slug}
-                  banner="Applies to every FUTURE `reref new` — existing projects keep their copies." />
+      <FileEditor scopes={['writing', 'template']} slug={slug}
+                  banner="Agents read the writing guides before drafting text; template files apply to every FUTURE `reref new`." />
     </>
   )
 }

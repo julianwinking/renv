@@ -218,9 +218,10 @@ def h_scaffold_project(root, a):
     from .project import Project
     Project(proot).ensure()
     (proot / "runs").mkdir(exist_ok=True)
-    authoring.scaffold_ideation(proot, title)
     written = authoring.scaffold_paper(proot, a["slug"], title)
-    return {"id": pid, "slug": a["slug"], "scaffolded": [p.name for p in written]}
+    seeded = authoring.seed_ideation(con, a["slug"])
+    return {"id": pid, "slug": a["slug"], "scaffolded": [p.name for p in written],
+            "ideation": "seeded as an open question in the store" if seeded else "already present"}
 
 
 def h_weave(root, a):
@@ -411,7 +412,7 @@ TOOLS = [
     {"name": "register_dataset", "description": "Register a versioned, content-hashed evaluation dataset.",
      "inputSchema": _obj({"slug": _S, "version": _S, "path": _S, "description": _S}, ["slug"]),
      "handler": h_register_dataset},
-    {"name": "scaffold_project", "description": "Create a project with ideation template + paper skeleton.",
+    {"name": "scaffold_project", "description": "Create a project: paper skeleton + store-native ideation (a kickoff question; plan lives in the graph).",
      "inputSchema": _obj({"slug": _S, "title": _S}, ["slug"]), "handler": h_scaffold_project},
     {"name": "weave", "description": "Regenerate results_table.tex + references.bib from the store.",
      "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_weave},

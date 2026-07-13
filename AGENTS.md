@@ -63,6 +63,21 @@ CLI (`uv run reref …`) and MCP tools are 1:1:
 The MCP server is registered in `.mcp.json` (`reref` server). `query` is
 read-only; all write tools enforce the §0 constraints above.
 
+## Where knowledge lives: files are instructions, the store is state
+
+- **Markdown files are low-churn instructions for agents**: this protocol, the
+  writing guides in `templates/writing/` (paper structure, thesis structure,
+  reusable phrasing — read them *before drafting manuscript text*), and the
+  project templates. They change rarely and load straight into context.
+- **All research state lives in the store and its graph** — ideation, theses,
+  contributions, open questions, hypotheses, decisions, results, feedback —
+  as claims / log entries / notes. There is no `ideation.md`: state the thesis
+  as a claim, risks as `question` entries, the evaluation design as a
+  `decision` entry *before* building.
+- **Layering, not copies.** Each project's `AGENTS.md` holds ONLY
+  project-specific overrides and defers to this file. Never duplicate protocol
+  text into a project — that is how drift starts.
+
 ## Where state lives
 
 - `library/` — shared reference corpus (papers). Indexed once into `.reref/`.

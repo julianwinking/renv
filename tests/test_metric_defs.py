@@ -69,7 +69,10 @@ def test_web_endpoints_and_cors(tmp_path):
             headers={"Content-Type": "application/json"})
         made = json.loads(urllib.request.urlopen(req).read())
         assert made["slug"] == "zz-new"
-        assert (tmp_path / "projects" / "zz-new" / "ideation.md").exists()
+        assert (tmp_path / "projects" / "zz-new" / "text" / "paper.tex").exists()
+        # ideation is store-native: creation seeds an open kickoff question
+        proj = json.loads(urllib.request.urlopen(base + "/api/project/zz-new").read())
+        assert any(e["type"] == "question" for e in proj["log"])
         # a bad slug is refused before touching the filesystem
         req = urllib.request.Request(
             base + "/api/project", method="POST",

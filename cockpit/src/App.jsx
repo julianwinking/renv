@@ -54,6 +54,7 @@ export default function App() {
   const [sideW, setSideW] = useState(() => Number(localStorage.getItem('reref-sidebar-w')) || 228)
   const [hits, setHits] = useState(null)
   const [switcher, setSwitcher] = useState(false)   // false | 'list' | 'create'
+  const [spos, setSpos] = useState({ top: 130, left: 12 })  // anchored under the switcher
   const [pfilter, setPfilter] = useState('')
   const [newProj, setNewProj] = useState({})
   const [perr, setPerr] = useState(null)
@@ -180,7 +181,11 @@ export default function App() {
         </div>
 
         <div className="eyebrow">Project</div>
-        <button className="pswitch" onClick={() => { setSwitcher('list'); setPfilter('') }}>
+        <button className="pswitch" onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          setSpos({ top: r.bottom + 6, left: r.left })
+          setSwitcher('list'); setPfilter('')
+        }}>
           <span className="dot" />
           <span className="pname">{slug || 'select project'}</span>
           <svg className="updown" width="12" height="12" viewBox="0 0 16 16" fill="none"
@@ -191,7 +196,7 @@ export default function App() {
         {switcher && (
           <>
             <div className="backdrop" onClick={() => setSwitcher(false)} />
-            <div className="pdialog">
+            <div className="pdialog" style={{ top: spos.top, left: spos.left }}>
               {switcher === 'list' ? (
                 <>
                   <div className="find">

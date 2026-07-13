@@ -216,13 +216,16 @@ _CONFIG_FILES = {
     },
     "template": {
         "AGENTS.md": "Per-project agent instructions scaffolded into every NEW project.",
-        "ideation.md": "Research-plan structure every NEW project starts from.",
         "text/paper.tex": "Paper skeleton — the section structure of every NEW paper.",
         "README.md": "Readme scaffolded into every NEW project.",
     },
+    "writing": {
+        "paper-structure.md": "How a research paper is built — what each section must accomplish.",
+        "thesis-structure.md": "How a thesis argument is built and defended.",
+        "style.md": "Reusable research sentences and argument constructions.",
+    },
     "project": {
-        "AGENTS.md": "THIS project's agent instructions.",
-        "ideation.md": "THIS project's research plan.",
+        "AGENTS.md": "THIS project's overrides only — protocol inherits from the env AGENTS.md.",
     },
 }
 _CONFIG_MAX_BYTES = 512 * 1024
@@ -236,6 +239,8 @@ def _config_path(root, con, scope, name, project=None) -> Path:
         return base / name
     if scope == "template":
         return base / "templates" / "project" / name
+    if scope == "writing":
+        return base / "templates" / "writing" / name
     db.project_id(con, project)   # validates the slug exists — no path games
     return base / "projects" / project / name
 
@@ -436,6 +441,7 @@ class Handler(BaseHTTPRequestHandler):
                     subprocess.run(["git", "init", "-q"], cwd=str(proot), timeout=10, check=True)
                 except Exception:
                     pass
+            authoring.seed_ideation(con, slug)   # plan starts as a graph node, not a file
             return {"id": pid, "slug": slug, "title": title}
         if path == "/api/experiment":
             return experiment.create_experiment(con, d["project"], d["slug"],

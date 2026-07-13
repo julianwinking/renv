@@ -37,6 +37,7 @@ export default function Plan({ slug }) {
   const [sel, setSel] = useState(null)             // item being edited
   const [err, setErr] = useState(null)
   const [collapsed, setCollapsed] = useState({})   // phase id → children hidden
+  const [draw, setDraw] = useState(null)           // {a, b} day indices while sketching
   const [zoom, setZoom] = useState(2)              // index into ZOOMS
   const PX = ZOOMS[zoom]
   const [labelW, setLabelW] = useState(() =>
@@ -190,6 +191,32 @@ export default function Plan({ slug }) {
 
   const x = (dateStr) => ((parse(dateStr) - range.min) / DAY) * PX
   const width = range.days * PX
+
+  // sketch a new item directly on the add row: drag start→end, release
+  const beginDraw = (e) => {
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const dayAt = (cx) =>
+      Math.max(0, Math.min(range.days - 1, Math.floor((cx - rect.left) / PX)))
+    const a = dayAt(e.clientX)
+    setDraw({ a, b: a })
+    const move = (ev) => setDraw({ a, b: dayAt(ev.clientX) })
+    const up = (ev) => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      setDraw(null)
+      const b = dayAt(ev.clientX)
+      const [d0, d1] = a <= b ? [a, b] : [b, a]
+      setSel(null)
+      setDraft({
+        kind: 'phase',
+        start: iso(addDays(range.min, d0)),
+        due: iso(addDays(range.min, d1)),
+      })
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
 
   // one level of nesting: phases can contain sub-items, rows collapse
   const visible = []
@@ -446,9 +473,18 @@ export default function Plan({ slug }) {
                     </div>
                   )}
                   <div className="gantt-row add" role="button" tabIndex={0}
-                       title="Add a phase, milestone, or deadline"
-                       onClick={() => { setSel(null); setDraft({ kind: 'phase' }) }}
-                       onKeyDown={(e) => e.key === 'Enter' && setDraft({ kind: 'phase' })} />
+                       title="Drag to sketch a phase (click = a single date)"
+                       onMouseDown={beginDraw}
+                       onKeyDown={(e) => e.key === 'Enter' && setDraft({ kind: 'phase' })}>
+                    {draw && (
+                      <div className="gantt-bar bar-active"
+                           style={{
+                             left: Math.min(draw.a, draw.b) * PX,
+                             width: (Math.abs(draw.b - draw.a) + 1) * PX,
+                             pointerEvents: 'none',
+                           }} />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

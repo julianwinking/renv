@@ -64,7 +64,7 @@ function FileEditor({ scopes, slug, banner }) {
         ))}
       </div>
       {sel && (
-        <Section title={sel.name} aside={dirty ? 'unsaved changes' : 'saved'}>
+        <Section title={sel.name} aside={dirty ? 'Unsaved changes' : 'Saved'}>
           <div style={{ padding: '0 16px 6px' }} className="muted">
             {files.find((f) => f.scope === sel.scope && f.name === sel.name)?.description} {banner}
           </div>
@@ -116,7 +116,7 @@ export function Templates({ slug }) {
   )
 }
 
-const DIRS = { maximize: '↑ higher is better', minimize: '↓ lower is better', info: '· informational' }
+const DIRS = { maximize: '↑ Higher is better', minimize: '↓ Lower is better', info: '· Informational' }
 
 export function Settings({ slug, project, onMutate }) {
   const [title, setTitle] = useState(project?.title || '')
@@ -179,7 +179,7 @@ export function Settings({ slug, project, onMutate }) {
 
       <Section title="Metric definitions"
                aside={<button className="rowbtn" style={{ display: 'inline', width: 'auto', color: 'var(--accent)', cursor: 'pointer' }}
-                              onClick={() => setDraft({ direction: 'maximize', fmt: '.3f' })}>+ define metric</button>}>
+                              onClick={() => setDraft({ direction: 'maximize', fmt: '.3f' })}>+ Define metric</button>}>
         {defs && Object.values(defs).map((d) => (
           <div className="row" key={d.name}>
             <Mono>{d.name}</Mono>
@@ -188,7 +188,7 @@ export function Settings({ slug, project, onMutate }) {
             <span className="chip">{DIRS[d.direction]}</span>
             <Mono title="format">{d.fmt}{d.unit ? ` · ${d.unit}` : ''}</Mono>
             <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
-                    onClick={() => setDraft({ ...d })}>edit</button>
+                    onClick={() => setDraft({ ...d })}>Edit</button>
           </div>
         ))}
         {defs && !Object.keys(defs).length && (
@@ -197,21 +197,21 @@ export function Settings({ slug, project, onMutate }) {
         {draft && (
           <div className="detail" style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input className="text" placeholder="name (metric key, e.g. acc)" value={draft.name || ''}
+              <input className="text" placeholder="Name (metric key, e.g. acc)" value={draft.name || ''}
                      onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-              <input className="text" placeholder="label (display name)" value={draft.label || ''}
+              <input className="text" placeholder="Label (display name)" value={draft.label || ''}
                      onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
               <select className="text" value={draft.direction}
                       onChange={(e) => setDraft({ ...draft, direction: e.target.value })}>
-                <option value="maximize">maximize (↑)</option>
-                <option value="minimize">minimize (↓)</option>
-                <option value="info">info (neither)</option>
+                <option value="maximize">Maximize (↑)</option>
+                <option value="minimize">Minimize (↓)</option>
+                <option value="info">Info (neither)</option>
               </select>
-              <input className="text" placeholder="format, e.g. .3f or .1%" value={draft.fmt || ''}
+              <input className="text" placeholder="Format, e.g. .3f or .1%" value={draft.fmt || ''}
                      onChange={(e) => setDraft({ ...draft, fmt: e.target.value })} />
-              <input className="text" placeholder="unit suffix (optional, e.g. ms)" value={draft.unit || ''}
+              <input className="text" placeholder="Unit suffix (optional, e.g. ms)" value={draft.unit || ''}
                      onChange={(e) => setDraft({ ...draft, unit: e.target.value })} />
-              <input className="text" placeholder="description (optional)" value={draft.description || ''}
+              <input className="text" placeholder="Description (optional)" value={draft.description || ''}
                      onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
             </div>
             <div className="gnode-actions" style={{ marginTop: 0 }}>
@@ -226,7 +226,7 @@ export function Settings({ slug, project, onMutate }) {
 
       <Section title="Remotes"
                aside={<button className="rowbtn" style={{ display: 'inline', width: 'auto', color: 'var(--accent)', cursor: 'pointer' }}
-                              onClick={() => setRdraft({})}>+ add remote</button>}>
+                              onClick={() => setRdraft({})}>+ Add remote</button>}>
         <div style={{ padding: '0 16px 8px' }} className="muted">
           Named clusters/storage referencing your ssh aliases (`ssh snaga` stays the source of
           truth for auth). The data root makes locators like <span className="mono">snaga:runs/exp42</span> expand.
@@ -234,11 +234,11 @@ export function Settings({ slug, project, onMutate }) {
         {remotes && remotes.map((r) => (
           <div className="row" key={r.name}>
             <Mono>{r.name}</Mono>
-            <span className="chip">{r.host || 'this machine'}</span>
+            <span className="chip">{r.host || 'This machine'}</span>
             <div className="grow mono muted" style={{ fontSize: 11.5 }}>{r.data_root || '—'}</div>
             {r.description && <span className="muted">{r.description}</span>}
             <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
-                    onClick={() => setRdraft({ ...r })}>edit</button>
+                    onClick={() => setRdraft({ ...r })}>Edit</button>
           </div>
         ))}
         {remotes && !remotes.length && (
@@ -247,13 +247,13 @@ export function Settings({ slug, project, onMutate }) {
         {rdraft && (
           <div className="detail" style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input className="text" placeholder="name, e.g. snaga" value={rdraft.name || ''}
+              <input className="text" placeholder="Name, e.g. snaga" value={rdraft.name || ''}
                      onChange={(e) => setRdraft({ ...rdraft, name: e.target.value })} />
-              <input className="text" placeholder="ssh alias (default: the name)" value={rdraft.host || ''}
+              <input className="text" placeholder="SSH alias (default: the name)" value={rdraft.host || ''}
                      onChange={(e) => setRdraft({ ...rdraft, host: e.target.value })} />
-              <input className="text" placeholder="data root, e.g. /scratch/julian/research" value={rdraft.data_root || ''}
+              <input className="text" placeholder="Data root, e.g. /scratch/julian/research" value={rdraft.data_root || ''}
                      onChange={(e) => setRdraft({ ...rdraft, data_root: e.target.value })} />
-              <input className="text" placeholder="description (optional)" value={rdraft.description || ''}
+              <input className="text" placeholder="Description (optional)" value={rdraft.description || ''}
                      onChange={(e) => setRdraft({ ...rdraft, description: e.target.value })} />
             </div>
             <div className="gnode-actions" style={{ marginTop: 0 }}>
@@ -269,7 +269,7 @@ export function Settings({ slug, project, onMutate }) {
       <Section title="Review rubric"
                aside={<button className="rowbtn" style={{ display: 'inline', width: 'auto', color: 'var(--accent)', cursor: 'pointer' }}
                               onClick={async () => { if (!rubric) setRubric(await getRubric()); setShowRubric(!showRubric) }}>
-                        {showRubric ? 'hide' : 'show'}
+                        {showRubric ? 'Hide' : 'Show'}
                       </button>}>
         <div style={{ padding: '0 16px 10px' }} className="muted">
           Read-only: the checks live as data in <span className="mono">reref/review.py</span> —

@@ -270,17 +270,17 @@ export default function Plan({ slug }) {
                   onClick={() => setDraft({ ...draft, kind: k })}>{k}</button>
         ))}
       </div>
-      <input className="text" placeholder="title, e.g. NeurIPS abstract deadline / Dimension-sweep experiments"
+      <input className="text" placeholder="Title, e.g. NeurIPS abstract deadline / Dimension-sweep experiments"
              value={draft.title || ''} autoFocus
              onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
       <div style={{ display: 'grid', gridTemplateColumns: draft.kind === 'phase' ? '1fr 1fr' : '1fr', gap: 8 }}>
         {draft.kind === 'phase' && (
-          <label className="muted" style={{ fontSize: 11.5 }}>start
+          <label className="muted" style={{ fontSize: 11.5 }}>Start
             <input className="text" type="date" value={draft.start || ''}
                    onChange={(e) => setDraft({ ...draft, start: e.target.value })} />
           </label>
         )}
-        <label className="muted" style={{ fontSize: 11.5 }}>{draft.kind === 'phase' ? 'due' : 'date'}
+        <label className="muted" style={{ fontSize: 11.5 }}>{draft.kind === 'phase' ? 'Due' : 'Date'}
           <input className="text" type="date" value={draft.due || ''}
                  onChange={(e) => setDraft({ ...draft, due: e.target.value })} />
         </label>
@@ -289,34 +289,35 @@ export default function Plan({ slug }) {
         <label className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
           <input type="checkbox" checked={!!draft.end_deadline}
                  onChange={(e) => setDraft({ ...draft, end_deadline: e.target.checked })} />
-          this phase ends in a deadline
+          This phase ends in a deadline
         </label>
       )}
       {(draft.kind === 'deadline' || (draft.kind === 'phase' && draft.end_deadline)) && (
         <label className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
           <input type="checkbox" checked={!!draft.prepared}
                  onChange={(e) => setDraft({ ...draft, prepared: e.target.checked })} />
-          already prepared for it
+          Already prepared for it
         </label>
       )}
       {!draft.id && (
         <select className="text" value={draft.parent_id || ''}
                 onChange={(e) => setDraft({ ...draft, parent_id: e.target.value || null })}>
-          <option value="">top-level item</option>
+          <option value="">Top-level item</option>
           {items.filter((i) => i.kind === 'phase' && !i.parent_id).map((p) => (
-            <option key={p.id} value={p.id}>sub-item of {p.title}</option>
+            <option key={p.id} value={p.id}>Sub-item of {p.title}</option>
           ))}
         </select>
       )}
-      <input className="text" placeholder="note (optional)" value={draft.note || ''}
+      <input className="text" placeholder="Note (optional)" value={draft.note || ''}
              onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
       {err && <div style={{ color: 'var(--bad)', fontSize: 12 }}>{err}</div>}
       <div className="gnode-actions" style={{ marginTop: 0 }}>
         <button className="btn" onClick={save} disabled={!(draft.title || '').trim() || !draft.due}>
           {draft.id ? 'Save changes' : 'Add to plan'}
         </button>
+        <button className="btn ghost" onClick={() => setDraft(null)}>Cancel</button>
         {draft.id && (
-          <button className="btn ghost" onClick={async () => {
+          <button className="btn ghost" style={{ marginLeft: 'auto' }} onClick={async () => {
             const it = items.find((i) => i.id === draft.id)
             await updatePlanItem(draft.id, { status: it.status === 'done' ? 'planned' : 'done' })
             setDraft(null); load()
@@ -327,7 +328,6 @@ export default function Plan({ slug }) {
             Delete
           </button>
         )}
-        <button className="btn ghost" onClick={() => setDraft(null)}>Cancel</button>
       </div>
     </div>
   )

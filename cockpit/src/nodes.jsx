@@ -53,21 +53,21 @@ export function FindingNode({ data }) {
       <div className="gnode-sub">{data.issue}</div>
       {!verdict && (
         <div className="gnode-actions">
-          <button className="btn ghost" onClick={() => setVerdict('accept')}>accept</button>
-          <button className="btn ghost" onClick={() => setVerdict('reject')}>reject</button>
+          <button className="btn ghost" onClick={() => setVerdict('accept')}>Accept</button>
+          <button className="btn ghost" onClick={() => setVerdict('reject')}>Reject</button>
         </div>
       )}
       {verdict && (
         <>
           <textarea
             className="nodrag"
-            placeholder={`why ${verdict}?`}
+            placeholder={`Why ${verdict}?`}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
           <div className="gnode-actions">
-            <button className="btn" onClick={submit}>save</button>
-            <button className="btn ghost" onClick={() => setVerdict(null)}>cancel</button>
+            <button className="btn" onClick={submit}>Save</button>
+            <button className="btn ghost" onClick={() => setVerdict(null)}>Cancel</button>
           </div>
         </>
       )}

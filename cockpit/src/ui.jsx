@@ -118,6 +118,20 @@ export class ErrorBoundary extends React.Component {
 // render that as empty, never crash a .map on it.
 export const asArray = (x) => (Array.isArray(x) ? x : [])
 
+// Reusable centered modal dialog for create/edit forms.
+export function Modal({ open, title, onClose, children }) {
+  if (!open) return null
+  return (
+    <>
+      <div className="backdrop" onClick={onClose} />
+      <div className="modal">
+        <div className="eyebrow" style={{ margin: '0 0 12px' }}>{title}</div>
+        {children}
+      </div>
+    </>
+  )
+}
+
 // Minimal reusable confirm dialog — for actions worth a second look
 // (e.g. moving a deadline). Renders nothing when closed.
 export function Confirm({ open, title, body, confirmLabel = 'Confirm', danger, onConfirm, onCancel }) {

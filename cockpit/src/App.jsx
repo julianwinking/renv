@@ -246,7 +246,7 @@ export default function App() {
                       ))
                     })()}
                     {overview && overview.projects.length === 0 && (
-                      <div className="muted" style={{ padding: '6px 9px' }}>no projects yet</div>
+                      <div className="muted" style={{ padding: '6px 9px' }}>No projects yet</div>
                     )}
                   </div>
                   <div className="createrow">

@@ -73,7 +73,7 @@ export default function Overview({ slug, project, defs, counts }) {
           )}
         </Section>
 
-        <Section title="Claims" aside="status derived from evidence">
+        <Section title="Claims" aside="Status derived from evidence">
           {claims.map((c) => (
             <div className="row" key={c.id}>
               <Stamp value={c.status} />
@@ -89,7 +89,7 @@ export default function Overview({ slug, project, defs, counts }) {
 
       <div style={{ height: 14 }} />
 
-      <Section title="Recent log" aside="newest first">
+      <Section title="Recent log" aside="Newest first">
         {log.map((e) => (
           <div className="row" key={e.id}>
             <Stamp value={e.type} tone={e.type === 'result' ? 'ok' : e.type === 'blocker' ? 'bad' : 'idle'} />

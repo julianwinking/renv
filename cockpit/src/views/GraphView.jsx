@@ -61,39 +61,39 @@ function AddPanel({ kind, slug, onClose, onDone, experiments, at }) {
       <div className="eyebrow" style={{ margin: '0 0 8px' }}>New {kind}</div>
       {kind === 'experiment' && (
         <>
-          <input className="text" placeholder="slug, e.g. 004-dimension-sweep" onChange={set('slug')} autoFocus />
-          <input className="text" placeholder="title" onChange={set('title')} />
-          <textarea placeholder="hypothesis — what should this branch show?" onChange={set('hypothesis')} />
+          <input className="text" placeholder="Slug, e.g. 004-dimension-sweep" onChange={set('slug')} autoFocus />
+          <input className="text" placeholder="Title" onChange={set('title')} />
+          <textarea placeholder="Hypothesis — what should this branch show?" onChange={set('hypothesis')} />
           <select className="text" onChange={set('parent')} defaultValue="">
-            <option value="">no parent (root)</option>
-            {experiments.map((s) => <option key={s} value={s}>branch of {s}</option>)}
+            <option value="">No parent (root)</option>
+            {experiments.map((s) => <option key={s} value={s}>Branch of {s}</option>)}
           </select>
         </>
       )}
       {kind === 'claim' && (
         <>
-          <textarea placeholder="the claim — one testable statement" onChange={set('text')} autoFocus />
+          <textarea placeholder="The claim — one testable statement" onChange={set('text')} autoFocus />
           <select className="text" onChange={set('kind')} defaultValue="assertion">
-            <option value="assertion">assertion</option>
-            <option value="contribution">contribution</option>
-            <option value="thesis">thesis</option>
+            <option value="assertion">Assertion</option>
+            <option value="contribution">Contribution</option>
+            <option value="thesis">Thesis</option>
           </select>
         </>
       )}
       {kind === 'question' && (
-        <textarea placeholder="an open question — stays OPEN until an entry answers it" onChange={set('text')} autoFocus />
+        <textarea placeholder="An open question — stays OPEN until an entry answers it" onChange={set('text')} autoFocus />
       )}
       {kind === 'hypothesis' && (
-        <textarea placeholder="a testable hypothesis — branch experiments off it" onChange={set('text')} autoFocus />
+        <textarea placeholder="A testable hypothesis — branch experiments off it" onChange={set('text')} autoFocus />
       )}
       {kind === 'feedback' && (
         <>
-          <input className="text" placeholder='who gave it? e.g. "advisor: Prof. X"' onChange={set('source')} autoFocus />
-          <textarea placeholder="what did they say?" onChange={set('text')} />
+          <input className="text" placeholder='Who gave it? e.g. "advisor: Prof. X"' onChange={set('source')} autoFocus />
+          <textarea placeholder="What did they say?" onChange={set('text')} />
         </>
       )}
       {kind === 'note' && (
-        <textarea placeholder="meeting note / idea — saved to the store" onChange={set('text')} autoFocus />
+        <textarea placeholder="Meeting note / idea — saved to the store" onChange={set('text')} autoFocus />
       )}
       {err && <div style={{ color: 'var(--bad)', marginTop: 6, fontSize: 12 }}>{err}</div>}
       <div className="gnode-actions">
@@ -129,17 +129,17 @@ function EdgePanel({ pending, onClose, onDone }) {
       <select className="text" value={choice} onChange={(e) => setChoice(e.target.value)}>
         {pending.type === 'evidence' ? (
           <>
-            <option value="supports">supports (via latest done run)</option>
-            <option value="refutes">refutes (via latest done run)</option>
+            <option value="supports">Supports (via latest done run)</option>
+            <option value="refutes">Refutes (via latest done run)</option>
           </>
         ) : (
           <>
-            <option value="depends_on">depends on</option>
-            <option value="contradicts">contradicts</option>
+            <option value="depends_on">Depends on</option>
+            <option value="contradicts">Contradicts</option>
           </>
         )}
       </select>
-      <textarea placeholder="comment on this edge (optional) — why does it hold?"
+      <textarea placeholder="Comment on this edge (optional) — why does it hold?"
                 value={note} onChange={(e) => setNote(e.target.value)} />
       {err && <div style={{ color: 'var(--bad)', marginTop: 6, fontSize: 12 }}>{err}</div>}
       <div className="gnode-actions">
@@ -301,15 +301,15 @@ export default function GraphView({ slug, defs, onMutate }) {
           localStorage.setItem('reref-legend', next ? 'open' : 'closed')
         }}>
           <span className="eyebrow" style={{ margin: 0 }}>legend</span>
-          <span className="faint">{legendOpen ? '▾' : '▴'}</span>
+          <span className="glegend-caret">{legendOpen ? '▾' : '▴'}</span>
         </button>
         {legendOpen && (
           <>
             {KINDS.map(([k, c]) => (
-              <div className="li" key={k}><span className="sw" style={{ background: c }} />{k}</div>
+              <div className="li" key={k}><span className="sw" style={{ background: c }} />{k[0].toUpperCase() + k.slice(1)}</div>
             ))}
-            <div className="li faint" style={{ marginTop: 4 }}>drag node→node connects · double-click opens</div>
-            <div className="li faint">right-click adds · positions are saved</div>
+            <div className="li faint" style={{ marginTop: 4 }}>Drag node→node connects · double-click opens</div>
+            <div className="li faint">Right-click adds · positions are saved</div>
           </>
         )}
       </div>

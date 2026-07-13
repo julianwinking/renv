@@ -45,14 +45,14 @@ export default function Papers({ focus }) {
           )}
         </Section>
 
-        <Section title="Usage map" aside={sel ? sel : 'no paper selected'}>
+        <Section title="Usage map" aside={sel ? sel : 'No paper selected'}>
           {!sel && <Empty>Select a paper to trace its citations and the log entries that lean on them.</Empty>}
           {sel && usage && (
             <>
               {usage.paper && (
                 <div className="detail" style={{ borderTop: 0 }}>
-                  <div className="kv"><span className="k">title</span><span>{usage.paper.title}</span></div>
-                  {usage.paper.authors && <div className="kv"><span className="k">authors</span><span className="muted">{usage.paper.authors}</span></div>}
+                  <div className="kv"><span className="k">Title</span><span>{usage.paper.title}</span></div>
+                  {usage.paper.authors && <div className="kv"><span className="k">Authors</span><span className="muted">{usage.paper.authors}</span></div>}
                   {usage.paper.arxiv && <div className="kv"><span className="k">arXiv</span><Mono>{usage.paper.arxiv}</Mono></div>}
                 </div>
               )}

@@ -328,8 +328,14 @@ select.text {
 .detail .kv .k { color: var(--faint); min-width: 84px; }
 
 /* timeline */
-.tl-row { display: flex; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); }
-.tl-rail { display: flex; flex-direction: column; align-items: center; width: 80px; flex-shrink: 0; }
+.tl-row { display: flex; gap: 14px; padding: 10px 16px; border-top: 1px solid var(--line); }
+.tl-type {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  width: 100px; flex-shrink: 0;
+}
+.tl-when {
+  display: flex; flex-direction: column; gap: 2px; width: 84px; flex-shrink: 0;
+}
 .tl-body { flex: 1; min-width: 0; white-space: pre-wrap; }
 .tl-ev { margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
@@ -390,6 +396,7 @@ select.text {
 .glegend.closed { padding: 0; }
 .glegend.closed .glegend-head { height: 26px; padding: 0 9px; }
 .glegend-head .eyebrow { color: var(--ink); }
+.glegend-caret { color: var(--ink); font-size: 13px; line-height: 1; display: flex; align-items: center; }
 .glegend .li { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
 .glegend .sw { width: 8px; height: 8px; border-radius: 2px; }
 
@@ -497,6 +504,25 @@ select.text {
   position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 80;
   width: 340px; background: var(--surface); border: 1px solid var(--line);
   border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow);
+}
+.modal {
+  position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 80;
+  width: 440px; max-width: calc(100vw - 40px);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 11px; padding: 16px 18px; box-shadow: var(--shadow);
+  display: grid; gap: 9px;
+}
+.pagehead.with-action { display: flex; align-items: center; justify-content: space-between; }
+
+/* standard dialog footer: actions right-aligned, primary on the very right.
+   row-reverse means the first-in-DOM (primary) button lands rightmost, so
+   every dialog gets this for free without reordering its buttons. */
+.modal .gnode-actions,
+.gpanel .gnode-actions,
+.confirm .gnode-actions {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  margin-top: 4px;
 }
 
 /* admin file editor */

@@ -144,18 +144,16 @@ export default function Timeline({ slug, focus }) {
       >
         {shown.map((e) => (
           <div className={`tl-row ${focus === e.fkey ? 'flash' : ''}`} id={`tl-${e.fkey}`} key={e.fkey}>
-            <div className="tl-rail">
+            <div className="tl-type">
               <Stamp value={e.kind} tone={e.kind === 'result' ? 'ok' : e.kind === 'blocker' ? 'bad' : 'idle'} />
               {e.kind === 'question' && (
-                <span style={{ marginTop: 4 }}>
-                  <Stamp value={e.answered_by ? 'answered' : 'open'} tone={e.answered_by ? 'ok' : 'warn'} />
-                </span>
+                <Stamp value={e.answered_by ? 'answered' : 'open'} tone={e.answered_by ? 'ok' : 'warn'} />
               )}
-              <span className="when" style={{ marginTop: 4 }}>{timeAgo(e.ts)}</span>
+            </div>
+            <div className="tl-when">
+              <span className="when">{timeAgo(e.ts)}</span>
               {e.edited && (
-                <span className="when" style={{ marginTop: 2 }} title="last edited">
-                  ✎ {timeAgo(e.edited)}
-                </span>
+                <span className="when" title="Last edited">✎ {timeAgo(e.edited)}</span>
               )}
             </div>
             <div className="tl-body">

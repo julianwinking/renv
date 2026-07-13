@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { getProject, getRuns } from '../api.js'
-import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance } from '../ui.jsx'
+import { getProject, getRuns, addExperiment } from '../api.js'
+import { asArray, Stamp, Metrics, Section, Empty, Mono, timeAgo, Provenance, Modal } from '../ui.jsx'
 
 function Run({ run, defs }) {
   const where = run.remote
     ? run.remote.replace(/^[a-z+]+:\/\//, '').split('/')[0]   // host part
-    : 'local'
+    : 'Local'
   return (
     <tr>
       <td className="num">#{run.id}</td>
@@ -33,7 +33,10 @@ export default function Experiments({ slug, defs, focus }) {
   const [exps, setExps] = useState(null)
   const [runs, setRuns] = useState([])
   const [open, setOpen] = useState({})
+  const [adding, setAdding] = useState(null)
+  const [err, setErr] = useState(null)
 
+  const load = () => getProject(slug).then((d) => setExps(d.experiments))
   useEffect(() => {
     let live = true
     getProject(slug).then((d) => {
@@ -50,6 +53,16 @@ export default function Experiments({ slug, defs, focus }) {
     return () => { live = false }
   }, [slug, focus])
 
+  const save = async () => {
+    setErr(null)
+    const r = await addExperiment(slug, (adding.slug || '').trim(),
+                                  adding.title || undefined, adding.hypothesis || undefined,
+                                  adding.parent || undefined)
+    if (r && r.error) { setErr(r.error); return }
+    setAdding(null)
+    load()
+  }
+
   if (!exps) return <div className="loading">reading the store…</div>
 
   const byId = Object.fromEntries(exps.map((e) => [e.id, e]))
@@ -61,8 +74,9 @@ export default function Experiments({ slug, defs, focus }) {
 
   return (
     <>
-      <div className="pagehead">
+      <div className="pagehead with-action">
         <h1>Experiments</h1>
+        <button className="gtool" onClick={() => setAdding({})}>+ Add experiment</button>
       </div>
       <Section title="Branches" aside={`${exps.length} experiments · ${runs.length} runs`}>
         {exps.map((e) => {
@@ -82,7 +96,7 @@ export default function Experiments({ slug, defs, focus }) {
               {isOpen && (
                 <div className="detail">
                   {e.hypothesis && (
-                    <div className="kv"><span className="k">hypothesis</span><span>{e.hypothesis}</span></div>
+                    <div className="kv"><span className="k">Hypothesis</span><span>{e.hypothesis}</span></div>
                   )}
                   {eruns.length > 0 && (
                     <table className="ledger-t" style={{ marginTop: 8 }}>
@@ -92,7 +106,7 @@ export default function Experiments({ slug, defs, focus }) {
                       <tbody>{eruns.map((r) => <Run key={r.id} run={r} defs={defs} />)}</tbody>
                     </table>
                   )}
-                  {!eruns.length && <div className="muted">no runs yet — <span className="mono">reref exp run {slug} {e.slug} …</span></div>}
+                  {!eruns.length && <div className="muted">No runs yet — <span className="mono">reref exp run {slug} {e.slug} …</span></div>}
                 </div>
               )}
             </div>
@@ -102,6 +116,28 @@ export default function Experiments({ slug, defs, focus }) {
           <Empty>No experiments yet — <code>reref exp new {slug} 001-… --hypothesis "…"</code> opens the first branch.</Empty>
         )}
       </Section>
+
+      <Modal open={!!adding} title="New experiment" onClose={() => setAdding(null)}>
+        <input className="text" autoFocus placeholder="Slug, e.g. 004-dimension-sweep"
+               value={adding?.slug || ''}
+               onChange={(e) => setAdding({ ...adding, slug: e.target.value })} />
+        <input className="text" placeholder="Title"
+               value={adding?.title || ''}
+               onChange={(e) => setAdding({ ...adding, title: e.target.value })} />
+        <textarea placeholder="Hypothesis — what should this branch show?"
+                  value={adding?.hypothesis || ''}
+                  onChange={(e) => setAdding({ ...adding, hypothesis: e.target.value })} />
+        <select className="text" value={adding?.parent || ''}
+                onChange={(e) => setAdding({ ...adding, parent: e.target.value || null })}>
+          <option value="">No parent (root)</option>
+          {exps.map((e) => <option key={e.slug} value={e.slug}>Branch of {e.slug}</option>)}
+        </select>
+        {err && <div style={{ color: 'var(--bad)', fontSize: 12 }}>{err}</div>}
+        <div className="gnode-actions" style={{ marginTop: 0 }}>
+          <button className="btn" onClick={save} disabled={!(adding?.slug || '').trim()}>Add experiment</button>
+          <button className="btn ghost" onClick={() => setAdding(null)}>Cancel</button>
+        </div>
+      </Modal>
     </>
   )
 }

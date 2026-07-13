@@ -123,8 +123,8 @@ export default function Conferences({ slug }) {
               <div className="grow">
                 <a href={c.link} target="_blank" rel="noreferrer"
                    style={{ color: isPlanned ? 'var(--accent)' : 'var(--ink)',
-                            fontWeight: 500, textDecoration: 'none' }}>
-                  {c.title} {c.year}
+                            fontWeight: 400, textDecoration: 'none' }}>
+                  <b style={{ fontWeight: 600 }}>{c.title}</b> {c.year}
                 </a>{' '}
                 <span className="muted">· {c.place}</span>
                 <div className="muted" style={{ fontSize: 11.5 }}>

@@ -87,6 +87,7 @@ export default function App() {
   useEffect(() => {
     const h = '#/' + view + (focus ? '/' + encodeURIComponent(focus) : '')
     if (location.hash !== h) location.hash = h
+    document.title = view.charAt(0).toUpperCase() + view.slice(1)
   }, [view, focus])
 
   useEffect(() => {   // deep links: react to external hash navigation too

@@ -46,6 +46,13 @@ export default function Experiments({ slug, defs, focus }) {
     load()
   }
 
+  const commitHyp = async (e) => {
+    const t = editText.trim()
+    if (t !== (e.hypothesis || '')) await editExperiment(slug, e.slug, { hypothesis: t })
+    setEditing(null)
+    load()
+  }
+
   const load = () => getProject(slug).then((d) => setExps(d.experiments))
   useEffect(() => {
     let live = true
@@ -119,9 +126,23 @@ export default function Experiments({ slug, defs, focus }) {
               </div>
               {isOpen && (
                 <div className="detail">
-                  {e.hypothesis && (
-                    <div className="kv"><span className="k">Hypothesis</span><span>{e.hypothesis}</span></div>
-                  )}
+                  <div className="kv">
+                    <span className="k">Hypothesis</span>
+                    {editing === `hyp:${e.slug}` ? (
+                      <textarea className="inline-edit" autoFocus value={editText}
+                                onChange={(ev) => setEditText(ev.target.value)}
+                                onBlur={() => commitHyp(e)}
+                                onKeyDown={(ev) => {
+                                  if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commitHyp(e) }
+                                  if (ev.key === 'Escape') setEditing(null)
+                                }} />
+                    ) : (
+                      <span className="grow inline-target" title="Click to edit"
+                            onClick={() => { setEditing(`hyp:${e.slug}`); setEditText(e.hypothesis || '') }}>
+                        {e.hypothesis || <span className="faint">no hypothesis — click to add</span>}
+                      </span>
+                    )}
+                  </div>
                   {eruns.length > 0 && (
                     <table className="ledger-t" style={{ marginTop: 8 }}>
                       <thead>

@@ -82,6 +82,8 @@ _CTX_VERBS: dict[tuple[str, str], list[str]] = {
     ("hypothesis", "experiment"): ["motivates"],
     ("hypothesis", "claim"): ["motivates"],
     ("hypothesis", "question"): ["raises"],
+    ("note", "experiment"): ["motivates"],
+    ("note", "question"): ["raises"],
     # external input is directed at something
     ("feedback", "claim"): ["concerns"],
     ("feedback", "experiment"): ["concerns"],

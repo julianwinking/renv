@@ -2,7 +2,7 @@
 // offline). Telescope data — a deadline only becomes research state when you
 // adopt it into the plan, which creates a normal plan_item deadline.
 import React, { useEffect, useMemo, useState } from 'react'
-import { getConferences, addPlanItem } from '../api.js'
+import { getConferences, addPlanItem, deletePlanItem, getPlan } from '../api.js'
 import { asArray, Stamp, Section, Empty, Mono } from '../ui.jsx'
 
 const DEFAULT_SUBS = ['ML', 'CV', 'RO']
@@ -25,7 +25,9 @@ export default function Conferences({ slug }) {
     try { return JSON.parse(localStorage.getItem('reref-conf-subs')) || DEFAULT_SUBS }
     catch { return DEFAULT_SUBS }
   })
-  const [added, setAdded] = useState({})   // conference id → plan item created
+  const [planned, setPlanned] = useState({})   // plan-item title → plan item id
+
+  const planKey = (c) => `${c.title} ${c.year} deadline`
 
   useEffect(() => {
     getConferences().then((c) => {
@@ -33,6 +35,15 @@ export default function Conferences({ slug }) {
       else setAll(asArray(c))
     })
   }, [])
+
+  useEffect(() => {   // which conferences are already adopted into the plan?
+    if (!slug) return
+    getPlan(slug).then((p) => {
+      const map = {}
+      for (const it of asArray(p)) map[it.title] = it.id
+      setPlanned(map)
+    })
+  }, [slug])
 
   useEffect(() => { localStorage.setItem('reref-conf-subs', JSON.stringify(subs)) }, [subs])
 
@@ -50,13 +61,19 @@ export default function Conferences({ slug }) {
       .sort((a, b) => a.left - b.left)
   }, [all, subs])
 
-  const adopt = async (c) => {
-    const due = (c.deadline || '').slice(0, 10)
+  const toggle = async (c) => {
+    const key = planKey(c)
+    const pid = planned[key]
+    if (pid) {
+      await deletePlanItem(pid)
+      setPlanned((m) => { const n = { ...m }; delete n[key]; return n })
+      return
+    }
     const r = await addPlanItem(slug, {
-      title: `${c.title} ${c.year} deadline`, kind: 'deadline', due,
+      title: key, kind: 'deadline', due: (c.deadline || '').slice(0, 10),
       note: c.link,
     })
-    if (!r.error) setAdded((a) => ({ ...a, [c.id]: true }))
+    if (!r.error) setPlanned((m) => ({ ...m, [key]: r.id }))
   }
 
   if (err) {
@@ -92,34 +109,40 @@ export default function Conferences({ slug }) {
       <div style={{ height: 14 }} />
 
       <Section title="Upcoming deadlines" aside={`${upcoming.length} in ${subs.join(', ') || '—'}`}>
-        {upcoming.map((c) => (
-          <div className="row" key={c.id}>
-            <span className="num" style={{
-              minWidth: 44, fontWeight: 600,
-              color: c.left <= 7 ? 'var(--bad)' : c.left <= 30 ? 'var(--warn)' : 'var(--muted)',
-            }}>
-              {c.left}d
-            </span>
-            <div className="grow">
-              <a href={c.link} target="_blank" rel="noreferrer"
-                 style={{ color: 'var(--ink)', fontWeight: 500, textDecoration: 'none' }}>
-                {c.title} {c.year}
-              </a>{' '}
-              <span className="muted">· {c.place}</span>
-              <div className="muted" style={{ fontSize: 11.5 }}>
-                <Mono>{(c.deadline || '').slice(0, 16)}</Mono> {c.timezone}
-                {c.abstract_deadline && <> · abstract <Mono>{c.abstract_deadline.slice(0, 10)}</Mono></>}
-                {c.date && <> · {c.date}</>}
+        {upcoming.map((c) => {
+          const isPlanned = !!planned[planKey(c)]
+          return (
+            <div className="row" key={c.id}
+                 style={isPlanned ? { background: 'var(--accent-soft)' } : null}>
+              <span className="num" style={{
+                minWidth: 44, fontWeight: 600,
+                color: c.left <= 7 ? 'var(--bad)' : c.left <= 30 ? 'var(--warn)' : 'var(--muted)',
+              }}>
+                {c.left}d
+              </span>
+              <div className="grow">
+                <a href={c.link} target="_blank" rel="noreferrer"
+                   style={{ color: isPlanned ? 'var(--accent)' : 'var(--ink)',
+                            fontWeight: 500, textDecoration: 'none' }}>
+                  {c.title} {c.year}
+                </a>{' '}
+                <span className="muted">· {c.place}</span>
+                <div className="muted" style={{ fontSize: 11.5 }}>
+                  <Mono>{(c.deadline || '').slice(0, 16)}</Mono> {c.timezone}
+                  {c.abstract_deadline && <> · abstract <Mono>{c.abstract_deadline.slice(0, 10)}</Mono></>}
+                  {c.date && <> · {c.date}</>}
+                </div>
               </div>
+              {asArray(c.sub).map((s) => <span key={s} className="chip">{s}</span>)}
+              <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px',
+                        ...(isPlanned ? { color: 'var(--accent)', borderColor: 'var(--accent)' } : null) }}
+                      title={isPlanned ? 'remove from the plan' : 'adopt as a plan deadline'}
+                      onClick={() => toggle(c)}>
+                {isPlanned ? 'planned ✓' : '→ plan'}
+              </button>
             </div>
-            {asArray(c.sub).map((s) => <span key={s} className="chip">{s}</span>)}
-            <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
-                    disabled={!!added[c.id]}
-                    onClick={() => adopt(c)}>
-              {added[c.id] ? 'in plan ✓' : '→ plan'}
-            </button>
-          </div>
-        ))}
+          )
+        })}
         {!upcoming.length && (
           <Empty>No upcoming deadlines in the selected categories — pick more above.</Empty>
         )}

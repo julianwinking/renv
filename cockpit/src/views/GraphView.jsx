@@ -3,7 +3,7 @@ import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState 
 import {
   getGraph, addExperiment, addClaim, addLog, addNote,
   setExperimentParent, relateClaims, linkExperimentToClaim, saveLayout,
-  editClaim, editLog, editNote, getConnections, addContextLink,
+  editClaim, editLog, editNote, getConnections, addContextLink, linkCitationToClaim,
 } from '../api.js'
 import { toFlow } from '../layout.js'
 import { nodeTypes } from '../nodes.jsx'
@@ -127,6 +127,8 @@ function ConnectPanel({ pending, slug, onClose, onDone }) {
       r = await setExperimentParent(slug, target.data.label, source.data.label)
     } else if (opt.mode === 'evidence') {
       r = await linkExperimentToClaim(slug, source.data.label, tgtId, choice, n)
+    } else if (opt.mode === 'cite_evidence') {
+      r = await linkCitationToClaim(tgtId, srcId, choice, n)
     } else if (opt.mode === 'relation') {
       r = await relateClaims(srcId, tgtId, choice, n)
     } else {   // context

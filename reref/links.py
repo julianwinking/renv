@@ -26,10 +26,19 @@ from .db import now, project_id, row_to_dict
 #   context  — a context_link row (this module) — soft, non-evidential
 # Ordering matters: the first is the default when a pair has one obvious link.
 CONNECTIONS: dict[tuple[str, str], list[tuple[str, str, str]]] = {
-    ("experiment", "experiment"): [("parent", "Branches off (parent)", "parent")],
+    ("experiment", "experiment"): [
+        ("parent", "Branches off (parent)", "parent"),
+        ("relates_to", "Relates to", "context"),
+    ],
     ("experiment", "claim"): [
         ("supports", "Supports (via latest run)", "evidence"),
         ("refutes", "Refutes (via latest run)", "evidence"),
+        ("relates_to", "Relates to", "context"),
+    ],
+    # literature evidence: a verified citation supports/refutes a claim
+    ("citation", "claim"): [
+        ("supports", "Supports (literature)", "cite_evidence"),
+        ("refutes", "Refutes (literature)", "cite_evidence"),
         ("relates_to", "Relates to", "context"),
     ],
     ("claim", "claim"): [
@@ -38,18 +47,56 @@ CONNECTIONS: dict[tuple[str, str], list[tuple[str, str, str]]] = {
         ("relates_to", "Relates to", "context"),
     ],
 }
-# Soft "relates to / about / motivates" from thinking-nodes onto research
-# entities — generated for many (from, to) pairs so the map stays declarative.
-# Kinds are the GRAPH node types (log entries other than question/hypothesis/
-# feedback render as 'thought').
-_THINKING = ("feedback", "note", "question", "hypothesis", "thought")
-_TARGETS = ("claim", "experiment", "paper", "finding")
-_CONTEXT_RELS = [("relates_to", "Relates to", "context"),
-                 ("about", "Is about", "context"),
-                 ("motivates", "Motivates", "context")]
-for _f in _THINKING:
-    for _t in _TARGETS:
-        CONNECTIONS.setdefault((_f, _t), []).extend(_CONTEXT_RELS)
+# Soft context links — each carries a SPECIFIC meaning, not a generic bag.
+# The vocabulary (value → label); "relates_to" is the universal fallback and
+# is appended to every listed pair automatically.
+_CTX_LABEL = {
+    "raises": "Raises",          # X surfaces a question
+    "motivates": "Motivates",    # X is the reason to do Y
+    "concerns": "Concerns",      # feedback is directed at X
+    "informs": "Informs",        # a paper shapes X
+    "about": "Is about",         # a question/note is about X
+    "relates_to": "Relates to",  # generic
+}
+
+# Curated meaning per directed pair. Only these pairs connect softly; anything
+# not listed (and not a strong pair above) has no meaning and is refused.
+_CTX_MATRIX: dict[tuple[str, str], list[str]] = {
+    # a result of research surfaces or motivates the next step
+    ("claim", "question"): ["raises"],
+    ("claim", "experiment"): ["motivates"],
+    ("experiment", "question"): ["raises"],
+    ("finding", "question"): ["raises"],
+    ("finding", "claim"): [],
+    ("finding", "experiment"): [],
+    # open threads point at the work that will resolve them
+    ("question", "experiment"): ["motivates"],
+    ("question", "claim"): ["about"],
+    ("question", "paper"): ["about"],
+    ("hypothesis", "experiment"): ["motivates"],
+    ("hypothesis", "claim"): ["motivates"],
+    # external input is directed at something
+    ("feedback", "claim"): ["concerns"],
+    ("feedback", "experiment"): ["concerns"],
+    ("feedback", "paper"): ["concerns"],
+    ("feedback", "finding"): ["concerns"],
+    ("feedback", "question"): ["raises"],
+    # the literature shapes the work (evidence stays citation→claim, above)
+    ("paper", "claim"): ["informs"],
+    ("paper", "experiment"): ["informs"],
+    ("paper", "question"): ["raises"],
+    # notes are deliberately generic — relates_to only
+    ("note", "claim"): [],
+    ("note", "experiment"): [],
+    ("note", "paper"): [],
+    ("note", "finding"): [],
+    ("note", "question"): [],
+}
+for (_a, _b), _verbs in _CTX_MATRIX.items():
+    if (_a, _b) in CONNECTIONS:              # never shadow a strong pair
+        continue
+    CONNECTIONS[(_a, _b)] = [(v, _CTX_LABEL[v], "context") for v in _verbs] \
+        + [("relates_to", _CTX_LABEL["relates_to"], "context")]
 
 
 def options_for(from_kind: str, to_kind: str) -> list[dict]:
@@ -60,6 +107,13 @@ def options_for(from_kind: str, to_kind: str) -> list[dict]:
 
 _KINDS = {"experiment", "claim", "citation", "paper", "finding", "note",
           "question", "hypothesis", "feedback", "thought", "code"}
+
+
+def strong_pairs() -> list[tuple[str, str]]:
+    """(from, to) pairs that carry a *typed* connection (parent/evidence/
+    relation) — everything else is soft context. Useful for docs/audits."""
+    return [pair for pair, rels in CONNECTIONS.items()
+            if any(m != "context" for _, _, m in rels)]
 
 
 def add_link(con: sqlite3.Connection, project: str, *, from_kind: str, from_id: int,

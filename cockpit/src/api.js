@@ -36,6 +36,8 @@ export const relateClaims = (claim_id, related_id, kind, note) =>
   post('/api/claim/relate', { claim_id, related_id, kind, note })
 export const linkExperimentToClaim = (project, experiment, claim_id, stance, note) =>
   post('/api/claim/link_experiment', { project, experiment, claim_id, stance, note })
+export const linkCitationToClaim = (claim_id, citation_id, stance, note) =>
+  post('/api/claim/link', { claim_id, citation_id, stance, note })
 export const saveLayout = (project, positions) =>
   post('/api/graph/layout', { project, positions })
 export const search = (q) => api('/api/search?q=' + encodeURIComponent(q))

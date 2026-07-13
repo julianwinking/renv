@@ -18,8 +18,15 @@ def test_registry_options():
     assert any(o["mode"] == "parent" for o in links.options_for("experiment", "experiment"))
     ev = links.options_for("experiment", "claim")
     assert {o["value"] for o in ev} >= {"supports", "refutes", "relates_to"}
-    assert links.options_for("feedback", "claim")            # soft link exists
-    assert links.options_for("paper", "note") == []          # no meaning → empty
+    # literature evidence: citation → claim
+    assert {o["value"] for o in links.options_for("citation", "claim")} >= {"supports", "refutes"}
+    # curated meanings, not a generic bag
+    assert {o["value"] for o in links.options_for("claim", "question")} == {"raises", "relates_to"}
+    assert {o["value"] for o in links.options_for("feedback", "claim")} == {"concerns", "relates_to"}
+    assert {o["value"] for o in links.options_for("paper", "claim")} == {"informs", "relates_to"}
+    # unlisted pair → no connection
+    assert links.options_for("paper", "note") == []
+    assert links.options_for("citation", "note") == []
 
 
 def test_add_and_list_context_link(tmp_path):
@@ -42,6 +49,9 @@ def test_rejects_meaningless_relation(tmp_path):
     with pytest.raises(ValueError):   # supports is evidence, not a context relation
         links.add_link(con, "p", from_kind="feedback", from_id=1,
                        to_kind="claim", to_id=1, relation="supports")
-    with pytest.raises(ValueError):   # paper→note has no context relation at all
-        links.add_link(con, "p", from_kind="paper", from_id=1,
+    with pytest.raises(ValueError):   # citation→note has no context relation at all
+        links.add_link(con, "p", from_kind="citation", from_id=1,
                        to_kind="note", to_id=1, relation="relates_to")
+    with pytest.raises(ValueError):   # feedback→claim allows concerns, not "raises"
+        links.add_link(con, "p", from_kind="feedback", from_id=1,
+                       to_kind="claim", to_id=1, relation="raises")

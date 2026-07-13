@@ -415,10 +415,11 @@ select.text {
   font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--region-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* identical to .region-name so renaming doesn't shift the layout — just a caret */
 .region-input {
   flex: 1; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink); background: var(--surface);
-  border: 1px solid var(--region-line); border-radius: 5px; padding: 2px 6px;
+  text-transform: uppercase; color: var(--region-text);
+  background: none; border: 0; padding: 0; margin: 0; outline: none;
 }
 .region-btn {
   background: none; border: 0; color: var(--region-text); cursor: pointer;

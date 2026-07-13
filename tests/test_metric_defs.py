@@ -62,6 +62,24 @@ def test_web_endpoints_and_cors(tmp_path):
         assert runs[0]["experiment"] == "001" and runs[0]["metrics"] == {"r": 0.5}
         ov = json.loads(urllib.request.urlopen(base + "/api/overview").read())
         assert ov["invariants"]["clean"] is True
+        # project creation scaffolds the folder + registers the row
+        req = urllib.request.Request(
+            base + "/api/project", method="POST",
+            data=json.dumps({"slug": "zz-new", "title": "New one"}).encode(),
+            headers={"Content-Type": "application/json"})
+        made = json.loads(urllib.request.urlopen(req).read())
+        assert made["slug"] == "zz-new"
+        assert (tmp_path / "projects" / "zz-new" / "ideation.md").exists()
+        # a bad slug is refused before touching the filesystem
+        req = urllib.request.Request(
+            base + "/api/project", method="POST",
+            data=json.dumps({"slug": "../escape"}).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req)
+            assert False, "bad slug accepted"
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
         # graph layout: hand-placed positions persist and come back on the nodes
         req = urllib.request.Request(
             base + "/api/graph/layout", method="POST",

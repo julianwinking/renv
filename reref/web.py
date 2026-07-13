@@ -333,6 +333,24 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/claim/relate":
             return claimmod.relate(con, d["claim_id"], d["related_id"],
                                    kind=d.get("kind", "depends_on"), note=d.get("note"))
+        # full project creation — same path as `reref new`: DB row + template
+        # scaffold under projects/<slug> + its own git repo
+        if path == "/api/project":
+            import subprocess
+            from . import authoring
+            slug = (d.get("slug") or "").strip()
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", slug):
+                raise ValueError("slug must be lowercase letters/digits/hyphens, e.g. 005-my-idea")
+            title = (d.get("title") or "").strip() or slug
+            pid = db.ensure_project(con, slug, title=title)
+            authoring.scaffold_from_template(self.root, slug, title)
+            proot = Path(self.root) / "projects" / slug
+            if not (proot / ".git").exists():
+                try:
+                    subprocess.run(["git", "init", "-q"], cwd=str(proot), timeout=10, check=True)
+                except Exception:
+                    pass
+            return {"id": pid, "slug": slug, "title": title}
         if path == "/api/experiment":
             return experiment.create_experiment(con, d["project"], d["slug"],
                                                 title=d.get("title"),

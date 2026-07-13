@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { getOverview, getMetricDefs, search } from './api.js'
+import { getOverview, getMetricDefs, search, createProject } from './api.js'
 import Overview from './views/Overview.jsx'
 import GraphView from './views/GraphView.jsx'
 import Experiments from './views/Experiments.jsx'
@@ -47,7 +47,21 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('reref-sidebar') === 'collapsed')
   const [sideW, setSideW] = useState(() => Number(localStorage.getItem('reref-sidebar-w')) || 228)
   const [hits, setHits] = useState(null)
+  const [switcher, setSwitcher] = useState(false)   // false | 'list' | 'create'
+  const [pfilter, setPfilter] = useState('')
+  const [newProj, setNewProj] = useState({})
+  const [perr, setPerr] = useState(null)
   const searchRef = useRef(null)
+
+  const createProj = async () => {
+    setPerr(null)
+    const r = await createProject((newProj.slug || '').trim(), (newProj.title || '').trim())
+    if (r && r.error) { setPerr(r.error); return }
+    setSwitcher(false)
+    setNewProj({})
+    await loadOverview()
+    setSlug(r.slug)
+  }
 
   useEffect(() => {
     localStorage.setItem('reref-sidebar', collapsed ? 'collapsed' : 'open')
@@ -160,17 +174,69 @@ export default function App() {
         </div>
 
         <div className="eyebrow">Project</div>
-        {(overview?.projects || []).map((p) => (
-          <button key={p.slug} className={`proj ${p.slug === slug ? 'active' : ''}`}
-                  onClick={() => setSlug(p.slug)}>
-            <span className="dot" />
-            <span>{p.slug}</span>
-          </button>
-        ))}
-        {overview && overview.projects.length === 0 && (
-          <div className="muted" style={{ padding: '4px 9px' }}>
-            none yet — <span className="mono">reref new &lt;slug&gt;</span>
-          </div>
+        <button className="pswitch" onClick={() => { setSwitcher('list'); setPfilter('') }}>
+          <span className="dot" />
+          <span className="pname">{slug || 'select project'}</span>
+          <svg className="updown" width="12" height="12" viewBox="0 0 16 16" fill="none"
+               stroke="currentColor" strokeWidth="1.4">
+            <path d="M5 6l3-3 3 3M5 10l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {switcher && (
+          <>
+            <div className="backdrop" onClick={() => setSwitcher(false)} />
+            <div className="pdialog">
+              {switcher === 'list' ? (
+                <>
+                  <div className="find">
+                    <input
+                      autoFocus placeholder="Find project…" value={pfilter}
+                      onChange={(e) => setPfilter(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Escape' && setSwitcher(false)}
+                    />
+                    <kbd>Esc</kbd>
+                  </div>
+                  <div className="list">
+                    {(overview?.projects || [])
+                      .filter((p) => (p.slug + ' ' + (p.title || '')).toLowerCase().includes(pfilter.toLowerCase()))
+                      .map((p) => (
+                        <button key={p.slug} className="item" onClick={() => { setSlug(p.slug); setSwitcher(false) }}>
+                          <span className="dot" style={p.slug === slug ? { background: 'var(--accent)' } : null} />
+                          <span>{p.slug}</span>
+                          {p.open_findings > 0 && <span className="badge" style={{ marginLeft: 'auto' }}>{p.open_findings}</span>}
+                        </button>
+                      ))}
+                    {overview && overview.projects.length === 0 && (
+                      <div className="muted" style={{ padding: '6px 9px' }}>no projects yet</div>
+                    )}
+                  </div>
+                  <div className="createrow">
+                    <button className="item" onClick={() => { setSwitcher('create'); setPerr(null) }}>
+                      <span style={{ width: 6, textAlign: 'center' }}>+</span> Create project
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: 12, display: 'grid', gap: 8 }}>
+                  <div className="eyebrow" style={{ margin: 0 }}>new project</div>
+                  <input className="text" autoFocus placeholder="slug, e.g. event-snow-simulator"
+                         onChange={(e) => setNewProj({ ...newProj, slug: e.target.value })}
+                         onKeyDown={(e) => { if (e.key === 'Escape') setSwitcher(false); if (e.key === 'Enter') createProj() }} />
+                  <input className="text" placeholder="title (optional)"
+                         onChange={(e) => setNewProj({ ...newProj, title: e.target.value })}
+                         onKeyDown={(e) => { if (e.key === 'Enter') createProj() }} />
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    Scaffolds projects/&lt;slug&gt; from the template (ideation, paper skeleton, own git repo).
+                  </div>
+                  {perr && <div style={{ color: 'var(--bad)', fontSize: 12 }}>{perr}</div>}
+                  <div className="gnode-actions" style={{ marginTop: 0 }}>
+                    <button className="btn" onClick={createProj} disabled={!(newProj.slug || '').trim()}>Create project</button>
+                    <button className="btn ghost" onClick={() => setSwitcher('list')}>Back</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         <div className="eyebrow">Views</div>

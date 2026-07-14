@@ -14,6 +14,21 @@ export const getProject = (slug) => api('/api/project/' + encodeURIComponent(slu
 export const getRuns = (slug) => api('/api/project/' + encodeURIComponent(slug) + '/runs')
 export const getPapers = () => api('/api/papers')
 export const getPaperUsage = (key) => api('/api/paper/' + encodeURIComponent(key) + '/usage')
+export const paperPdfUrl = (key) => '/api/paper/' + encodeURIComponent(key) + '/pdf'
+export const getPaperAnchors = (key, project) =>
+  api('/api/paper/' + encodeURIComponent(key) + '/anchors' +
+      (project ? '?project=' + encodeURIComponent(project) : ''))
+export const addPaper = (source, download = true) => post('/api/paper/add', { source, download })
+export const addPaperNote = (note) => post('/api/paper/note', note)
+export const getPaperDocs = (key, project) =>
+  api('/api/paper/' + encodeURIComponent(key) + '/docs' +
+      (project ? '?project=' + encodeURIComponent(project) : ''))
+export const getPaperDoc = (id) => api('/api/paper/doc/' + id)
+export const createPaperDoc = (doc) => post('/api/paper/doc', doc)
+export const updatePaperDoc = (id, fields) => post('/api/paper/doc/update', { id, ...fields })
+export const deletePaperDoc = (id) => post('/api/paper/doc/delete', { id })
+export const updatePaperNote = (id, fields) => post('/api/paper/note/update', { id, ...fields })
+export const deletePaperNote = (id) => post('/api/paper/note/delete', { id })
 export const getFinding = (id) => api('/api/finding/' + id)
 export const getClaim = (id) => api('/api/claim/' + id)
 export const adjudicate = (id, verdict, reasoning) =>

@@ -371,6 +371,13 @@ export default function Plan({ slug }) {
                   <span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.title}
                   </span>
+                  {it.region && (
+                    <span className={`gantt-region region-${it.region.color}`}
+                          title={`Graph region: ${it.region.label || 'untitled'} — open the graph`}
+                          onClick={(e) => { e.stopPropagation(); location.hash = '#/graph' }}>
+                      ⟡
+                    </span>
+                  )}
                   {it.status === 'done' ? <Stamp value="done" />
                     : (it.kind === 'deadline' || it.end_deadline)
                       ? <Stamp value={it.prepared ? 'prepared' : 'unprepared'} tone={it.prepared ? 'ok' : 'warn'} />

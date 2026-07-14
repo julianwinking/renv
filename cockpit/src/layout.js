@@ -28,7 +28,8 @@ export function toFlow(graph, dir = 'LR') {
     }
   })
 
-  const CONTEXT = new Set(['relates_to', 'about', 'motivates', 'raises'])
+  const CONTEXT = new Set(['relates_to', 'about', 'motivates', 'raises',
+                           'informs', 'concerns', 'annotates'])
   const stroke = (e) =>
     e.kind === 'refutes' || e.kind === 'contradicts' ? 'var(--bad)'
     : e.kind === 'supports' || e.kind === 'answers' ? 'var(--ok)'
@@ -38,7 +39,8 @@ export function toFlow(graph, dir = 'LR') {
     : 'var(--line)'
 
   const LABELLED = new Set(['supports', 'refutes', 'depends_on', 'contradicts',
-                            'answers', 'relates_to', 'about', 'motivates', 'raises'])
+                            'answers', 'relates_to', 'about', 'motivates', 'raises',
+                            'informs', 'concerns', 'annotates'])
   const edges = graph.edges.map((e, i) => {
     const isContext = e.context || CONTEXT.has(e.kind)
     const base = LABELLED.has(e.kind) ? e.kind.replace(/_/g, ' ') : ''

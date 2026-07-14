@@ -4,7 +4,7 @@ import {
   getGraph, addExperiment, addClaim, addLog, addNote,
   setExperimentParent, relateClaims, linkExperimentToClaim, saveLayout,
   editClaim, editLog, editNote, getConnections, addContextLink, linkCitationToClaim,
-  getRegions, addRegion, updateRegion, editExperiment,
+  getRegions, addRegion, updateRegion, editExperiment, getPlan, updatePaperNote,
 } from '../api.js'
 import { toFlow } from '../layout.js'
 import { nodeTypes } from '../nodes.jsx'
@@ -39,7 +39,7 @@ function AddPanel({ kind, slug, onClose, onDone, experiments, at }) {
     } else if (kind === 'claim') {
       r = await addClaim(slug, f.text, f.kind || 'assertion')
       nodeId = r && r.id ? `claim:${r.id}` : null
-    } else if (kind === 'question' || kind === 'hypothesis' || kind === 'feedback') {
+    } else if (['question', 'hypothesis', 'feedback', 'decision', 'blocker', 'observation'].includes(kind)) {
       r = await addLog(slug, kind, f.text, kind === 'feedback' && f.source ? { source: f.source } : {})
       nodeId = r && r.id ? `log:${r.id}` : null
     } else {
@@ -93,6 +93,15 @@ function AddPanel({ kind, slug, onClose, onDone, experiments, at }) {
           <input className="text" placeholder='Who gave it? e.g. "advisor: Prof. X"' onChange={set('source')} autoFocus />
           <textarea placeholder="What did they say?" onChange={set('text')} />
         </>
+      )}
+      {kind === 'decision' && (
+        <textarea placeholder="A decision — what was chosen, and why" onChange={set('text')} autoFocus />
+      )}
+      {kind === 'blocker' && (
+        <textarea placeholder="A blocker — what is stopping progress" onChange={set('text')} autoFocus />
+      )}
+      {kind === 'observation' && (
+        <textarea placeholder="An observation — what was noticed" onChange={set('text')} autoFocus />
       )}
       {kind === 'note' && (
         <textarea placeholder="Meeting note / idea — saved to the store" onChange={set('text')} autoFocus />
@@ -192,8 +201,10 @@ export default function GraphView({ slug, defs, onMutate }) {
 
   const load = useCallback(async () => {
     setBusy(true)
-    const [g, regions] = await Promise.all([getGraph(slug), getRegions(slug)])
+    const [g, regions, plan] = await Promise.all([getGraph(slug), getRegions(slug), getPlan(slug)])
     const flow = toFlow(g)
+    const phases = (Array.isArray(plan) ? plan : [])
+      .filter((p) => p.kind === 'phase').map((p) => ({ id: p.id, title: p.title }))
     const after = () => { load(); onMutate && onMutate() }
     flow.nodes.forEach((n) => {
       n.data.defs = defs
@@ -202,7 +213,12 @@ export default function GraphView({ slug, defs, onMutate }) {
       if (k === 'claim') n.data.onSaveText = (t) => editClaim(Number(id), t).then(after)
       else if (k === 'log') n.data.onSaveText = (t) => editLog(Number(id), t).then(after)
       else if (k === 'note') n.data.onSaveText = (t) => editNote(Number(id), t).then(after)
-      else if (k === 'exp') n.data.onSaveText = (t) => editExperiment(slug, n.data.label, { title: t }).then(after)
+      else if (k === 'exp') {
+        n.data.onSaveText = (t) => editExperiment(slug, n.data.label, { title: t }).then(after)
+        n.data.onSaveSlug = (t) => editExperiment(slug, n.data.label, { new_slug: t }).then(after)
+        n.data.onSaveHyp = (t) => editExperiment(slug, n.data.label, { hypothesis: t }).then(after)
+      }
+      else if (k === 'pnote') n.data.onSaveText = (t) => updatePaperNote(Number(id), { body_md: t }).then(after)
       if (n.type === 'finding') {
         n.data.id = Number(id)
         n.data.onDone = after
@@ -213,7 +229,11 @@ export default function GraphView({ slug, defs, onMutate }) {
       id: `region:${r.id}`, type: 'region', position: { x: r.x, y: r.y },
       style: { width: r.w, height: r.h }, zIndex: 0, draggable: true,
       dragHandle: '.region-bar', selectable: false, hidden: !showRegionsRef.current,
-      data: { label: r.label, color: r.color, onChange: after },
+      data: {
+        label: r.label, color: r.color, onChange: after,
+        phases, planItemId: r.plan_item_id, phaseLabel: r.phase,
+        onLinkPhase: (pid) => updateRegion(r.id, { plan_item_id: pid }).then(after),
+      },
     }))
     setNodes([...regionNodes, ...flow.nodes])
     setEdges(flow.edges)
@@ -285,7 +305,8 @@ export default function GraphView({ slug, defs, onMutate }) {
     setPendingEdge({ source: src, target: tgt, options, at })
   }, [nodes, conns])
 
-  // Double-click opens the entity's page (hash deep-link into its view).
+  // Double-click opens the entity: papers/notes into the PDF viewer, the rest
+  // deep-link into their page.
   const onNodeDoubleClick = useCallback((_, node) => {
     const [k, id] = node.id.split(':')
     const go = (h) => { location.hash = h }
@@ -294,6 +315,7 @@ export default function GraphView({ slug, defs, onMutate }) {
     else if (k === 'log') go('#/log/' + encodeURIComponent('log-' + id))
     else if (k === 'note') go('#/log/' + encodeURIComponent('note-' + id))
     else if (k === 'paper') go('#/papers/' + encodeURIComponent(node.data.label))
+    else if (k === 'pnote') go('#/papers/' + encodeURIComponent(node.data.paper_key))
     else if (k === 'finding') go('#/findings')
   }, [])
 
@@ -357,7 +379,9 @@ export default function GraphView({ slug, defs, onMutate }) {
         <div className="gmenu" style={{ left: menu.x, top: menu.y }}>
           {[['experiment', 'var(--accent)'], ['claim', 'var(--claim)'],
             ['question', 'var(--warn)'], ['hypothesis', 'var(--citation)'],
-            ['feedback', 'var(--code-kind)'], ['note', 'var(--line-strong)']].map(([k, c]) => (
+            ['feedback', 'var(--code-kind)'], ['decision', 'var(--ok)'],
+            ['blocker', 'var(--bad)'], ['observation', 'var(--paper-kind)'],
+            ['note', 'var(--line-strong)']].map(([k, c]) => (
             <button key={k} onClick={() => { setAdding(k); setMenu(null) }}>
               <span className="sw" style={{ background: c }} />New {k}
             </button>

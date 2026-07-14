@@ -215,6 +215,10 @@ aside {
 /* match the health pill's optically-lifted content: icon rises 1px, the
    28px hover square itself stays put */
 .topbar .iconbtn svg { transform: translateY(-1px); }
+/* collapsed reexpand toggle: align its glyph with the icon column below
+   (Library / paper-viewer panel icons) and sit centered with the breadcrumb */
+.topbar-reexpand { margin-left: -8px; }
+.topbar-reexpand svg { transform: none !important; }
 
 /* ---------- content ---------- */
 .content { flex: 1; overflow-y: auto; padding: 22px; overscroll-behavior: contain; }
@@ -386,9 +390,18 @@ select.text {
 .gnode-question   { border-left-color: var(--warn); border-left-style: dashed; }
 .gnode-hypothesis { border-left-color: var(--citation); border-left-style: dashed; }
 .gnode-feedback   { border-left-color: var(--code-kind); border-left-style: dashed; }
+.gnode-decision    { border-left-color: var(--ok); border-left-style: dashed; }
+.gnode-blocker     { border-left-color: var(--bad); border-left-style: dashed; }
+.gnode-observation { border-left-color: var(--paper-kind); border-left-style: dashed; }
 .gnode-thought, .gnode-note { border-left-color: var(--line-strong); border-left-style: dashed; }
+.gnode-pnote { border-left-color: var(--pv-line, var(--warn)); }
 .gnode-head { display: flex; align-items: center; gap: 6px; }
 .gnode-head b { font-size: 12px; font-weight: 600; }
+.gnode-slug-edit {
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink);
+  background: none; border: 0; padding: 0; margin: 0; outline: none;
+  field-sizing: content; width: auto; min-width: 40px;
+}
 .gnode-kind { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 .gnode-sub {
   color: var(--muted); margin-top: 3px; overflow: hidden; display: -webkit-box;
@@ -447,6 +460,26 @@ textarea.gnode-edit {
   padding: 5px; box-shadow: var(--shadow);
 }
 .region-swatch { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--region-line); background: var(--region-fill); cursor: pointer; }
+/* the phase this region stands for — a chip in the bar, click to relink */
+.region-phase {
+  font-size: 10px; font-weight: 500; letter-spacing: 0.03em; text-transform: none;
+  color: var(--region-text); background: var(--region-fill); border: 1px solid var(--region-line);
+  border-radius: 5px; padding: 0 6px; cursor: pointer; white-space: nowrap;
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+}
+.region-phase-menu {
+  flex-direction: column; align-items: stretch; gap: 1px; min-width: 130px;
+  max-height: 220px; overflow-y: auto;
+}
+.region-phase-opt {
+  background: none; border: 0; color: var(--ink); cursor: pointer; text-align: left;
+  font-size: 12px; padding: 4px 8px; border-radius: 5px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.region-phase-opt:hover { background: var(--surface2); }
+/* the graph region a Gantt phase is linked to — a diamond in its color */
+.gantt-region { color: var(--region-line); font-size: 12px; flex: 0 0 auto; cursor: pointer; line-height: 1; }
+.gantt-region:hover { filter: brightness(1.2); }
 .region-tag {
   display: inline-block; font-size: 10px; font-weight: 500; letter-spacing: 0.04em;
   padding: 1px 7px; border-radius: 5px; white-space: nowrap;
@@ -648,3 +681,486 @@ textarea.fileedit {
   border-radius: 8px; padding: 7px 14px; box-shadow: var(--shadow); font-size: 12.5px;
   max-width: 60%;
 }
+
+/* ============================ paper viewer ============================ */
+.pv-overlay {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg) 60%, rgba(0,0,0,0.5));
+  backdrop-filter: blur(3px); padding: 22px;
+}
+.pv-modal {
+  position: relative; width: min(1200px, 96vw); height: min(92vh, 1000px);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
+}
+.pv-bar {
+  display: flex; align-items: center; gap: 14px; padding: 8px 14px; position: relative;
+  border-bottom: 1px solid var(--line); flex: 0 0 auto;
+}
+.pv-tools { display: flex; align-items: center; gap: 6px; margin-left: -3px; }
+.pv-tbtn {
+  min-width: 26px; height: 26px; padding: 0 6px; display: inline-grid; place-items: center;
+  background: none; border: 0; border-radius: 6px; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1;
+}
+.pv-tbtn:hover { background: var(--surface2); color: var(--ink); }
+.pv-tbtn.on { background: var(--accent-soft); color: var(--accent); }
+.pv-tbtn:disabled { opacity: 0.35; cursor: default; background: none; }
+.pv-zoom { display: flex; align-items: center; gap: 2px; margin-left: 4px; }
+.pv-zoom-n { font-size: 12px; color: var(--muted); min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-centertools {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 30px;
+}
+.pv-pagenav { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.pv-pageinput {
+  width: 34px; text-align: center; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; color: var(--ink); font: inherit; font-size: 12.5px; padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+.pv-bar-meta { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+/* left panel: thumbnails / outline / search */
+.pv-panel {
+  flex: 0 0 auto; border-right: 1px solid var(--line); background: var(--surface);
+  display: flex; flex-direction: column; min-height: 0; position: relative;
+  overflow: hidden;   /* never scroll the panel itself — only its inner tabs' bodies scroll (vertically) */
+}
+.pv-panel-resize {
+  position: absolute; top: 0; right: -2px; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 6;
+}
+.pv-panel-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.pv-panel-tabs { display: flex; align-items: stretch; padding: 0; margin: 0; width: 100%; }
+.pv-ptab {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; padding: 4px 4px 7px; font: inherit; font-size: 12px;
+  color: var(--muted); cursor: pointer; position: relative;
+}
+.pv-ptab:hover { color: var(--ink); }
+.pv-ptab.on { color: var(--ink); }
+/* active underline flush with the divider directly below the tabs */
+.pv-ptab.on::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent);
+}
+.pv-ptab-x { flex: 0 0 30px; }
+/* a real full-width 1px line — a block element, so it always spans edge to edge */
+.pv-panel-divider { flex: 0 0 auto; height: 1px; background: var(--line); width: 100%; }
+.pv-thumbs { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 10px 12px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.pv-thumb {
+  position: relative; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  cursor: pointer; padding: 0; line-height: 0; box-shadow: var(--shadow);
+}
+.pv-thumb:hover { border-color: var(--accent); }
+.pv-thumb canvas { display: block; border-radius: 4px; }
+.pv-thumb-n {
+  position: absolute; bottom: 13px; right: 8px; font-family: var(--mono); font-size: 10px;
+  color: var(--ink); background: color-mix(in srgb, var(--surface) 82%, transparent); border-radius: 3px; padding: 0 4px;
+}
+.pv-outline, .pv-search { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.pv-searchinput {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 7px; padding: 6px 10px; font: inherit; margin-bottom: 4px;
+}
+.pv-searchinput::placeholder { color: var(--faint); }
+.pv-oitem {
+  text-align: left; background: none; border: 0; color: var(--ink); font: inherit; font-size: 12.5px;
+  padding: 5px 8px; border-radius: 6px; cursor: pointer; line-height: 1.4;
+}
+.pv-oitem:hover { background: var(--surface2); }
+.pv-search-n { font-size: 11px; color: var(--muted); padding: 4px 8px; }
+.pv-sresult {
+  display: flex; gap: 8px; align-items: baseline; text-align: left; background: none; border: 0;
+  color: var(--muted); font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+}
+.pv-sresult:hover { background: var(--surface2); }
+.pv-sr-snip { color: var(--ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* the passage being annotated, kept lit in the chosen colour while the popover is open */
+.pv-mark-pending {
+  background: var(--pv-fill, var(--accent-soft));
+  box-shadow: inset 0 0 0 1.6px var(--pv-line, var(--accent)); border-radius: 2px;
+}
+.pv-mark-search { background: rgba(234, 179, 8, 0.5); }
+.pv-title { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.pv-title b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-bar-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+.pv-x {
+  background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 15px;
+  padding: 4px 8px; border-radius: 7px;
+}
+.pv-x:hover { background: var(--surface2); color: var(--ink); }
+
+.pv-body { flex: 1; display: flex; min-height: 0; }
+.pv-doc { flex: 1; overflow: auto; position: relative; background: var(--bg); }
+.pv-pages {
+  padding: 22px; display: flex; flex-direction: column; align-items: center;
+  gap: 18px; min-height: 100%;
+}
+.pv-center { position: absolute; inset: 0; display: grid; place-items: center; }
+
+.pv-page {
+  position: relative; background: #fff; box-shadow: var(--shadow);
+  border-radius: 2px; flex: 0 0 auto;
+}
+.pv-page canvas { display: block; border-radius: 2px; }
+
+/* PDF.js text layer — invisible, selectable text positioned over the canvas */
+.textLayer {
+  position: absolute; inset: 0; overflow: clip; opacity: 1; line-height: 1;
+  text-align: initial; forced-color-adjust: none; transform-origin: 0 0; z-index: 2;
+}
+.textLayer span, .textLayer br {
+  color: transparent; position: absolute; white-space: pre; cursor: text;
+  transform-origin: 0% 0%;
+}
+.textLayer span.markedContent { top: 0; height: 0; }
+.textLayer ::selection { background: rgba(60, 140, 255, 0.32); }
+.textLayer .endOfContent {
+  display: block; position: absolute; inset: 100% 0 0; z-index: -1;
+  cursor: default; user-select: none;
+}
+
+/* highlight overlay — below the text layer so selection still works */
+.pv-hl { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.pv-mark {
+  position: absolute; border-radius: 2px; mix-blend-mode: multiply;
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+.pv-mark-cite { background: rgba(47, 109, 179, 0.26); box-shadow: inset 0 -2px 0 var(--citation); }
+.pv-mark-note { background: var(--pv-fill, rgba(234,179,8,0.30)); box-shadow: inset 0 -2px 0 var(--pv-line, var(--warn)); }
+.pv-mark-flash { filter: brightness(1.25) saturate(1.4); box-shadow: 0 0 0 2px var(--pv-line, var(--citation)); }
+
+/* per-color tokens for notes (stronger fill than region tints for the white page) */
+.pv-c-amber  { --pv-fill: rgba(234, 179, 8, 0.30);  --pv-line: var(--warn); }
+.pv-c-teal   { --pv-fill: rgba(60, 184, 160, 0.28); --pv-line: var(--accent); }
+.pv-c-violet { --pv-fill: rgba(124, 108, 230, 0.26);--pv-line: var(--claim); }
+.pv-c-rose   { --pv-fill: rgba(226, 112, 123, 0.28);--pv-line: var(--bad); }
+.pv-c-blue   { --pv-fill: rgba(111, 163, 224, 0.28);--pv-line: var(--citation); }
+.pv-c-slate  { --pv-fill: rgba(140, 145, 150, 0.28);--pv-line: var(--line-strong); }
+
+/* sidebar */
+.pv-side {
+  flex: 0 0 auto; position: relative; border-left: 1px solid var(--line); overflow: auto;
+  padding: 14px; background: var(--surface);
+}
+.pv-side-resize {
+  position: absolute; top: 0; left: -2px; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 6;
+}
+.pv-side-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.pv-side-h {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 8px;
+}
+.pv-empty { color: var(--faint); font-size: 12.5px; line-height: 1.5; margin-bottom: 8px; }
+
+.pv-note, .pv-cite {
+  border: 1px solid var(--line); border-radius: 9px; margin-bottom: 7px;
+  background: var(--surface); overflow: hidden;
+}
+.pv-note { border-left: 3px solid var(--pv-line, var(--warn)); }
+.pv-note-head, .pv-cite { cursor: pointer; }
+.pv-note-head {
+  display: flex; align-items: center; gap: 7px; padding: 8px 10px;
+}
+.pv-note-head:hover, .pv-cite:hover { background: var(--surface2); }
+.pv-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pv-line, var(--warn)); flex: 0 0 auto; }
+.pv-note-quote {
+  flex: 1; font-size: 12px; color: var(--muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; font-style: italic;
+}
+.pv-note-body { padding: 4px 10px 10px; display: grid; gap: 8px; }
+.pv-note-body textarea { min-height: 52px; }
+.pv-note-tools { display: flex; align-items: center; gap: 10px; }
+
+.pv-cite { padding: 9px 11px; }
+.pv-cite-quote { font-size: 12px; font-style: italic; color: var(--ink); line-height: 1.45; }
+.pv-cite-claim { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+.pv-flash { animation: pv-flash 1.2s ease; }
+@keyframes pv-flash { 0%, 100% { background: transparent; } 25% { background: var(--accent-soft); } }
+
+/* add-note popover, floated at the selection */
+.pv-pop {
+  position: fixed; z-index: 62; width: 380px; max-width: calc(100vw - 24px);
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 11px;
+  box-shadow: var(--shadow); padding: 11px; display: grid; gap: 9px;
+}
+.pv-pop-quote {
+  font-size: 11.5px; font-style: italic; color: var(--muted); line-height: 1.4;
+  max-height: 46px; overflow: hidden;
+}
+.pv-pop textarea { min-height: 56px; }
+.pv-pop-tools { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.pv-pop-tools .pv-swatches { margin-right: auto; }
+.pv-pop-tools .btn { white-space: nowrap; }
+
+.pv-swatches { display: flex; gap: 4px; }
+.pv-sw {
+  width: 15px; height: 15px; border-radius: 4px; cursor: pointer; padding: 0;
+  background: var(--pv-fill); border: 1.5px solid var(--pv-line);
+}
+.pv-sw.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--pv-line); }
+
+/* ---------- paper workspace: library tab + inline paper tabs ---------- */
+.paper-ws { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.paper-tabs {
+  display: flex; align-items: stretch; gap: 2px; flex: 0 0 auto; height: 40px;
+  padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--surface);
+  overflow-x: auto; overflow-y: hidden;
+}
+.ptab {
+  display: flex; align-items: center; gap: 7px; max-width: 220px; flex: 0 0 auto;
+  padding: 0 12px; border: 0; background: none; cursor: pointer; font: inherit;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  font-weight: 500;   /* constant weight — active is shown by color + underline, so switching never reflows the tab */
+}
+.ptab:hover { color: var(--ink); background: var(--surface2); }
+.ptab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.ptab-ico { color: var(--faint); font-size: 12px; }
+.ptab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ptab-count {
+  font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+  background: var(--surface2); border-radius: 7px; padding: 0 6px;
+}
+.ptab.active .ptab-count { color: var(--accent); }
+.ptab-x { color: var(--faint); font-size: 11px; padding: 2px; border-radius: 4px; }
+.ptab-x:hover { background: var(--line-strong); color: var(--ink); }
+
+.paper-pane { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: row; }
+.pv-embed { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.pv-embed .pv-bar { padding: 7px 16px; }
+
+/* library table */
+.lib-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.lib-scroll { flex: 1; overflow: auto; }
+.lib-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lib-t thead th {
+  position: sticky; top: 0; z-index: 1; text-align: left; padding: 10px 14px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.lib-t th.num, .lib-t td.num { text-align: right; }
+.lib-t tbody tr { border-bottom: 1px solid var(--line); }
+.lib-t tbody tr.openable { cursor: pointer; }
+.lib-t tbody tr.openable:hover { background: var(--surface2); }
+.lib-t td { padding: 9px 14px; vertical-align: middle; }
+/* breathing room past the last column; row lines still run to the edge (they
+   sit on the full-width <tr>, not the cell) */
+.lib-t th:last-child, .lib-t td:last-child { padding-right: 30px; }
+.lib-title { font-weight: 500; color: var(--ink); margin-bottom: 1px; }
+.lib-auth { color: var(--muted); }
+.lib-open { color: var(--accent); font-weight: 500; font-size: 12px; white-space: nowrap; }
+.lib-open.on { color: var(--muted); }
+
+/* library toolbar (Anara-style filter row) */
+.lib-toolbar {
+  display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+  padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.lib-filter {
+  width: 240px; background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 7px; padding: 5px 10px; font: inherit;
+}
+.lib-filter::placeholder { color: var(--faint); }
+.lib-sort { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.lib-sort select {
+  background: none; border: 0; color: var(--ink); font: inherit; cursor: pointer; outline: none;
+  border-bottom: 1px dashed var(--line-strong); padding: 2px 2px;
+}
+.lib-count { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+
+/* row expansion: doc icon → chevron on hover, rotates when open */
+.lib-first { display: flex; align-items: center; gap: 10px; }
+.lib-ico {
+  width: 22px; height: 22px; display: inline-grid; place-items: center; flex: 0 0 auto;
+  color: var(--muted); border-radius: 5px; cursor: pointer; position: relative;
+}
+.lib-ico svg { grid-area: 1 / 1; display: block; }
+.lib-ico:hover { background: var(--surface2); color: var(--ink); }
+.lib-ico .lib-chev { display: none; transition: transform 0.15s; }
+tr:hover .lib-ico .lib-doc, .lib-ico.open .lib-doc { display: none; }
+tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
+.lib-ico.open .lib-chev { transform: rotate(90deg); }
+.lib-titlecol { min-width: 0; }
+
+.lib-expand td { padding: 4px 14px 10px 42px; background: var(--surface2); }
+.lib-anno {
+  display: flex; align-items: baseline; gap: 9px; padding: 5px 0; cursor: pointer;
+  border-top: 1px solid var(--line);
+}
+.lib-anno:first-child { border-top: 0; }
+.lib-anno:hover .lib-anno-q { color: var(--ink); }
+.lib-anno-q { font-style: italic; color: var(--muted); font-size: 12.5px; }
+.lib-anno-b { color: var(--ink); font-size: 12.5px; }
+
+/* kind badges (shared: viewer sidebar + library expansion) */
+.pv-kindtag {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 4px; flex: 0 0 auto; white-space: nowrap;
+}
+.pv-kt-note       { color: var(--accent);   background: var(--accent-soft); }
+.pv-kt-question   { color: var(--warn);     background: var(--warn-soft); }
+.pv-kt-hypothesis { color: var(--claim);    background: color-mix(in srgb, var(--claim) 12%, transparent); }
+
+/* popover kind selector (segmented) */
+.pv-kindsel { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.pv-kind {
+  flex: 1; background: var(--surface); border: 0; border-right: 1px solid var(--line);
+  color: var(--muted); font: inherit; font-size: 12px; padding: 4px 6px; cursor: pointer;
+}
+.pv-kind:last-child { border-right: 0; }
+.pv-kind:hover { background: var(--surface2); color: var(--ink); }
+.pv-kind.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+
+/* library toolbar: Columns / Sort / Filter dropdowns (Anara-style) */
+.lib-tg { position: relative; }
+.lib-tool {
+  display: inline-flex; align-items: center; gap: 6px; background: none;
+  border: 1px dashed var(--line-strong); border-radius: 8px; padding: 5px 11px;
+  color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.lib-tool:hover, .lib-tool.on { background: var(--surface2); border-style: solid; }
+.lib-backdrop { position: fixed; inset: 0; z-index: 20; }
+.lib-menu {
+  position: absolute; top: calc(100% + 5px); left: 0; z-index: 30; min-width: 200px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 5px; max-height: 340px; overflow: auto;
+}
+.lib-menuhead { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); padding: 5px 8px 3px; }
+.lib-menurow {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+}
+.lib-menurow:hover { background: var(--surface2); }
+.lib-menurow.on { color: var(--accent); }
+.lib-menurow input[type=checkbox] { accent-color: var(--accent); }
+.lib-check { width: 12px; color: var(--accent); font-size: 11px; flex: 0 0 auto; }
+.lib-menusep { height: 1px; background: var(--line); margin: 4px 0; }
+.lib-attrsearch {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 6px; padding: 5px 8px; font: inherit; margin-bottom: 4px;
+}
+.lib-attrsearch::placeholder { color: var(--faint); }
+
+/* active filter chips */
+.lib-filters {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap; flex: 0 0 auto;
+  padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.lib-fchip {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--surface2);
+  border: 1px solid var(--line); border-radius: 7px; padding: 3px 6px 3px 9px; font-size: 12px;
+}
+.lib-fchip input { background: none; border: 0; color: var(--ink); font: inherit; font-size: 12px; outline: none; width: 90px; }
+.lib-fchip input::placeholder { color: var(--faint); }
+.lib-fchip button { background: none; border: 0; color: var(--faint); cursor: pointer; padding: 0 2px; border-radius: 4px; }
+.lib-fchip button:hover { background: var(--line-strong); color: var(--ink); }
+
+/* minimal custom scrollbars for the viewer + library scroll areas */
+.pv-thumbs, .pv-outline, .pv-search, .pv-doc, .pv-side, .pv-panel, .lib-scroll {
+  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
+}
+.pv-thumbs::-webkit-scrollbar, .pv-outline::-webkit-scrollbar, .pv-search::-webkit-scrollbar,
+.pv-doc::-webkit-scrollbar, .pv-side::-webkit-scrollbar, .lib-scroll::-webkit-scrollbar {
+  width: 8px; height: 8px;
+}
+.pv-thumbs::-webkit-scrollbar-thumb, .pv-outline::-webkit-scrollbar-thumb, .pv-search::-webkit-scrollbar-thumb,
+.pv-doc::-webkit-scrollbar-thumb, .pv-side::-webkit-scrollbar-thumb, .lib-scroll::-webkit-scrollbar-thumb {
+  background: var(--line-strong); border-radius: 8px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+.pv-thumbs::-webkit-scrollbar-thumb:hover, .pv-outline::-webkit-scrollbar-thumb:hover,
+.pv-search::-webkit-scrollbar-thumb:hover, .pv-doc::-webkit-scrollbar-thumb:hover,
+.pv-side::-webkit-scrollbar-thumb:hover, .lib-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+.pv-thumbs::-webkit-scrollbar-track, .pv-outline::-webkit-scrollbar-track, .pv-search::-webkit-scrollbar-track,
+.pv-doc::-webkit-scrollbar-track, .pv-side::-webkit-scrollbar-track, .lib-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- split panes on the paper page ---------- */
+.pp-pane { position: relative; min-width: 0; height: 100%; overflow: hidden; }
+.pp-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); position: relative; }
+.pp-divider:hover { background: var(--accent); }
+.ptab.split { border-bottom-color: var(--claim); }
+.ptab[draggable] { cursor: grab; }
+/* drag a tab over the pane → drop left to open, right to split */
+.pp-dz-wrap { position: absolute; inset: 0; z-index: 30; display: flex; }
+.pp-dz {
+  flex: 1; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 5%, transparent); transition: background 0.12s;
+}
+.pp-dz.right { border-left: 1px dashed var(--accent); }
+.pp-dz:hover { background: var(--accent-soft); }
+.pp-dz span {
+  color: var(--accent); font-size: 13px; font-weight: 600; background: var(--surface);
+  padding: 7px 14px; border-radius: 9px; box-shadow: var(--shadow); pointer-events: none;
+}
+.ptab-split { display: inline-grid; place-items: center; color: var(--faint); padding: 1px; border-radius: 4px; }
+.ptab-split:hover { background: var(--line-strong); color: var(--ink); }
+
+/* ---------- note document (markdown editor) ---------- */
+.nd { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--surface); }
+.nd-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.nd-title { flex: 1; min-width: 0; background: none; border: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); outline: none; }
+.nd-title::placeholder { color: var(--faint); }
+.nd-status { font-size: 11px; }
+.nd-modes { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.nd-mode { background: var(--surface); border: 0; border-right: 1px solid var(--line); color: var(--muted); font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; }
+.nd-mode:last-child { border-right: 0; }
+.nd-mode:hover { background: var(--surface2); color: var(--ink); }
+.nd-mode.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.nd-body { flex: 1; min-height: 0; overflow: auto; }
+.nd-body .mdxeditor { height: 100%; background: var(--surface); font-family: var(--sans); }
+.nd-mdx {
+  padding: 18px 30px !important;   /* MDXEditor ships its own contenteditable padding; override it */
+  font-family: var(--sans); font-size: 14px; line-height: 1.65; min-height: 100%; max-width: 860px;
+}
+.nd-mdx:focus { outline: none; }
+/* map MDXEditor's content colours to our tokens so it reads correctly in both
+   themes (--ink/--muted flip automatically) instead of MDXEditor's own palette */
+.nd-mdx, .nd-mdx p, .nd-mdx li,
+.nd-mdx h1, .nd-mdx h2, .nd-mdx h3, .nd-mdx h4, .nd-mdx h5, .nd-mdx h6,
+.nd-mdx strong, .nd-mdx em { color: var(--ink) !important; }
+.nd-mdx blockquote, .nd-mdx blockquote p { color: var(--muted) !important; }
+.nd-mdx a { color: var(--accent) !important; }
+.nd-mdx code { color: var(--ink) !important; background: var(--surface2) !important; }
+
+/* rendered markdown */
+.markdown { font-size: 14px; line-height: 1.65; color: var(--ink); max-width: 780px; }
+.markdown h1, .markdown h2, .markdown h3 { line-height: 1.3; margin: 1.1em 0 0.4em; font-weight: 600; }
+.markdown h1 { font-size: 1.5em; } .markdown h2 { font-size: 1.28em; } .markdown h3 { font-size: 1.1em; }
+.markdown p { margin: 0.6em 0; }
+.markdown ul, .markdown ol { margin: 0.6em 0; padding-left: 1.4em; }
+.markdown li { margin: 0.2em 0; }
+.markdown a { color: var(--accent); }
+.markdown code { font-family: var(--mono); font-size: 0.88em; background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
+.markdown pre { background: var(--surface2); padding: 12px 14px; border-radius: 8px; overflow-x: auto; margin: 0.8em 0; }
+.markdown pre code { background: none; padding: 0; }
+.markdown blockquote {
+  margin: 0.8em 0; padding: 4px 14px; border-left: 3px solid var(--citation);
+  color: var(--muted); background: color-mix(in srgb, var(--citation) 6%, transparent); border-radius: 0 6px 6px 0;
+}
+.markdown blockquote p { margin: 0.3em 0; }
+.markdown hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
+
+/* cite-into-note action inside the annotate popover */
+.pv-cite-into {
+  width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line);
+  color: var(--citation); font: inherit; font-size: 12.5px; padding: 8px 2px 0; margin-top: 2px; cursor: pointer;
+}
+.pv-cite-into:hover { color: var(--accent); }
+
+/* ---------- library expansion additions ---------- */
+.lib-anno-empty { text-align: left; color: var(--faint); font-size: 12.5px; padding: 8px 0 4px; }
+.lib-docrow { color: var(--ink); }
+.lib-docrow svg { color: var(--muted); }
+.lib-createnote {
+  display: inline-flex; align-items: center; gap: 7px; margin-top: 6px; background: none;
+  border: 0; color: var(--accent); font: inherit; font-size: 12.5px; padding: 5px 0; cursor: pointer;
+}
+.lib-createnote:hover { text-decoration: underline; }

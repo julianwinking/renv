@@ -13,12 +13,14 @@ export function RegionNode({ id, data }) {
   const [editing, setEditing] = useState(false)
   const [label, setLabel] = useState(data.label || '')
   const [menu, setMenu] = useState(false)
+  const [phaseMenu, setPhaseMenu] = useState(false)
 
   const saveLabel = () => {
     setEditing(false)
     if (label !== data.label) { updateRegion(rid, { label }); data.onChange?.() }
   }
   const setColor = (c) => { setMenu(false); updateRegion(rid, { color: c }).then(() => data.onChange?.()) }
+  const linkPhase = (pid) => { setPhaseMenu(false); data.onLinkPhase?.(pid) }
   const remove = () => deleteRegion(rid).then(() => data.onChange?.())
 
   return (
@@ -36,13 +38,37 @@ export function RegionNode({ id, data }) {
             {data.label || 'Untitled region'}
           </span>
         )}
-        <button className="region-btn nodrag" title="Color" onClick={() => setMenu(!menu)}>◑</button>
+        {data.phaseLabel && (
+          <span className="region-phase nodrag" title={`Linked to phase “${data.phaseLabel}”`}
+                onClick={(e) => { e.stopPropagation(); setPhaseMenu(!phaseMenu); setMenu(false) }}>
+            ⟡ {data.phaseLabel}
+          </span>
+        )}
+        <button className="region-btn nodrag" title="Link to a Gantt phase"
+                onClick={() => { setPhaseMenu(!phaseMenu); setMenu(false) }}>⟡</button>
+        <button className="region-btn nodrag" title="Color"
+                onClick={() => { setMenu(!menu); setPhaseMenu(false) }}>◑</button>
         <button className="region-btn nodrag" title="Delete region" onClick={remove}>✕</button>
         {menu && (
           <div className="region-menu nodrag">
             {REGION_COLORS.map((c) => (
               <button key={c} className={`region-swatch region-${c}`} title={c} onClick={() => setColor(c)} />
             ))}
+          </div>
+        )}
+        {phaseMenu && (
+          <div className="region-menu region-phase-menu nodrag">
+            <button className="region-phase-opt" onClick={() => linkPhase(null)}>
+              {!data.planItemId ? '✓ ' : ''}No phase
+            </button>
+            {(data.phases || []).map((p) => (
+              <button key={p.id} className="region-phase-opt" onClick={() => linkPhase(p.id)}>
+                {data.planItemId === p.id ? '✓ ' : ''}{p.title}
+              </button>
+            ))}
+            {!(data.phases || []).length && (
+              <div className="muted" style={{ padding: '4px 8px', fontSize: 11 }}>No phases yet — add one in Plan</div>
+            )}
           </div>
         )}
       </div>
@@ -62,10 +88,11 @@ function Shell({ kind, children }) {
 
 // Click a node's text to rename it inline (single click, no layout jump).
 // Falls back to a plain span when the node kind has no editor.
-function EditableText({ value, onSave, className, style, clamp = 3 }) {
+function EditableText({ value, onSave, className, style, clamp = 3, placeholder }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(value)
-  if (!onSave) return <div className={className} style={{ ...style, WebkitLineClamp: clamp }}>{value}</div>
+  const shown = value || (placeholder ? <span className="faint">{placeholder}</span> : value)
+  if (!onSave) return <div className={className} style={{ ...style, WebkitLineClamp: clamp }}>{shown}</div>
   if (editing) {
     return (
       <textarea
@@ -84,7 +111,7 @@ function EditableText({ value, onSave, className, style, clamp = 3 }) {
     <div className={className} title="Click to edit"
          style={{ ...style, WebkitLineClamp: clamp, cursor: 'text' }}
          onClick={(e) => { e.stopPropagation(); setText(value); setEditing(true) }}>
-      {value}
+      {shown}
     </div>
   )
 }
@@ -92,17 +119,41 @@ function EditableText({ value, onSave, className, style, clamp = 3 }) {
 // Experiment: status stamp + formatted metrics; click to reveal the hypothesis.
 export function ExperimentNode({ data }) {
   const [open, setOpen] = useState(false)
+  const [editingSlug, setEditingSlug] = useState(false)
+  const [slug, setSlug] = useState(data.label)
+  const saveSlug = () => {
+    setEditingSlug(false)
+    if (slug.trim() && slug !== data.label) data.onSaveSlug?.(slug.trim())
+  }
   return (
     <Shell kind="experiment">
-      <div className="gnode-head" onClick={() => setOpen(!open)} style={{ cursor: 'pointer' }}>
-        <b className="mono">{data.label}</b>
-        <span style={{ marginLeft: 'auto' }}><Stamp value={data.status} /></span>
+      <div className="gnode-head">
+        {editingSlug ? (
+          <input className="nodrag gnode-slug-edit mono" autoFocus value={slug}
+                 size={Math.max(slug.length, 4)}
+                 onChange={(e) => setSlug(e.target.value)} onBlur={saveSlug}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter') { e.preventDefault(); e.target.blur() }
+                   if (e.key === 'Escape') { setSlug(data.label); setEditingSlug(false) }
+                 }} />
+        ) : (
+          <b className="mono" title="Click to rename" style={{ cursor: 'text' }}
+             onClick={(e) => { e.stopPropagation(); setSlug(data.label); setEditingSlug(true) }}>
+            {data.label}
+          </b>
+        )}
+        <span style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setOpen(!open)}>
+          <Stamp value={data.status} />
+        </span>
       </div>
       <EditableText className="gnode-sub" value={data.title} onSave={data.onSaveText} clamp={2} />
       <Metrics defs={data.defs} metrics={data.metrics} />
-      {open && data.hypothesis && (
-        <div className="gnode-sub" style={{ WebkitLineClamp: 6, marginTop: 6 }}>
-          <span className="gnode-kind">hypothesis · </span>{data.hypothesis}
+      {open && (
+        <div className="gnode-sub" style={{ marginTop: 6 }}>
+          <span className="gnode-kind">hypothesis · </span>
+          <EditableText className="gnode-sub" style={{ display: 'inline' }} clamp={8}
+                        value={data.hypothesis || ''} placeholder="click to add"
+                        onSave={data.onSaveHyp} />
         </div>
       )}
     </Shell>
@@ -198,6 +249,25 @@ export function CodeNode({ data }) {
   )
 }
 
+// A positional paper note: the reader's marginalia on a paper, anchored to a
+// quoted span. Coloured by the note's colour; the quote grounds it, the body
+// is editable inline. From here it can motivate an experiment or argue a claim.
+export function PaperNoteNode({ data }) {
+  return (
+    <div className={`gnode gnode-pnote pv-c-${data.color || 'amber'}`}>
+      <Handle type="target" position={Position.Left} />
+      <div className="gnode-head">
+        <span className="gnode-kind">{data.note_kind || 'note'} · {data.paper_key}</span>
+        {data.page && <span className="gnode-kind" style={{ marginLeft: 'auto' }}>p{data.page}</span>}
+      </div>
+      {data.quote && <div className="gnode-sub quote">“{(data.quote || '').slice(0, 80)}{(data.quote || '').length > 80 ? '…' : ''}”</div>}
+      <EditableText className="gnode-sub" value={data.text} placeholder="(no note text)"
+                    onSave={data.onSaveText} clamp={3} />
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
 // Thinking nodes: questions (open/answered), hypotheses, advisor feedback,
 // answers — the reasoning that surrounds experiments, visible on the canvas.
 function ThoughtNode(kind) {
@@ -226,10 +296,14 @@ export const nodeTypes = {
   claim: ClaimNode,
   citation: CitationNode,
   paper: PaperNode,
+  pnote: PaperNoteNode,
   code: CodeNode,
   question: ThoughtNode('question'),
   hypothesis: ThoughtNode('hypothesis'),
   feedback: ThoughtNode('feedback'),
+  decision: ThoughtNode('decision'),
+  blocker: ThoughtNode('blocker'),
+  observation: ThoughtNode('observation'),
   thought: ThoughtNode('thought'),
   note: ThoughtNode('note'),
 }

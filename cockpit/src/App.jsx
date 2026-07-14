@@ -172,9 +172,10 @@ export default function App() {
   }
 
   const PanelIcon = (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
-      <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-      <path d="M6 2.5v11" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
     </svg>
   )
 
@@ -286,8 +287,10 @@ export default function App() {
             <button key={v} className={`navitem ${view === v ? 'active' : ''}`} onClick={() => setView(v)}>
               <svg viewBox="0 0 15 15" fill="currentColor">{I[v]}</svg>
               <span style={{ textTransform: 'capitalize' }}>{v}</span>
-              {v === 'findings' && openFindings > 0
-                ? <span className="badge">{openFindings}</span>
+              {v === 'findings'
+                ? (openFindings > 0
+                    ? <span className="badge">{openFindings}</span>
+                    : <span className="count">{n || 0}</span>)
                 : n != null && n > 0 ? <span className="count">{n}</span> : null}
             </button>
           )
@@ -314,13 +317,13 @@ export default function App() {
       <div className="main">
         <div className="topbar">
           {collapsed && (
-            <button className="iconbtn" title="Show sidebar" onClick={() => setCollapsed(false)}>
+            <button className="iconbtn topbar-reexpand" title="Show sidebar" onClick={() => setCollapsed(false)}>
               {PanelIcon}
             </button>
           )}
           <h2>
-            {project ? project.slug : 'reref'}{' '}
-            <span className="crumb">/ {view.charAt(0).toUpperCase() + view.slice(1)}</span>
+            <span className="crumb">{project ? project.slug : 'reref'} /</span>{' '}
+            {view.charAt(0).toUpperCase() + view.slice(1)}
           </h2>
           <div className="searchbox">
             <input
@@ -394,14 +397,14 @@ export default function App() {
           </button>
         </div>
 
-        <div className={`content ${view === 'graph' ? 'full' : ''}`}>
+        <div className={`content ${view === 'graph' || view === 'papers' ? 'full' : ''}`}>
           <ErrorBoundary key={view + '|' + slug}>
           {!slug && <div className="loading">no project selected</div>}
           {slug && view === 'overview' && <Overview slug={slug} project={project} defs={defs} counts={counts} />}
           {slug && view === 'graph' && <GraphView slug={slug} defs={defs} onMutate={loadOverview} />}
           {slug && view === 'timeline' && <Plan slug={slug} />}
           {slug && view === 'experiments' && <Experiments slug={slug} defs={defs} focus={focus} />}
-          {view === 'papers' && <Papers focus={focus} />}
+          {view === 'papers' && <Papers focus={focus} slug={slug} onMutate={loadOverview} />}
           {slug && view === 'claims' && <Claims slug={slug} focus={focus} />}
           {slug && view === 'findings' && <Findings slug={slug} />}
           {slug && view === 'log' && <Timeline slug={slug} focus={focus} />}

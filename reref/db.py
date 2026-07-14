@@ -473,10 +473,65 @@ CREATE TABLE graph_region (
 CREATE INDEX idx_region_project ON graph_region(project_id);
 """
 
+# A region (graph frame) may name the plan phase it stands for, tying the
+# canvas grouping to a Gantt row. ON DELETE SET NULL: deleting the phase just
+# unlinks; the region survives. NULL default keeps ADD COLUMN legal with FKs.
+_SCHEMA_V17 = """
+ALTER TABLE graph_region ADD COLUMN plan_item_id INTEGER
+    REFERENCES plan_item(id) ON DELETE SET NULL;
+"""
+
+# Positional annotations on a paper: a note anchored to a text span (the same
+# W3C quote/prefix/suffix selector citations use) so it re-highlights on the
+# rendered PDF. Project-scoped so a note joins that project's graph, where it
+# can motivate an experiment or support a claim. Paper delete cascades.
+_SCHEMA_V18 = """
+CREATE TABLE paper_note (
+    id         INTEGER PRIMARY KEY,
+    paper_id   INTEGER NOT NULL REFERENCES paper(id) ON DELETE CASCADE,
+    project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
+    page       INTEGER,
+    quote      TEXT NOT NULL,
+    prefix     TEXT,
+    suffix     TEXT,
+    src_start  INTEGER,
+    src_end    INTEGER,
+    color      TEXT NOT NULL DEFAULT 'amber',
+    body_md    TEXT NOT NULL DEFAULT '',
+    created    TEXT NOT NULL,
+    edited     TEXT
+);
+CREATE INDEX idx_pnote_paper ON paper_note(paper_id);
+CREATE INDEX idx_pnote_project ON paper_note(project_id);
+"""
+
+# A paper annotation is a note, a question, or a hypothesis — same anchor, same
+# graph-node machinery, different intent. Default 'note' keeps existing rows.
+_SCHEMA_V19 = """
+ALTER TABLE paper_note ADD COLUMN kind TEXT NOT NULL DEFAULT 'note';
+"""
+
+# A note document: long-form markdown attached to a paper (project-scoped),
+# opened as its own tab. Unlike a positional annotation it isn't anchored to one
+# span — it's a writing surface that cites many passages from the paper.
+_SCHEMA_V20 = """
+CREATE TABLE paper_doc (
+    id         INTEGER PRIMARY KEY,
+    paper_id   INTEGER NOT NULL REFERENCES paper(id) ON DELETE CASCADE,
+    project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL DEFAULT 'Untitled note',
+    body_md    TEXT NOT NULL DEFAULT '',
+    created    TEXT NOT NULL,
+    edited     TEXT
+);
+CREATE INDEX idx_pdoc_paper ON paper_doc(paper_id);
+CREATE INDEX idx_pdoc_project ON paper_doc(project_id);
+"""
+
 MIGRATIONS = [_SCHEMA_V1, _SCHEMA_V2, _SCHEMA_V3, _SCHEMA_V4, _SCHEMA_V5,
               _SCHEMA_V6, _SCHEMA_V7, _SCHEMA_V8, _SCHEMA_V9, _SCHEMA_V10,
               _SCHEMA_V11, _SCHEMA_V12, _SCHEMA_V13, _SCHEMA_V14, _SCHEMA_V15,
-              _SCHEMA_V16]
+              _SCHEMA_V16, _SCHEMA_V17, _SCHEMA_V18, _SCHEMA_V19, _SCHEMA_V20]
 
 
 # --- time & hashing ----------------------------------------------------------

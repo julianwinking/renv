@@ -25,7 +25,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 _LOCAL_ORIGIN = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
 
@@ -36,8 +36,9 @@ from . import log as logmod
 
 WEB_DIR = Path(__file__).parent / "web"
 DIST = Path(__file__).parent.parent / "cockpit" / "dist"   # built React Flow app (if present)
-_MIME = {".js": "text/javascript", ".css": "text/css", ".html": "text/html",
-         ".svg": "image/svg+xml", ".json": "application/json", ".map": "application/json"}
+_MIME = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
+         ".html": "text/html", ".svg": "image/svg+xml", ".json": "application/json",
+         ".map": "application/json", ".wasm": "application/wasm"}
 
 
 def _graph(con, root, slug):
@@ -71,6 +72,20 @@ def _graph(con, root, slug):
         if c["paper_id"]:
             node(f"paper:{c['paper_id']}", "paper", c["key"], {})
             edges.append({"source": f"paper:{c['paper_id']}", "target": f"cite:{c['id']}", "kind": "cited"})
+
+    # positional paper notes: the reader's marginalia joins the graph, anchored
+    # to its paper (which is pulled in even if never cited), free to go on to
+    # motivate an experiment or argue a claim via context links
+    from . import paper_note as pnotemod
+    for n_ in pnotemod.list_for_project(con, slug):
+        node(f"paper:{n_['paper_id']}", "paper", n_["paper_key"], {"title": n_["paper_title"]})
+        label = (n_["body_md"] or n_["quote"] or "").strip()[:48]
+        node(f"pnote:{n_['id']}", "pnote", label,
+             {"text": n_["body_md"], "quote": n_["quote"], "page": n_["page"],
+              "color": n_["color"], "paper_key": n_["paper_key"],
+              "note_kind": n_.get("kind", "note")})
+        edges.append({"source": f"paper:{n_['paper_id']}",
+                      "target": f"pnote:{n_['id']}", "kind": "annotates"})
 
     for c in claimmod.list_claims(con, slug):
         full = claimmod.get_claim(con, c["id"])
@@ -106,19 +121,20 @@ def _graph(con, root, slug):
                       "target": _ctx_id(lk["to_kind"], lk["to_id"]),
                       "kind": lk["relation"], "note": lk["note"], "context": True})
 
-    # thinking made visible: questions / hypotheses / feedback join the graph,
-    # wired to the experiment they concern and to the entries that answer them
+    # thinking made visible: every reasoning entry (question / hypothesis /
+    # feedback / decision / blocker / observation) joins the graph, wired to
+    # the experiment it concerns and to the entries that answer it
+    _NODE_TYPES = ("question", "hypothesis", "feedback", "decision", "blocker", "observation")
     thought_rows = con.execute(
         "SELECT * FROM log_entry WHERE project_id=? AND ("
-        "type IN ('question','hypothesis','feedback') OR answers IS NOT NULL) "
-        "ORDER BY id", (pid,)).fetchall()
+        f"type IN ({','.join('?' * len(_NODE_TYPES))}) OR answers IS NOT NULL) "
+        "ORDER BY id", (pid, *_NODE_TYPES)).fetchall()
     for e in thought_rows:
         answered = None
         if e["type"] == "question":
             a = con.execute("SELECT 1 FROM log_entry WHERE answers=?", (e["id"],)).fetchone()
             answered = bool(a)
-        node(f"log:{e['id']}", e["type"] if e["type"] in ("question", "hypothesis", "feedback")
-             else "thought",
+        node(f"log:{e['id']}", e["type"] if e["type"] in _NODE_TYPES else "thought",
              f"#{e['id']}", {"text": e["body_md"], "type": e["type"],
                              "source": e["source"], "answered": answered})
     for e in thought_rows:
@@ -311,6 +327,96 @@ def _project(con, slug):
     }
 
 
+def _regions(con, slug):
+    """Regions, each carrying the title of the plan phase it is linked to."""
+    from . import regions as regionsmod, plan as planmod
+    regs = regionsmod.list_regions(con, slug)
+    titles = {p["id"]: p["title"] for p in planmod.list_items(con, slug)}
+    for r in regs:
+        r["phase"] = titles.get(r.get("plan_item_id"))
+    return regs
+
+
+def _papers(con, root):
+    """The corpus for the library table: each row flagged with whether its PDF
+    is on disk (so the cockpit knows which papers can open in the viewer), its
+    note and citation counts, and a parsed authors list."""
+    lib = Path(root) / "library"
+    out = ingest.list_papers(con)
+    for p in out:
+        p["has_pdf"] = (lib / f"{p['key']}.pdf").exists()
+        p["note_count"] = con.execute(
+            "SELECT COUNT(*) FROM paper_note WHERE paper_id=?", (p["id"],)).fetchone()[0]
+        p["cite_count"] = con.execute(
+            "SELECT COUNT(*) FROM citation WHERE paper_id=?", (p["id"],)).fetchone()[0]
+        p["doc_count"] = con.execute(
+            "SELECT COUNT(*) FROM paper_doc WHERE paper_id=?", (p["id"],)).fetchone()[0]
+        try:
+            p["authors"] = json.loads(p.get("authors_json") or "[]")
+        except Exception:
+            p["authors"] = []
+    return out
+
+
+# parsed-doc cache so repeated viewer loads don't re-parse the PDF for page hints
+_PAGE_CACHE: dict = {}
+
+
+def _page_mapper(root, key):
+    """Return offset→page(1-based) for a paper's PDF, or None if unparseable
+    (e.g. pdfminer not installed). Cached by file mtime."""
+    src = Path(root) / "library" / f"{key}.pdf"
+    if not src.exists():
+        return None
+    try:
+        mtime = src.stat().st_mtime
+        cached = _PAGE_CACHE.get(key)
+        if not cached or cached[0] != mtime:
+            from . import parse as parsemod
+            _PAGE_CACHE[key] = (mtime, parsemod.parse(src))
+        return _PAGE_CACHE[key][1].page_of
+    except Exception:
+        return None
+
+
+def _paper_anchors(con, root, key, project):
+    """Everything the PDF viewer highlights: the project's citations of this
+    paper and its positional notes, each carrying a text-quote anchor (and a
+    page hint when the PDF could be parsed) for text-layer matching."""
+    prow = con.execute("SELECT id FROM paper WHERE key=?", (key,)).fetchone()
+    if not prow:
+        raise KeyError(f"no paper {key!r}")
+    pid = prow["id"]
+    if project:
+        proj = db.project_id(con, project)
+        rows = con.execute("SELECT * FROM citation WHERE paper_id=? AND project_id=? "
+                           "ORDER BY id", (pid, proj)).fetchall()
+    else:
+        rows = con.execute("SELECT * FROM citation WHERE paper_id=? ORDER BY id",
+                           (pid,)).fetchall()
+    page_of = _page_mapper(root, key)
+    citations = [{
+        "id": c["id"], "quote": c["quote"], "prefix": c["prefix"], "suffix": c["suffix"],
+        "support": c["support"], "claim_text": c["claim_text"],
+        "page": (page_of(c["src_start"]) if page_of and c["src_start"] is not None else None),
+    } for c in rows]
+    from . import paper_note
+    return {"key": key, "citations": citations,
+            "notes": paper_note.list_for_paper(con, key, project)}
+
+
+def _plan(con, slug):
+    """Plan items; each phase carries the region (if any) that stands for it."""
+    from . import regions as regionsmod, plan as planmod
+    items = planmod.list_items(con, slug)
+    by_phase = {r["plan_item_id"]: {"id": r["id"], "label": r["label"], "color": r["color"]}
+                for r in regionsmod.list_regions(con, slug) if r.get("plan_item_id")}
+    for it in items:
+        if it["kind"] == "phase":
+            it["region"] = by_phase.get(it["id"])
+    return items
+
+
 # --- admin control surface: the files agents actually read -------------------
 # STRICT allowlist. These are the real levers of the environment: AGENTS.md is
 # what an agent loads at session start, templates/ is what every `reref new`
@@ -415,10 +521,22 @@ class Handler(BaseHTTPRequestHandler):
                               cache="max-age=31536000, immutable")
         self._send({"error": "not found"}, 404)
 
+    def _serve_pdf(self, key):
+        """Stream a paper's PDF straight from library/ for the viewer."""
+        lib = (Path(self.root) / "library").resolve()
+        src = (lib / f"{key}.pdf").resolve()
+        if not str(src).startswith(str(lib)) or not src.is_file():
+            return self._send({"error": f"no PDF for {key!r}"}, 404, cache="no-store")
+        return self._send(src.read_bytes(), ctype="application/pdf",
+                          cache="private, max-age=3600")
+
     # --- GET ---
     def do_GET(self):
         path = urlparse(self.path).path
         try:
+            parts = path.strip("/").split("/")
+            if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "pdf":
+                return self._serve_pdf(unquote(parts[2]))
             if path.startswith("/api/"):
                 con = db.connect(self.root)
                 try:
@@ -436,7 +554,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/overview":
             return _overview(con)
         if path == "/api/papers":
-            return ingest.list_papers(con)
+            return _papers(con, self.root)
+        if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "anchors":
+            q = parse_qs(urlparse(self.path).query)
+            return _paper_anchors(con, self.root, unquote(parts[2]),
+                                  q.get("project", [None])[0])
+        if parts[:3] == ["api", "paper", "doc"] and len(parts) == 4:
+            from . import paper_doc
+            return paper_doc.get_doc(con, int(parts[3]))
+        if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "docs":
+            from . import paper_doc
+            q = parse_qs(urlparse(self.path).query)
+            return paper_doc.list_for_paper(con, unquote(parts[2]), q.get("project", [None])[0])
         if path == "/api/metric_defs":
             return experiment.metric_defs(con)
         if path == "/api/conferences":
@@ -461,11 +590,9 @@ class Handler(BaseHTTPRequestHandler):
                                  for v, lbl, m in rels]}
                     for (f, t), rels in linksmod.CONNECTIONS.items()]
         if path == "/api/config/files":
-            from urllib.parse import parse_qs
             q = parse_qs(urlparse(self.path).query)
             return _config_listing(self.root, con, (q.get("project", [None])[0]))
         if path == "/api/config/file":
-            from urllib.parse import parse_qs
             q = parse_qs(urlparse(self.path).query)
             p = _config_path(self.root, con, q["scope"][0], q["name"][0],
                              (q.get("project", [None])[0]))
@@ -473,8 +600,7 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "health"] and len(parts) == 3:
             return _health(con, self.root, unquote(parts[2]))
         if parts[:2] == ["api", "plan"] and len(parts) == 3:
-            from . import plan as planmod
-            return planmod.list_items(con, unquote(parts[2]))
+            return _plan(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 4 and parts[3] == "runs":
             return _runs(con, unquote(parts[2]))
         if parts[:2] == ["api", "project"] and len(parts) == 3:
@@ -485,10 +611,8 @@ class Handler(BaseHTTPRequestHandler):
             from . import argument
             return argument.analyze(con, unquote(parts[2]))
         if parts[:2] == ["api", "regions"] and len(parts) == 3:
-            from . import regions
-            return regions.list_regions(con, unquote(parts[2]))
+            return _regions(con, unquote(parts[2]))
         if path.startswith("/api/search"):
-            from urllib.parse import parse_qs
             from . import search as searchmod
             q = parse_qs(urlparse(self.path).query)
             return searchmod.search(con, (q.get("q", [""])[0]),
@@ -565,6 +689,38 @@ class Handler(BaseHTTPRequestHandler):
             return claimmod.link_evidence(con, d["claim_id"], citation_id=d.get("citation_id"),
                                           run_id=d.get("run_id"), stance=d.get("stance", "supports"),
                                           note=d.get("note"))
+        if path == "/api/paper/add":
+            src = (d.get("source") or "").strip()
+            if not src:
+                raise ValueError("source is required (a file path, arXiv id, or DOI)")
+            return ingest.add(con, self.root, src, download=bool(d.get("download", True)))
+        if path == "/api/paper/doc":
+            from . import paper_doc
+            return paper_doc.create_doc(con, d["key"], d.get("project"),
+                                        title=d.get("title", "Untitled note"), body=d.get("body", ""))
+        if path == "/api/paper/doc/update":
+            from . import paper_doc
+            fields = {k: d[k] for k in ("title", "body_md") if k in d}
+            return paper_doc.update_doc(con, d["id"], **fields)
+        if path == "/api/paper/doc/delete":
+            from . import paper_doc
+            paper_doc.delete_doc(con, d["id"])
+            return {"deleted": d["id"]}
+        if path == "/api/paper/note":
+            from . import paper_note
+            return paper_note.add_note(
+                con, d["key"], d.get("project"), quote=d["quote"], body=d.get("body", ""),
+                page=d.get("page"), prefix=d.get("prefix"), suffix=d.get("suffix"),
+                src_start=d.get("src_start"), src_end=d.get("src_end"),
+                color=d.get("color", "amber"), kind=d.get("kind", "note"))
+        if path == "/api/paper/note/update":
+            from . import paper_note
+            fields = {k: d[k] for k in ("body_md", "color", "page", "kind") if k in d}
+            return paper_note.update_note(con, d["id"], **fields)
+        if path == "/api/paper/note/delete":
+            from . import paper_note
+            paper_note.delete_note(con, d["id"])
+            return {"deleted": d["id"]}
         if path == "/api/region":
             from . import regions
             return regions.add_region(con, d["project"], x=d["x"], y=d["y"],
@@ -572,7 +728,8 @@ class Handler(BaseHTTPRequestHandler):
                                       label=d.get("label", ""), color=d.get("color", "slate"))
         if path == "/api/region/update":
             from . import regions
-            fields = {k: d[k] for k in ("label", "color", "x", "y", "w", "h") if k in d}
+            fields = {k: d[k] for k in ("label", "color", "x", "y", "w", "h",
+                                        "plan_item_id") if k in d}
             return regions.update_region(con, d["id"], **fields)
         if path == "/api/region/delete":
             from . import regions

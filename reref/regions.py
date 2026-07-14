@@ -34,17 +34,27 @@ def update_region(con: sqlite3.Connection, region_id: int, **fields) -> dict:
     row = con.execute("SELECT * FROM graph_region WHERE id=?", (region_id,)).fetchone()
     if not row:
         raise KeyError(f"no region #{region_id}")
-    allowed = {"label", "color", "x", "y", "w", "h"}
+    allowed = {"label", "color", "x", "y", "w", "h", "plan_item_id"}
     bad = set(fields) - allowed
     if bad:
         raise ValueError(f"cannot update {sorted(bad)}")
     if fields.get("color") and fields["color"] not in COLORS:
         raise ValueError(f"color must be one of {COLORS}")
+    if fields.get("plan_item_id") is not None:   # link only to a phase in this project
+        p = con.execute("SELECT project_id, kind FROM plan_item WHERE id=?",
+                        (fields["plan_item_id"],)).fetchone()
+        if not p:
+            raise KeyError(f"no plan item #{fields['plan_item_id']}")
+        if p["project_id"] != row["project_id"]:
+            raise ValueError("phase belongs to another project")
+        if p["kind"] != "phase":
+            raise ValueError("a region can only be linked to a phase")
     merged = {**row_to_dict(row), **fields}
     con.execute(
-        "UPDATE graph_region SET label=?, color=?, x=?, y=?, w=?, h=? WHERE id=?",
+        "UPDATE graph_region SET label=?, color=?, x=?, y=?, w=?, h=?, plan_item_id=? "
+        "WHERE id=?",
         (merged["label"], merged["color"], float(merged["x"]), float(merged["y"]),
-         float(merged["w"]), float(merged["h"]), region_id))
+         float(merged["w"]), float(merged["h"]), merged["plan_item_id"], region_id))
     con.commit()
     return row_to_dict(con.execute(
         "SELECT * FROM graph_region WHERE id=?", (region_id,)).fetchone())

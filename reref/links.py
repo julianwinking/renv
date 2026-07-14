@@ -64,7 +64,7 @@ _CTX_LABEL = {
 # these, "Relates to" is always available — it genuinely applies to any pair,
 # so nothing conceptual is ever un-connectable.
 _CTX_KINDS = ("feedback", "note", "question", "hypothesis", "thought",
-              "claim", "experiment", "paper", "finding")
+              "claim", "experiment", "paper", "finding", "pnote")
 
 # Specific verbs layered on top, only where they carry real meaning. Everything
 # else falls back to relates_to alone.
@@ -94,6 +94,13 @@ _CTX_VERBS: dict[tuple[str, str], list[str]] = {
     ("paper", "claim"): ["informs"],
     ("paper", "experiment"): ["informs"],
     ("paper", "question"): ["raises"],
+    # a positional reading note carries a specific reading into the work: it
+    # motivates an experiment, informs how a method is built, argues a claim
+    ("pnote", "experiment"): ["motivates", "informs"],
+    ("pnote", "claim"): ["motivates", "informs"],
+    ("pnote", "hypothesis"): ["motivates"],
+    ("pnote", "question"): ["raises"],
+    ("pnote", "finding"): ["concerns"],
 }
 # observation/decision/blocker log entries all render as the 'thought' node
 _CTX_VERBS = {(("thought" if a == "observation" else a), b): v
@@ -115,7 +122,7 @@ def options_for(from_kind: str, to_kind: str) -> list[dict]:
 
 
 _KINDS = {"experiment", "claim", "citation", "paper", "finding", "note",
-          "question", "hypothesis", "feedback", "thought", "code"}
+          "question", "hypothesis", "feedback", "thought", "code", "pnote"}
 
 
 def strong_pairs() -> list[tuple[str, str]]:

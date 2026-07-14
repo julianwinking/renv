@@ -158,18 +158,20 @@ not hand-set. `reref review` flags any thesis/contribution claim still `open`.
 ## The web cockpit
 
 ```bash
-uv run reref web                 # → http://127.0.0.1:8765 (manual)
+uv run reref web                 # → http://127.0.0.1:8765 (manual, foreground)
+```
 
-# on-demand (macOS): starts on the first browser request, exits after 30 min idle
-uv run reref web install         # launchd socket activation on 127.0.0.1:80
-echo '127.0.0.1 research.test' | sudo tee -a /etc/hosts   # once
-open http://research.test/
+**On-demand at `https://research.com` (macOS).** launchd socket activation
+starts the cockpit on the first browser request and exits after 5 min idle, so
+it costs nothing when you're not looking:
 
-# …or with a padlock on any name (mkcert local CA; :80 redirects to :443):
-brew install mkcert && mkcert -install                     # once, keychain prompt
-uv run reref web install --domain research.com --https
-echo '127.0.0.1 research.com' | sudo tee -a /etc/hosts     # once
-open https://research.com/
+```bash
+brew install mkcert && mkcert -install                          # once: trust a local CA
+uv run reref web install --domain research.com --https --idle-exit 300
+echo '127.0.0.1 research.com' | sudo tee -a /etc/hosts          # once (we never touch /etc/hosts for you)
+open https://research.com/                                      # http:// redirects to https
+
+uv run reref web uninstall                                      # stop autostart, remove the agent
 ```
 
 No Docker on purpose: the cockpit reads/writes this repo's working tree
@@ -185,6 +187,9 @@ truth either way; every edit goes through the same domain functions as CLI/MCP):
 - **React Flow graph app** (`cockpit/`, richer): experiment branches, claims,
   findings, citations, and papers as connected, **expandable interactive nodes** on
   a dagre-laid-out canvas — inline finding accept/reject, claim→evidence edges.
+  Papers open in a tabbed **PDF viewer** (PDF.js) that highlights each cited span
+  in place and lets you drop **positional notes** — which become graph nodes that
+  can motivate an experiment or argue a claim.
   Build it and `reref web` serves it automatically:
   ```bash
   cd cockpit && npm install && npm run build   # → cockpit/dist

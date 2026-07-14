@@ -19,6 +19,16 @@ export default function Timeline({ slug, focus }) {
 
   const [sources, setSources] = useState([])
 
+  const commitEdit = async (e) => {
+    const orig = e.kind === 'note' ? (e.raw_body ?? e.body_md) : e.body_md
+    if (editText.trim() && editText !== orig) {
+      const r = e.kind === 'note' ? await editNote(e.id, editText) : await editLog(e.id, editText)
+      if (r && r.error) { setErr(r.error); return }
+    }
+    setEditing(null)
+    load()
+  }
+
   const load = () => getProject(slug).then(setData)
   useEffect(() => { setData(null); setAnswering(null); load() }, [slug])
   useEffect(() => { getSources().then((s) => setSources(asArray(s))) }, [slug])
@@ -161,22 +171,22 @@ export default function Timeline({ slug, focus }) {
             <div className="tl-body">
               {e.source && <div className="faint" style={{ fontSize: 11.5 }}>{e.source}</div>}
               {editing === e.fkey ? (
-                <>
-                  <textarea value={editText} autoFocus
-                            onChange={(ev) => setEditText(ev.target.value)} />
-                  <div className="gnode-actions">
-                    <button className="btn" onClick={async () => {
-                      const r = e.kind === 'note'
-                        ? await editNote(e.id, editText)
-                        : await editLog(e.id, editText)
-                      if (r.error) { setErr(r.error); return }
-                      setEditing(null)
-                      load()
-                    }} disabled={!editText.trim()}>Save edit</button>
-                    <button className="btn ghost" onClick={() => setEditing(null)}>Cancel</button>
-                  </div>
-                </>
-              ) : e.body_md}
+                <textarea className="inline-edit" value={editText} autoFocus
+                          onChange={(ev) => setEditText(ev.target.value)}
+                          onBlur={() => commitEdit(e)}
+                          onKeyDown={(ev) => {
+                            if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); commitEdit(e) }
+                            if (ev.key === 'Escape') setEditing(null)
+                          }} />
+              ) : (
+                <div className="inline-target" title="Click to edit"
+                     onClick={() => {
+                       setEditing(e.fkey)
+                       setEditText(e.kind === 'note' ? (e.raw_body ?? e.body_md) : e.body_md)
+                     }}>
+                  {e.body_md}
+                </div>
+              )}
               {editing !== e.fkey && (
                 <div className="tl-ev">
                   {e.evidence?.runs?.map((r) => <span key={`r${r}`} className="chip">run #{r}</span>)}
@@ -188,13 +198,6 @@ export default function Timeline({ slug, focus }) {
                       Answer…
                     </button>
                   )}
-                  <button className="btn ghost" style={{ fontSize: 11, padding: '1px 8px' }}
-                          onClick={() => {
-                            setEditing(e.fkey)
-                            setEditText(e.kind === 'note' ? (e.raw_body ?? e.body_md) : e.body_md)
-                          }}>
-                    Edit…
-                  </button>
                 </div>
               )}
             </div>

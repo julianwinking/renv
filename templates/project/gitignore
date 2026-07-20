@@ -1,0 +1,17 @@
+# Project repo .gitignore (this folder is its own git repo).
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Run artifacts are large/derived; commit metrics via the parent store's export,
+# not the raw outputs. Keep the folder, ignore its contents.
+runs/*
+!runs/.gitkeep
+
+# LaTeX build cruft
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.synctex.gz

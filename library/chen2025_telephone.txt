@@ -1,0 +1,13 @@
+The Noisy Path from Source to Citation
+
+When a paper cites a prior work, the citing sentence does not always faithfully
+represent what the original source actually claimed. We study this loss of
+fidelity at scale across roughly thirteen million citation sentence pairs.
+
+We find a telephone effect: when an intermediary paper cites an original source
+with low fidelity, downstream papers that cite the intermediary inherit and
+propagate that distortion, drifting further from the original claim with each hop.
+
+We caution that our quasi-experimental design does not guarantee that the
+intermediary paper was actually read, and the measured effect size on our
+five-point fidelity scale is small.

@@ -22,7 +22,7 @@ jobs:
         # oldest supported and the pinned development version
         python: ["3.10", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (stdlib-only core + dev tooling)
         run: uv sync --python ${{ matrix.python }}
@@ -36,7 +36,7 @@ jobs:
       run:
         working-directory: cockpit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22

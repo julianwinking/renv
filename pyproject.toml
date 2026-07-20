@@ -21,7 +21,7 @@ reref = "reref.cli:main"
 
 [dependency-groups]
 # Dev tooling, installed by `uv sync` but not shipped with the package.
-dev = ["pytest>=8"]
+dev = ["pytest>=9.1.1"]
 
 [tool.uv]
 # All optional-dependencies extras are lazy-imported heavy SOTA backends;

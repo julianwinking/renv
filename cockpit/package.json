@@ -10,10 +10,10 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
-    "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@fontsource/ibm-plex-sans": "^5.2.8",
-    "@mdxeditor/editor": "^4.0.4",
-    "@xyflow/react": "^12.3.5",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@mdxeditor/editor": "^4.1.0",
+    "@xyflow/react": "^12.11.2",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

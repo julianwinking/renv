@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>renv cockpit</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --fg:#e6e9ef; --muted:#8b93a7; --accent:#6ea8fe; --green:#5bd6a0;
+    --red:#f0727f; --amber:#e7c062; --chip:#252a35;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         background:var(--bg); color:var(--fg); display:flex; height:100vh; }
+  aside { width:220px; background:var(--panel); border-right:1px solid var(--line);
+          padding:16px 12px; overflow-y:auto; flex-shrink:0; }
+  aside h1 { font-size:15px; margin:0 0 16px 8px; letter-spacing:.3px; }
+  aside h1 span { color:var(--accent); }
+  .navitem { padding:7px 10px; border-radius:7px; cursor:pointer; color:var(--muted);
+             display:flex; justify-content:space-between; align-items:center; }
+  .navitem:hover { background:var(--panel2); color:var(--fg); }
+  .navitem.active { background:var(--panel2); color:var(--fg); }
+  .navgroup { font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+              color:var(--muted); margin:18px 8px 6px; }
+  .badge { background:var(--red); color:#1a0c0e; font-size:11px; font-weight:600;
+           border-radius:10px; padding:1px 7px; }
+  main { flex:1; overflow-y:auto; padding:28px 36px; }
+  h2 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 22px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; margin-bottom:26px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .stat .n { font-size:26px; font-weight:600; } .stat .l { color:var(--muted); font-size:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+          padding:14px 16px; margin-bottom:10px; }
+  .row { display:flex; gap:10px; align-items:flex-start; }
+  .tabs { display:flex; gap:4px; margin:18px 0; border-bottom:1px solid var(--line); }
+  .tab { padding:8px 14px; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; }
+  .tab.active { color:var(--fg); border-bottom-color:var(--accent); }
+  .chip { background:var(--chip); border-radius:6px; padding:1px 8px; font-size:12px; color:var(--muted); }
+  .icon { width:18px; text-align:center; flex-shrink:0; }
+  .ok { color:var(--green); } .bad { color:var(--red); } .warn { color:var(--amber); }
+  .mut { color:var(--muted); } .mono { font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+  button { background:var(--accent); color:#0a1020; border:0; border-radius:7px;
+           padding:6px 12px; font-weight:600; cursor:pointer; font-size:13px; }
+  button.ghost { background:var(--chip); color:var(--fg); }
+  button.danger { background:var(--red); color:#1a0c0e; }
+  .clickable { cursor:pointer; } .clickable:hover { background:var(--panel2); }
+  input, textarea { background:var(--panel2); border:1px solid var(--line); color:var(--fg);
+            border-radius:7px; padding:8px; width:100%; font:inherit; }
+  .sev-high{color:var(--red)} .sev-medium{color:var(--amber)} .sev-low{color:var(--muted)}
+  .pill{font-size:11px;border-radius:10px;padding:1px 8px;border:1px solid var(--line)}
+  .empty{color:var(--muted);padding:20px;text-align:center}
+</style>
+</head>
+<body>
+<aside>
+  <h1>re<span>ref</span> cockpit</h1>
+  <div class="navitem" data-view="dashboard">Dashboard</div>
+  <div class="navitem" data-view="papers">Papers</div>
+  <div class="navgroup">Projects</div>
+  <div id="projnav"></div>
+</aside>
+<main id="main"><div class="empty">loading…</div></main>
+
+<script>
+const $ = (s,el=document)=>el.querySelector(s);
+const api = (p)=>fetch(p).then(r=>r.json());
+const post = (p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const esc = s => (s??'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const SEV = {high:'sev-high',medium:'sev-medium',low:'sev-low'};
+const STAT = {planned:'<span class="icon mut">○</span>',running:'<span class="icon warn">▶</span>',
+              done:'<span class="icon ok">✓</span>',abandoned:'<span class="icon bad">✗</span>'};
+const CSTAT = {open:'<span class="ok"></span>○',supported:'✓',refuted:'✗'};
+let state = {view:'dashboard', slug:null, tab:'branches'};
+
+async function render(){
+  document.querySelectorAll('.navitem').forEach(n=>n.classList.toggle('active',
+     n.dataset.view===state.view && (!n.dataset.slug || n.dataset.slug===state.slug)));
+  const m = $('#main');
+  if(state.view==='dashboard') return renderDashboard(m);
+  if(state.view==='papers') return renderPapers(m);
+  if(state.view==='project') return renderProject(m);
+}
+
+async function renderNav(){
+  const o = await api('/api/overview');
+  $('#projnav').innerHTML = o.projects.map(p=>`
+    <div class="navitem" data-view="project" data-slug="${esc(p.slug)}">
+      <span>${esc(p.title||p.slug)}</span>
+      ${p.open_findings?`<span class="badge">${p.open_findings}</span>`:''}
+    </div>`).join('') || '<div class="mut" style="padding:6px 10px">no projects</div>';
+  bindNav();
+  return o;
+}
+function bindNav(){
+  document.querySelectorAll('.navitem').forEach(n=>n.onclick=()=>{
+    state.view=n.dataset.view; state.slug=n.dataset.slug||null; state.tab='branches'; render();
+  });
+}
+
+async function renderDashboard(m){
+  const o = await api('/api/overview');
+  const c = o.counts;
+  m.innerHTML = `<h2>Dashboard</h2><p class="sub">research environment at a glance</p>
+   <div class="grid">
+     ${[['paper','papers'],['experiment','experiments'],['run','runs'],['citation','citations'],
+        ['claim','claims'],['finding','findings'],['note','notes']]
+       .map(([k,l])=>`<div class="stat"><div class="n">${c[k]}</div><div class="l">${l}</div></div>`).join('')}
+   </div>
+   <h2 style="font-size:16px">Projects</h2>
+   ${o.projects.map(p=>`<div class="card clickable" onclick="goProject('${esc(p.slug)}')">
+      <div class="row"><div style="flex:1"><b>${esc(p.title||p.slug)}</b>
+      <span class="chip">${esc(p.status)}</span></div>
+      ${p.open_findings?`<span class="badge">${p.open_findings} open</span>`:'<span class="mut">clean</span>'}
+      </div></div>`).join('') || '<div class="empty">No projects yet — run <span class="mono">renv new &lt;slug&gt;</span></div>'}`;
+}
+window.goProject = slug => { state.view='project'; state.slug=slug; state.tab='branches'; render(); };
+
+async function renderPapers(m){
+  const papers = await api('/api/papers');
+  m.innerHTML = `<h2>Papers</h2><p class="sub">${papers.length} in the shared library</p>
+   ${papers.map(p=>`<div class="card clickable" onclick="showUsage('${esc(p.key)}')">
+      <b>${esc(p.title||p.key)}</b> <span class="mut mono">${esc(p.key)}</span>
+      <div class="mut">${esc(p.year||'?')} ${p.doi?'· '+esc(p.doi):''}</div>
+   </div>`).join('') || '<div class="empty">No papers — <span class="mono">renv add &lt;arxiv|doi|pdf&gt;</span></div>'}
+   <div id="usage"></div>`;
+}
+window.showUsage = async key => {
+  const u = await api('/api/paper/'+encodeURIComponent(key)+'/usage');
+  $('#usage').innerHTML = `<div class="card"><h2 style="font-size:15px">Usage map · ${esc(key)}</h2>
+    <p class="sub">cited in ${u.cited_in.length} place(s) · used in ${u.used_in_log.length} log entr(ies)</p>
+    ${u.cited_in.map(c=>`<div class="row" style="margin:6px 0"><span class="pill">${esc(c.support)}</span>
+       <span><b>${esc(c.project)}</b> @ ${esc(c.manuscript_loc||'—')}
+       <div class="mut mono">“${esc((c.quote||'').slice(0,80))}…”</div></span></div>`).join('')
+       || '<div class="mut">not cited yet</div>'}</div>`;
+};
+
+async function renderProject(m){
+  const p = await api('/api/project/'+encodeURIComponent(state.slug));
+  const tabs = ['branches','findings','claims','timeline'];
+  m.innerHTML = `<h2>${esc(state.slug)}</h2><p class="sub">project cockpit</p>
+    <div class="tabs">${tabs.map(t=>`<div class="tab ${t===state.tab?'active':''}" onclick="setTab('${t}')">${t}</div>`).join('')}</div>
+    <div id="tabbody"></div>`;
+  renderTab(p);
+}
+window.setTab = t => { state.tab=t; renderProject($('#main')); };
+
+function renderTab(p){
+  const b = $('#tabbody');
+  if(state.tab==='branches') return b.innerHTML = renderBranches(p.experiments);
+  if(state.tab==='findings') return b.innerHTML = renderFindings(p.findings);
+  if(state.tab==='claims') return b.innerHTML = renderClaims(p.claims);
+  if(state.tab==='timeline') return b.innerHTML = renderTimeline(p);
+}
+
+function renderBranches(exps){
+  if(!exps.length) return '<div class="empty">No experiments yet</div>';
+  const byId = Object.fromEntries(exps.map(e=>[e.id,e]));
+  const depth = e => { let d=0,p=e.parent_id; while(byId[p]){d++;p=byId[p].parent_id;} return d; };
+  return exps.map(e=>{
+    const mets = Object.entries(e.metrics||{}).map(([k,v])=>`<span class="chip">${esc(k)}=${v}</span>`).join(' ');
+    return `<div class="card" style="margin-left:${depth(e)*22}px">
+       <div class="row">${STAT[e.status]||''}<div style="flex:1">
+       <b>${esc(e.slug)}</b> ${esc(e.title||'')} ${mets}
+       ${e.hypothesis?`<div class="mut">⌖ ${esc(e.hypothesis)}</div>`:''}</div></div></div>`;
+  }).join('');
+}
+
+function renderFindings(fs){
+  if(!fs.length) return '<div class="empty">No findings — run <span class="mono">renv review</span></div>';
+  return fs.map(f=>`<div class="card">
+     <div class="row"><div style="flex:1">
+       <span class="${SEV[f.severity]||''}">${esc(f.severity.toUpperCase())}</span>
+       <span class="chip">${esc(f.check_id)}</span> <span class="pill">${esc(f.status)}</span>
+       <div>${esc(f.issue)}</div></div>
+     ${f.status==='open'?`<div>
+        <button class="ghost" onclick="adjud(${f.id},'accept')">accept</button>
+        <button class="danger" onclick="adjud(${f.id},'reject')">reject</button></div>`:''}
+     </div></div>`).join('');
+}
+window.adjud = async (id,verdict)=>{
+  const reasoning = prompt(`Reasoning for ${verdict} (visible to future agents; rejected findings are never re-raised):`);
+  if(!reasoning) return;
+  const r = await post('/api/finding/adjudicate',{id,verdict,reasoning,by:'cockpit'});
+  if(r.error) alert(r.error); else renderProject($('#main'));
+};
+
+function renderClaims(cs){
+  if(!cs.length) return '<div class="empty">No claims — <span class="mono">renv claim add</span></div>';
+  const mk={open:'<span class="mut">○ open</span>',supported:'<span class="ok">✓ supported</span>',refuted:'<span class="bad">✗ refuted</span>'};
+  return cs.map(c=>`<div class="card"><div class="row"><div style="flex:1">
+     <span class="chip">${esc(c.kind)}</span> ${esc(c.text)}
+     <div class="mut">${c.evidence_count} evidence</div></div>
+     <div>${mk[c.status]||c.status}</div></div></div>`).join('');
+}
+
+function renderTimeline(p){
+  const items = [
+    ...p.log.map(e=>({ts:e.ts,kind:e.type,body:e.body_md,ev:e.evidence})),
+    ...p.notes.map(n=>({ts:n.ts,kind:'note',body:(n.title?('**'+n.title+'** '):'')+n.body_md}))
+  ].sort((a,b)=>b.ts.localeCompare(a.ts));
+  const add = `<div class="card"><textarea id="notebody" placeholder="add a meeting note…" rows="2"></textarea>
+     <div style="margin-top:8px"><button onclick="addNote()">add note</button></div></div>`;
+  if(!items.length) return add+'<div class="empty">No log entries or notes yet</div>';
+  return add + items.map(i=>{
+    const ev = i.ev && (i.ev.runs.length||i.ev.citations.length)
+      ? ' <span class="mut mono">⟵ '+[...i.ev.runs.map(r=>'run:'+r),...i.ev.citations.map(c=>'cite:'+c)].join(' ')+'</span>' : '';
+    return `<div class="card"><span class="pill">${esc(i.kind)}</span>
+       <span class="mut mono">${esc(i.ts.slice(0,16).replace('T',' '))}</span>${ev}
+       <div>${esc((i.body||'').split('\\n')[0])}</div></div>`;
+  }).join('');
+}
+window.addNote = async ()=>{
+  const body = $('#notebody').value.trim(); if(!body) return;
+  const r = await post('/api/note',{project:state.slug,body});
+  if(r.error) alert(r.error); else renderProject($('#main'));
+};
+
+(async ()=>{ await renderNav(); render(); })();
+</script>
+</body>
+</html>

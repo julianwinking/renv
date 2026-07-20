@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "renv": {
+      "command": "uv",
+      "args": ["run", "renv", "mcp"],
+      "env": {}
+    }
+  }
+}

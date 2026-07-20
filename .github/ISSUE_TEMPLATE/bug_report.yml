@@ -1,0 +1,24 @@
+name: Bug report
+description: Something is broken
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest sequence of commands that triggers it. A fresh clone plus the demo library is the ideal starting point.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "macOS 15, Python 3.14, commit abc1234"

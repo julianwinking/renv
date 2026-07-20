@@ -1,0 +1,33 @@
+\documentclass{article}
+\usepackage{booktabs}
+\input{preamble}
+
+\title{{{title}}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% Every quantitative claim here must match a metric row (see results_table.tex).
+\end{abstract}
+
+\section{Introduction}
+% Cite prior work with \spancite{<source_id>}{<start>}{<end>}{<quote>} —
+% generate cites with `renv cite "<claim>" {{slug}}`.
+
+\section{Related Work}
+
+\section{Method}
+
+\section{Experiments}
+\input{results_table}   % GENERATED — `renv weave {{slug}}`
+
+\section{Results}
+
+\section{Conclusion}
+
+\bibliographystyle{plain}
+\bibliography{references}      % GENERATED — `renv weave {{slug}}`
+\end{document}

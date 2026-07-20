@@ -1,0 +1,717 @@
+"""Local stdio MCP server — exposes the engine + research DB as agent tools.
+
+This is the third client over the single ground-truth store (see db.py), letting
+Claude Code *drive* the research loop: search the corpus, cite claims, create and
+run experiments, and append to the decision log. Every write goes through the same
+domain functions as the CLI, so the §0 constraints hold no matter who calls.
+
+Transport is the MCP stdio protocol — newline-delimited JSON-RPC 2.0 on
+stdin/stdout — implemented in pure stdlib, so the server runs with zero extra
+dependencies (consistent with the stdlib-first engine). Logs go to stderr only;
+stdout carries protocol messages exclusively.
+
+Register in .mcp.json:
+    {"mcpServers": {"renv": {"command": "uv", "args": ["run", "renv", "mcp"]}}}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+
+from . import db, experiment, log
+from .dataset import list_datasets, register_dataset
+
+SERVER_INFO = {"name": "renv", "version": "0.1.0"}
+DEFAULT_PROTOCOL = "2025-06-18"
+
+# One write-connection per server process (a long-lived stdio session must not leak
+# a connection per tool call). The read-only `query` path opens its own short conn.
+_CONN: dict[str, object] = {}
+
+
+def _conn(root):
+    from pathlib import Path
+    key = str(Path(root).resolve())
+    if key not in _CONN:
+        _CONN[key] = db.connect(root)
+    return _CONN[key]
+
+
+# --- corpus retriever (lazy; mirrors the CLI loader but raises) ---------------
+def _retriever(root, verifier: str = "lexical"):
+    from .config import Lockfile
+    from .embed import get_embedder
+    from .project import Corpus
+    from .retrieve import Retriever
+    from .store import Index
+    from .verify import get_verifier
+
+    corpus = Corpus(root)
+    if not corpus.is_indexed():
+        raise RuntimeError("corpus is not indexed — run `renv index` first")
+    lock = Lockfile.load(corpus.artifacts)
+    index = Index.load(corpus.artifacts)
+    embedder = get_embedder(lock.config.embedder, lock.config.embedder_model)
+    if lock.config.embedder == "lexical":
+        embedder.fit([r.text for r in index.records])
+    return Retriever(index, embedder, get_verifier(verifier)), lock
+
+
+# --- tool handlers: each takes (root, args) -> JSON-able result ---------------
+def h_status(root, a):
+    from .project import Corpus, Project
+    corpus = Corpus(root)
+    out = {"corpus": str(corpus.root), "indexed": corpus.is_indexed()}
+    if a.get("project"):
+        con = _conn(root)
+        try:
+            pid = db.project_id(con, a["project"])
+            out["project"] = a["project"]
+            out["experiments"] = experiment.list_experiments(con, a["project"])
+            out["log_violations"] = log.check_invariants(con)
+        except KeyError:
+            out["project"] = f"(no project {a['project']!r})"
+    return out
+
+
+def h_search_corpus(root, a):
+    r, _ = _retriever(root, a.get("verifier", "lexical"))
+    cands = r.search(a["query"], top_k=a.get("top_k", 5), verify=a.get("verify", True))
+    return [{
+        "source_id": c.record.source_id,
+        "start": c.record.start, "end": c.record.end,
+        "similarity": round(c.similarity, 4),
+        "support": c.verdict.support if c.verdict else None,
+        "text": c.record.text,
+    } for c in cands]
+
+
+def h_cite_claim(root, a):
+    from .cite import append_sidecar, make_citation
+    from .project import Project
+    r, lock = _retriever(root, a.get("verifier", "lexical"))
+    hashes = {s.source_id: s.sha256 for s in lock.sources}
+    cands = r.search(a["claim"], top_k=a.get("top_k", 5), verify=True,
+                     source_id=a.get("source"))
+    if not cands:
+        return {"found": False, "source": a.get("source")}
+    best = cands[0]
+    cit = make_citation(a["claim"], best, hashes.get(best.record.source_id, ""))
+    result = {"found": True, **cit.to_dict(), "latex": cit.latex()}
+    if a.get("project") and a.get("write") and cit.support == "none" and not a.get("force"):
+        result["written"] = False
+        result["reason"] = ("verifier verdict is 'none' — the span does not support the "
+                            "claim; reword closer to the source, pin `source`, or pass "
+                            "force=true to write anyway")
+        return result
+    if a.get("project") and a.get("write"):
+        from . import ingest
+        proj = Project(__import__("pathlib").Path(root) / "projects" / a["project"])
+        try:  # citation table is source of truth; citations.json is derived
+            con = _conn(root)
+            db.project_id(con, a["project"])
+            result["citation_id"] = ingest.record_citation(
+                con, a["project"], cit, manuscript_loc=a.get("manuscript_loc"))["id"]
+            result["sidecar"] = str(ingest.regenerate_sidecar(con, a["project"], proj.root))
+        except KeyError:
+            result["sidecar"] = str(append_sidecar(proj.root, cit))
+    return result
+
+
+def h_create_project(root, a):
+    con = _conn(root)
+    pid = db.ensure_project(con, a["slug"], title=a.get("title"))
+    from .project import Project
+    proj = Project(__import__("pathlib").Path(root) / "projects" / a["slug"])
+    proj.ensure()
+    (proj.root / "runs").mkdir(exist_ok=True)
+    return {"id": pid, "slug": a["slug"]}
+
+
+def h_list_experiments(root, a):
+    return experiment.list_experiments(_conn(root), a["project"])
+
+
+def h_get_experiment(root, a):
+    con = _conn(root)
+    exp = experiment.get_experiment(con, a["project"], a["slug"])
+    if not exp:
+        raise KeyError(f"no experiment {a['slug']!r} in {a['project']!r}")
+    exp["runs"] = [
+        {**run, "metrics": experiment.get_metrics(con, run["id"])}
+        for run in experiment.list_runs(con, exp["id"])
+    ]
+    return exp
+
+
+def h_create_experiment(root, a):
+    return experiment.create_experiment(
+        _conn(root), a["project"], a["slug"],
+        title=a.get("title"), hypothesis=a.get("hypothesis"), parent=a.get("parent"))
+
+
+def h_run_experiment(root, a):
+    con = _conn(root)
+    dataset_id = None
+    if a.get("dataset"):
+        from .dataset import get_dataset
+        slug, _, ver = a["dataset"].partition("@")
+        ds = get_dataset(con, slug, ver or "1")
+        if not ds:
+            raise KeyError(f"dataset {a['dataset']!r} not registered")
+        dataset_id = ds["id"]
+    run = experiment.run_experiment(
+        con, a["project"], a["slug"], entrypoint=a["entrypoint"], root=root,
+        params=a.get("params") or {}, dataset_id=dataset_id, seed=a.get("seed", 0),
+        env_allow=a.get("env_allow"))
+    run["metrics"] = experiment.get_metrics(con, run["id"])
+    return run
+
+
+def h_start_run(root, a):
+    con = _conn(root)
+    dataset_id = None
+    if a.get("dataset"):
+        from .dataset import get_dataset
+        slug, _, ver = a["dataset"].partition("@")
+        ds = get_dataset(con, slug, ver or "1")
+        if not ds:
+            raise KeyError(f"dataset {a['dataset']!r} not registered")
+        dataset_id = ds["id"]
+    return experiment.start_run(
+        con, a["project"], a["slug"], entrypoint=a["entrypoint"], root=root,
+        params=a.get("params") or {}, dataset_id=dataset_id, seed=a.get("seed", 0),
+        env_allow=a.get("env_allow"))
+
+
+def h_run_status(root, a):
+    return experiment.run_status(_conn(root), a["run_id"])
+
+
+def h_log_decision(root, a):
+    return log.add_entry(
+        _conn(root), a["project"], a["type"], a["body"],
+        experiment=a.get("experiment"),
+        runs=a.get("runs") or [], citations=a.get("citations") or [],
+        answers=a.get("answers"), source=a.get("source"))
+
+
+def h_list_log(root, a):
+    return log.list_entries(_conn(root), a["project"], limit=a.get("limit", 50))
+
+
+def h_check_invariants(root, a):
+    if a.get("project"):     # full lint catalog, persisted as adjudicable findings
+        from . import lint
+        return lint.run(_conn(root), a["project"])
+    return log.check_invariants(_conn(root))   # DB-wide §0 quick audit
+
+
+def h_add_note(root, a):
+    return log.add_note(_conn(root), a["project"], a["body"], title=a.get("title"))
+
+
+def h_register_dataset(root, a):
+    return register_dataset(
+        _conn(root), a["slug"], version=a.get("version", "1"),
+        path=a.get("path"), description=a.get("description"),
+        location=a.get("location"), sha256=a.get("sha256"))
+
+
+def h_add_remote(root, a):
+    from . import remote
+    return remote.add_remote(_conn(root), a["name"], host=a.get("host"),
+                             data_root=a.get("data_root"),
+                             description=a.get("description"))
+
+
+def h_list_remotes(root, a):
+    from . import remote
+    return remote.list_remotes(_conn(root))
+
+
+def h_ingest_run(root, a):
+    return experiment.ingest_run(
+        _conn(root), a["project"], a["slug"], run_dir=a.get("dir"),
+        metrics=a.get("metrics"), remote=a.get("remote"),
+        dataset_id=a.get("dataset_id"))
+
+
+def h_scaffold_project(root, a):
+    from pathlib import Path
+    from . import authoring
+    con = _conn(root)
+    title = a.get("title") or a["slug"]
+    pid = db.ensure_project(con, a["slug"], title=title)
+    proot = Path(root) / "projects" / a["slug"]
+    from .project import Project
+    Project(proot).ensure()
+    (proot / "runs").mkdir(exist_ok=True)
+    written = authoring.scaffold_paper(proot, a["slug"], title)
+    seeded = authoring.seed_ideation(con, a["slug"])
+    return {"id": pid, "slug": a["slug"], "scaffolded": [p.name for p in written],
+            "ideation": "seeded as an open question in the store" if seeded else "already present"}
+
+
+def h_weave(root, a):
+    from pathlib import Path
+    from . import authoring
+    con = _conn(root)
+    paths = authoring.weave(con, a["project"], Path(root) / "projects" / a["project"])
+    return {"generated": [str(p) for p in paths]}
+
+
+def h_add_paper(root, a):
+    from . import ingest
+    return ingest.add(_conn(root), root, a["source"],
+                      key=a.get("key"), download=a.get("download", False))
+
+
+def h_list_papers(root, a):
+    from . import ingest
+    return ingest.list_papers(_conn(root))
+
+
+def h_discover_papers(root, a):
+    from . import ingest
+    return ingest.search_arxiv(a["query"], max_results=a.get("limit", 10))
+
+
+def h_paper_usage(root, a):
+    from . import ingest
+    return ingest.paper_usage(_conn(root), a["key"])
+
+
+def h_get_card(root, a):
+    from . import extract
+    con = _conn(root)
+    card = extract.get_card(con, a["key"])
+    if not card or a.get("refresh"):
+        card = extract.extract_card(con, root, a["key"])
+    return card
+
+
+def h_review(root, a):
+    from . import review
+    return review.review(_conn(root), root, a["project"])
+
+
+def h_rubric(root, a):
+    from .review import RUBRIC
+    return RUBRIC
+
+
+def h_add_claim(root, a):
+    from . import claim
+    return claim.add_claim(_conn(root), a["project"], a["text"],
+                           kind=a.get("kind", "assertion"), manuscript_loc=a.get("manuscript_loc"))
+
+
+def h_link_claim_evidence(root, a):
+    from . import claim
+    return claim.link_evidence(_conn(root), a["claim_id"], citation_id=a.get("citation_id"),
+                               run_id=a.get("run_id"), stance=a.get("stance", "supports"),
+                               grade=a.get("grade", "suggestive"), note=a.get("note"))
+
+
+def h_declare_test(root, a):
+    from . import claim
+    return claim.declare_test(_conn(root), a["project"], a["experiment"], a["claim_id"])
+
+
+def h_retract_evidence(root, a):
+    from . import claim
+    return claim.retract_evidence(_conn(root), a["evidence_id"], a["reason"],
+                                  superseded_by=a.get("superseded_by"))
+
+
+def h_confirm_evidence(root, a):
+    from . import claim
+    return claim.confirm_evidence(_conn(root), a["evidence_id"])
+
+
+def h_add_plan_item(root, a):
+    from . import plan
+    return plan.add_item(_conn(root), a["project"], a["title"], due=a["due"],
+                         kind=a.get("kind", "phase"), start=a.get("start"),
+                         note=a.get("note"),
+                         end_deadline=bool(a.get("end_deadline")),
+                         prepared=bool(a.get("prepared")),
+                         parent_id=a.get("parent_id"))
+
+
+def h_list_plan(root, a):
+    from . import plan
+    return plan.list_items(_conn(root), a["project"])
+
+
+def h_relate_claims(root, a):
+    from . import claim
+    return claim.relate(_conn(root), a["claim_id"], a["related_id"],
+                        kind=a.get("kind", "depends_on"), note=a.get("note"))
+
+
+def h_analyze_argument(root, a):
+    from . import argument
+    return argument.analyze(_conn(root), a["project"])
+
+
+def h_link_context(root, a):
+    from . import links
+    return links.add_link(_conn(root), a["project"], from_kind=a["from_kind"],
+                          from_id=a["from_id"], to_kind=a["to_kind"],
+                          to_id=a["to_id"], relation=a.get("relation", "relates_to"),
+                          note=a.get("note"))
+
+
+def h_list_claims(root, a):
+    from . import claim
+    return claim.list_claims(_conn(root), a["project"], status=a.get("status"))
+
+
+def h_get_claim(root, a):
+    from . import claim
+    c = claim.get_claim(_conn(root), a["id"])
+    if not c:
+        raise KeyError(f"no claim #{a['id']}")
+    return c
+
+
+def h_set_experiment_status(root, a):
+    experiment.set_status(_conn(root), a["project"], a["slug"], a["status"])
+    return experiment.get_experiment(_conn(root), a["project"], a["slug"])
+
+
+def h_scan_refs(root, a):
+    from . import refs
+    return refs.validate(_conn(root), refs.scan(root))
+
+
+def h_code_refs_for(root, a):
+    from . import refs
+    return refs.code_refs_for(_conn(root), root, a["kind"], a["id"])
+
+
+def h_list_findings(root, a):
+    from . import finding
+    return finding.list_findings(_conn(root), a["project"], status=a.get("status"))
+
+
+def h_get_finding(root, a):
+    from . import finding
+    f = finding.get_finding(_conn(root), a["id"])
+    if not f:
+        raise KeyError(f"no finding #{a['id']}")
+    return f
+
+
+def h_adjudicate_finding(root, a):
+    from . import finding
+    return finding.adjudicate(_conn(root), a["id"], a["verdict"], a["reasoning"],
+                              by=a.get("by", "agent"))
+
+
+def h_search(root, a):
+    from . import search as searchmod
+    return searchmod.search(_conn(root), a["query"], project=a.get("project"),
+                            limit=a.get("limit", 30))
+
+
+def h_list_citations(root, a):
+    from . import ingest
+    con = _conn(root)
+    rows = ingest.citations_for_project(con, a["project"], live_only=False)
+    for r in rows:
+        r["live_claim_links"] = con.execute(
+            "SELECT COUNT(*) n FROM claim_evidence WHERE citation_id=? AND retracted IS NULL",
+            (r["id"],)).fetchone()["n"]
+    return rows
+
+
+def h_remove_citation(root, a):
+    from . import ingest
+    from .project import Project
+    con = _conn(root)
+    res = ingest.remove_citation(con, a["citation_id"], force=a.get("force", False))
+    if res["project"]:
+        proj_root = __import__("pathlib").Path(root) / "projects" / res["project"]
+        if proj_root.exists():
+            res["sidecar"] = str(ingest.regenerate_sidecar(con, res["project"], proj_root))
+    return res
+
+
+def h_list_paper_references(root, a):
+    from . import bibliography
+    con = _conn(root)
+    if a.get("build"):
+        bibliography.build_references(con, root, a["key"])
+    return bibliography.list_references(con, a["key"])
+
+
+def h_mark_reference(root, a):
+    from . import bibliography
+    return bibliography.mark_reference(_conn(root), a["reference_id"],
+                                       a.get("verdict"), a.get("comment"))
+
+
+def h_add_reference(root, a):
+    from . import bibliography
+    res = bibliography.add_reference(_conn(root), root, a["reference_id"],
+                                     download=a.get("download", True))
+    return {"paper": res["paper"], "landed": res["landed"], "reindex": res["reindex"]}
+
+
+def h_inbox(root, a):
+    from . import bibliography
+    con = _conn(root)
+    if a.get("mark_read"):
+        return bibliography.mark_read(con, a["mark_read"])
+    return bibliography.inbox(con)
+
+
+def h_query(root, a):
+    """Read-only SELECT/WITH over the whole environment (its own query_only conn)."""
+    sql = a["sql"].strip()
+    head = sql.lower().split(None, 1)[0] if sql else ""
+    if head not in ("select", "with"):
+        raise ValueError("query allows only SELECT / WITH statements")
+    con = db.connect(root, read_only=True)
+    try:
+        return [dict(r) for r in con.execute(sql).fetchall()]
+    finally:
+        con.close()
+
+
+# --- tool registry -----------------------------------------------------------
+# get_card / review_section land here once Pillars 2 / 8 are built.
+def _obj(props, required=()):
+    return {"type": "object", "properties": props, "required": list(required)}
+
+
+_S = {"type": "string"}
+_I = {"type": "integer"}
+TOOLS = [
+    {"name": "status", "description": "Corpus + project state, experiments, and §0 violations.",
+     "inputSchema": _obj({"project": _S}), "handler": h_status},
+    {"name": "search_corpus", "description": "RAG: retrieve candidate source spans for a query.",
+     "inputSchema": _obj({"query": _S, "top_k": _I, "verify": {"type": "boolean"}}, ["query"]),
+     "handler": h_search_corpus},
+    {"name": "cite_claim", "description": "Anchor + verify a claim to a source span; optionally write to a project. "
+                                          "`source` pins one paper key; a 'none' verdict is not written unless `force`.",
+     "inputSchema": _obj({"claim": _S, "project": _S, "top_k": _I, "source": _S,
+                          "write": {"type": "boolean"}, "force": {"type": "boolean"}}, ["claim"]),
+     "handler": h_cite_claim},
+    {"name": "list_citations", "description": "A project's recorded citation rows with live claim-link counts.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_list_citations},
+    {"name": "remove_citation", "description": "Delete a mis-anchored citation row; `force` also retracts live claim-evidence links.",
+     "inputSchema": _obj({"citation_id": _I, "force": {"type": "boolean"}}, ["citation_id"]),
+     "handler": h_remove_citation},
+    {"name": "create_project", "description": "Create a project (DB row + workspace dirs).",
+     "inputSchema": _obj({"slug": _S, "title": _S}, ["slug"]), "handler": h_create_project},
+    {"name": "list_experiments", "description": "The project's experiment DAG with latest metrics.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_list_experiments},
+    {"name": "get_experiment", "description": "One experiment with its runs and metrics.",
+     "inputSchema": _obj({"project": _S, "slug": _S}, ["project", "slug"]), "handler": h_get_experiment},
+    {"name": "create_experiment", "description": "Create an experiment (optionally under a parent = DAG edge).",
+     "inputSchema": _obj({"project": _S, "slug": _S, "title": _S, "hypothesis": _S, "parent": _S},
+                         ["project", "slug"]), "handler": h_create_experiment},
+    {"name": "run_experiment", "description": "Execute an entrypoint synchronously, recording a reproducible run + metrics.",
+     "inputSchema": _obj({"project": _S, "slug": _S, "entrypoint": _S,
+                          "params": {"type": "object"}, "dataset": _S, "seed": _I},
+                         ["project", "slug", "entrypoint"]), "handler": h_run_experiment},
+    {"name": "start_run", "description": "Launch a run in the background (non-blocking); poll with run_status. Use for long runs.",
+     "inputSchema": _obj({"project": _S, "slug": _S, "entrypoint": _S,
+                          "params": {"type": "object"}, "dataset": _S, "seed": _I,
+                          "env_allow": {"type": "array", "items": _S}},
+                         ["project", "slug", "entrypoint"]), "handler": h_start_run},
+    {"name": "run_status", "description": "Status + metrics of a run (poll a background run started with start_run).",
+     "inputSchema": _obj({"run_id": _I}, ["run_id"]), "handler": h_run_status},
+    {"name": "log_decision", "description": "Append a typed log entry. A 'result' MUST link a run (§0 invariant); "
+                                            "'answers' closes an open question; 'source' records who wrote it.",
+     "inputSchema": _obj({"project": _S, "type": {"type": "string", "enum": list(log.ENTRY_TYPES)},
+                          "body": _S, "experiment": _S,
+                          "runs": {"type": "array", "items": _I},
+                          "citations": {"type": "array", "items": _I},
+                          "answers": _I, "source": _S},
+                         ["project", "type", "body"]), "handler": h_log_decision},
+    {"name": "list_log", "description": "Recent decision-log entries with evidence links.",
+     "inputSchema": _obj({"project": _S, "limit": _I}, ["project"]), "handler": h_list_log},
+    {"name": "check_invariants", "description": "With a project: run the full graph-lint catalog (unbacked headline claims, toy-only or exploratory-only support, stale/none-verdict evidence, contradictions, dangling questions/links, phase-order violations) — violations persist as adjudicable findings; rejected ones never re-nag. Without: DB-wide §0 quick audit.",
+     "inputSchema": _obj({"project": _S}), "handler": h_check_invariants},
+    {"name": "add_note", "description": "Add a meeting note to a project.",
+     "inputSchema": _obj({"project": _S, "body": _S, "title": _S}, ["project", "body"]),
+     "handler": h_add_note},
+    {"name": "register_dataset", "description": "Register a versioned, content-hashed evaluation dataset. Cluster-resident data: pass location (ssh://…) + sha256 computed remotely.",
+     "inputSchema": _obj({"slug": _S, "version": _S, "path": _S, "description": _S,
+                          "location": _S, "sha256": _S}, ["slug"]),
+     "handler": h_register_dataset},
+    {"name": "add_remote", "description": "Register a named cluster/storage location referencing an ssh alias (e.g. snaga) with a data_root — locators like snaga:runs/x then expand against it.",
+     "inputSchema": _obj({"name": _S, "host": _S, "data_root": _S, "description": _S},
+                         ["name"]), "handler": h_add_remote},
+    {"name": "list_remotes", "description": "Named clusters/storage locations (ssh alias + data_root) — check before running or storing anything remotely.",
+     "inputSchema": _obj({}, []), "handler": h_list_remotes},
+    {"name": "ingest_run", "description": "Register a run executed elsewhere (a cluster) — §0 entry for remote results: pass a copied run dir, or metrics + a remote locator (e.g. snaga:runs/exp42) when data/artifacts stay on the cluster. Provenance graded remote/remote-verified, never complete.",
+     "inputSchema": _obj({"project": _S, "slug": _S, "dir": _S,
+                          "metrics": {"type": "object"}, "remote": _S,
+                          "dataset_id": _I}, ["project", "slug"]),
+     "handler": h_ingest_run},
+    {"name": "scaffold_project", "description": "Create a project: paper skeleton + store-native ideation (a kickoff question; plan lives in the graph).",
+     "inputSchema": _obj({"slug": _S, "title": _S}, ["slug"]), "handler": h_scaffold_project},
+    {"name": "weave", "description": "Regenerate results_table.tex + references.bib from the store.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_weave},
+    {"name": "add_paper", "description": "Ingest a paper (PDF path / arXiv id / DOI) into the library + paper table.",
+     "inputSchema": _obj({"source": _S, "key": _S, "download": {"type": "boolean"}}, ["source"]),
+     "handler": h_add_paper},
+    {"name": "list_papers", "description": "List ingested papers with metadata.",
+     "inputSchema": _obj({}), "handler": h_list_papers},
+    {"name": "discover_papers", "description": "Search arXiv for relevant papers by keyword (literature discovery).",
+     "inputSchema": _obj({"query": _S, "limit": _I}, ["query"]), "handler": h_discover_papers},
+    {"name": "paper_usage", "description": "Reverse index: where a paper is cited and which log entries use it.",
+     "inputSchema": _obj({"key": _S}, ["key"]), "handler": h_paper_usage},
+    {"name": "get_card", "description": "A paper's structured card (problem/method/results…); generates if missing.",
+     "inputSchema": _obj({"key": _S, "refresh": {"type": "boolean"}}, ["key"]), "handler": h_get_card},
+    {"name": "review", "description": "Run automated per-section paper checks; returns findings + a saved report.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_review},
+    {"name": "rubric", "description": "The review rubric (section → checks); the agentic layer runs the llm checks.",
+     "inputSchema": _obj({}), "handler": h_rubric},
+    {"name": "list_findings", "description": "A project's review findings (optionally filter by status).",
+     "inputSchema": _obj({"project": _S, "status": _S}, ["project"]), "handler": h_list_findings},
+    {"name": "get_finding", "description": "A finding with its evidence (proof to branch into) + adjudication trail.",
+     "inputSchema": _obj({"id": _I}, ["id"]), "handler": h_get_finding},
+    {"name": "adjudicate_finding",
+     "description": "Accept/reject/defer a finding with reasoning. Rejected findings are never re-raised — "
+                    "future agents see the verdict, preventing repeated/hallucinated findings.",
+     "inputSchema": _obj({"id": _I, "verdict": {"type": "string", "enum": ["accept", "reject", "defer"]},
+                          "reasoning": _S, "by": _S}, ["id", "verdict", "reasoning"]),
+     "handler": h_adjudicate_finding},
+    {"name": "add_claim", "description": "Add a claim (thesis/contribution/assertion/hypothesis) to the evidence graph. A hypothesis is a claim awaiting its test — declare_test wires the experiment that will test it.",
+     "inputSchema": _obj({"project": _S, "text": _S,
+                          "kind": {"type": "string", "enum": ["thesis", "contribution", "assertion", "hypothesis"]},
+                          "manuscript_loc": _S}, ["project", "text"]), "handler": h_add_claim},
+    {"name": "link_claim_evidence", "description": "Attach a citation or run to a claim (supports/refutes/inconclusive) with a strength grade; status re-derives from live evidence. Gates: a verdict-'none' citation cannot 'support'; run evidence records whether the claim was pre-registered via declare_test (else it counts as exploratory).",
+     "inputSchema": _obj({"claim_id": _I, "citation_id": _I, "run_id": _I,
+                          "stance": {"type": "string", "enum": ["supports", "refutes", "inconclusive"]},
+                          "grade": {"type": "string", "enum": ["anecdotal", "suggestive", "confirmatory"]},
+                          "note": _S},
+                         ["claim_id"]), "handler": h_link_claim_evidence},
+    {"name": "declare_test", "description": "Pre-register: declare BEFORE running that an experiment tests a claim/hypothesis. Run evidence linked afterwards counts as preregistered; undeclared evidence is exploratory (lint reports it). Idempotent; never retroactive.",
+     "inputSchema": _obj({"project": _S, "experiment": _S, "claim_id": _I},
+                         ["project", "experiment", "claim_id"]), "handler": h_declare_test},
+    {"name": "retract_evidence", "description": "Retract an evidence link (bad run, wrong span, superseded result) with a required reason. The row is kept as history but stops counting toward the claim's status.",
+     "inputSchema": _obj({"evidence_id": _I, "reason": _S, "superseded_by": _I},
+                         ["evidence_id", "reason"]), "handler": h_retract_evidence},
+    {"name": "confirm_evidence", "description": "Clear an evidence link's stale flag after re-checking it still backs the claim's edited wording.",
+     "inputSchema": _obj({"evidence_id": _I}, ["evidence_id"]), "handler": h_confirm_evidence},
+    {"name": "add_plan_item", "description": "Add a plan phase (start→due; end_deadline if it closes with a deadline), milestone, or deadline (single date, can be 'prepared') — intent, not evidence.",
+     "inputSchema": _obj({"project": _S, "title": _S, "due": _S, "start": _S,
+                          "kind": {"type": "string", "enum": ["phase", "milestone", "deadline"]},
+                          "end_deadline": {"type": "boolean"},
+                          "prepared": {"type": "boolean"},
+                          "parent_id": _I,
+                          "note": _S},
+                         ["project", "title", "due"]), "handler": h_add_plan_item},
+    {"name": "list_plan", "description": "The project plan (phases + deadlines), date-ordered — check this to know what is due when.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_list_plan},
+    {"name": "relate_claims", "description": "Chain two claims (depends_on/contradicts) — argument structure, not proof; never changes derived status.",
+     "inputSchema": _obj({"claim_id": _I, "related_id": _I,
+                          "kind": {"type": "string", "enum": ["depends_on", "contradicts"]},
+                          "note": _S},
+                         ["claim_id", "related_id"]), "handler": h_relate_claims},
+    {"name": "list_claims", "description": "Claims of a project with derived status + evidence counts.",
+     "inputSchema": _obj({"project": _S, "status": _S}, ["project"]), "handler": h_list_claims},
+    {"name": "analyze_argument", "description": "Structural health of the claim graph: foundation soundness (depends_on propagation), contradictions among supported claims, and a ranked frontier of what to work on next. Read-only; never changes status.",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_analyze_argument},
+    {"name": "link_context", "description": "Soft, non-evidential link between graph entities (e.g. decision based_on an observation, blocker blocks an experiment, observation suggests a claim). Never changes derived status. Kinds: claim/experiment/paper/finding/feedback/note/question/hypothesis/thought/observation/decision/blocker/pnote.",
+     "inputSchema": _obj({"project": _S, "from_kind": _S, "from_id": _I,
+                          "to_kind": _S, "to_id": _I, "relation": _S, "note": _S},
+                         ["project", "from_kind", "from_id", "to_kind", "to_id"]),
+     "handler": h_link_context},
+    {"name": "get_claim", "description": "A claim with its evidence edges.",
+     "inputSchema": _obj({"id": _I}, ["id"]), "handler": h_get_claim},
+    {"name": "set_experiment_status", "description": "Set an experiment's status (e.g. abandon a dead branch).",
+     "inputSchema": _obj({"project": _S, "slug": _S,
+                          "status": {"type": "string", "enum": ["planned", "running", "done", "abandoned"]}},
+                         ["project", "slug", "status"]), "handler": h_set_experiment_status},
+    {"name": "scan_refs", "description": "All @renv code↔store tags in the tree, each marked resolves/dangling.",
+     "inputSchema": _obj({}), "handler": h_scan_refs},
+    {"name": "code_refs_for", "description": "Where a store entity (e.g. a finding) is referenced in code — fix locations.",
+     "inputSchema": _obj({"kind": _S, "id": _S}, ["kind", "id"]), "handler": h_code_refs_for},
+    {"name": "search", "description": "Full-text search the knowledge base (papers, cards, notes, log, claims).",
+     "inputSchema": _obj({"query": _S, "project": _S, "limit": _I}, ["query"]), "handler": h_search},
+    {"name": "list_paper_references", "description": "A corpus paper's parsed reference list with library/unknown/not_relevant status; build=true (re)parses first.",
+     "inputSchema": _obj({"key": _S, "build": {"type": "boolean"}}, ["key"]),
+     "handler": h_list_paper_references},
+    {"name": "mark_reference", "description": "Record the human's relevance verdict on a cited reference (verdict 'not_relevant' + comment, or null to clear). Comment is REQUIRED for a dismissal.",
+     "inputSchema": _obj({"reference_id": _I, "verdict": _S, "comment": _S}, ["reference_id"]),
+     "handler": h_mark_reference},
+    {"name": "add_reference", "description": "Ingest a cited reference (needs arXiv/DOI on the entry) into the library; lands in the human-unread inbox.",
+     "inputSchema": _obj({"reference_id": _I, "download": {"type": "boolean"}}, ["reference_id"]),
+     "handler": h_add_reference},
+    {"name": "inbox", "description": "Papers awaiting a human read; mark_read=<key> clears one.",
+     "inputSchema": _obj({"mark_read": _S}), "handler": h_inbox},
+    {"name": "query", "description": "Read-only SQL (SELECT/WITH) over the whole environment.",
+     "inputSchema": _obj({"sql": _S}, ["sql"]), "handler": h_query},
+]
+TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
+
+
+# --- JSON-RPC plumbing -------------------------------------------------------
+def _ok(mid, result):
+    return {"jsonrpc": "2.0", "id": mid, "result": result}
+
+
+def _err(mid, code, message):
+    return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
+
+
+def _tool_error(text):
+    return {"content": [{"type": "text", "text": text}], "isError": True}
+
+
+def handle(root, msg):
+    """Dispatch one JSON-RPC message. Returns a response dict, or None for notifications."""
+    method = msg.get("method")
+    mid = msg.get("id")
+    if method is None or method.startswith("notifications/"):
+        return None  # a response or a notification — nothing to reply
+    if method == "initialize":
+        params = msg.get("params") or {}
+        pv = params.get("protocolVersion") or DEFAULT_PROTOCOL
+        return _ok(mid, {"protocolVersion": pv, "capabilities": {"tools": {}},
+                         "serverInfo": SERVER_INFO})
+    if method == "ping":
+        return _ok(mid, {})
+    if method == "tools/list":
+        return _ok(mid, {"tools": [{k: t[k] for k in ("name", "description", "inputSchema")}
+                                   for t in TOOLS]})
+    if method == "tools/call":
+        params = msg.get("params") or {}
+        tool = TOOLS_BY_NAME.get(params.get("name"))
+        if not tool:
+            return _ok(mid, _tool_error(f"unknown tool {params.get('name')!r}"))
+        try:
+            result = tool["handler"](root, params.get("arguments") or {})
+            return _ok(mid, {"content": [{"type": "text",
+                                          "text": json.dumps(result, default=str, indent=2)}],
+                             "isError": False})
+        except Exception as exc:  # surface tool failures to the agent, don't crash
+            return _ok(mid, _tool_error(f"{type(exc).__name__}: {exc}"))
+    return _err(mid, -32601, f"method not found: {method}")
+
+
+def serve(root="."):
+    """Block reading newline-delimited JSON-RPC from stdin until EOF."""
+    _conn(root)  # ensure the DB exists/migrated (cached for the session) before serving
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        response = handle(root, msg)
+        if response is not None:
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()

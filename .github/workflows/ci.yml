@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: engine (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # oldest supported and the pinned development version
+        python: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (stdlib-only core + dev tooling)
+        run: uv sync --python ${{ matrix.python }}
+      - name: Run test suite
+        run: uv run --no-sync pytest -q
+
+  cockpit:
+    name: cockpit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cockpit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cockpit/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Build production bundle
+        run: npm run build

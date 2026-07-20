@@ -1,0 +1,1 @@
+{"created": "2026-07-13T12:41:11+00:00", "description": "Synthetic two-Gaussian blobs: d=32, n=1200 (600/600 split), centers \u00b11.0 on axis 0, sigma=1.0, seed=7. Closed-form clean acc = Phi(1) \u2248 0.841.", "id": 1, "location": null, "sha256": "3da913c961e2c7fbd5f98ce30d897418182a0c0ea7e51b17fdab583d71e95414", "slug": "tni-blobs-d32", "version": "1"}

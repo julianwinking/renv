@@ -23,7 +23,7 @@ jobs:
         python: ["3.10", "3.14"]
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - name: Install (stdlib-only core + dev tooling)
         run: uv sync --python ${{ matrix.python }}
       - name: Run test suite

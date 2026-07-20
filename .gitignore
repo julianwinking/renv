@@ -1,0 +1,38 @@
+# --- local-only tool settings ---
+.claude/settings.local.json
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.DS_Store
+
+# --- research-env data (not part of the template) ---
+
+# shared derived index — regenerable with `reref index`
+.reref/
+
+# central research DB: the binary file + WAL are NOT the git artifact (not
+# diff-friendly, regenerable from the export). The JSONL export under
+# .research/export/ IS the durable, committed snapshot — see `reref export`.
+.research/env.db
+.research/env.db-wal
+.research/env.db-shm
+.research/web.log
+.research/tls/
+.research/cache/
+
+# personal reference corpus (PDFs etc.) — keep the folder, ignore its contents
+/library/*
+!/library/.gitkeep
+
+# each project under projects/ is its OWN standalone git repo (created from
+# templates/project/ by `reref new`). The TEMPLATE is tracked here; instances are not.
+/projects/*
+!/projects/.gitkeep
+# (templates/ is intentionally NOT ignored — it's synced with the env repo)

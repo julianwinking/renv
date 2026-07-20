@@ -1,0 +1,7 @@
+{"citation_id": null, "claim_id": 1, "id": 1, "note": "random eps=1.0: drop 0.005", "run_id": 3, "stance": "supports"}
+{"citation_id": null, "claim_id": 1, "id": 2, "note": "targeted eps=1.0: drop 0.373", "run_id": 5, "stance": "supports"}
+{"citation_id": null, "claim_id": 2, "id": 3, "note": null, "run_id": 1, "stance": "supports"}
+{"citation_id": null, "claim_id": 2, "id": 4, "note": null, "run_id": 4, "stance": "supports"}
+{"citation_id": null, "claim_id": 3, "id": 5, "note": "clean acc 0.835 vs predicted Phi(1)~=0.841", "run_id": 1, "stance": "supports"}
+{"citation_id": null, "claim_id": 4, "id": 6, "note": null, "run_id": 3, "stance": "supports"}
+{"citation_id": null, "claim_id": 4, "id": 7, "note": null, "run_id": 5, "stance": "supports"}

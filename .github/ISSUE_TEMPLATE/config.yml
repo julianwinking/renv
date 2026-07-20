@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: renv.ai platform
+    url: https://renv.ai
+    about: Questions about the hosted publish/showcase platform rather than the open-source engine.
+  - name: Security issue
+    url: https://github.com/julianwinking/renv/security/policy
+    about: Please report security vulnerabilities privately, not as public issues.

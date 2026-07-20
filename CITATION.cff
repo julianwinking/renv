@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use renv in your research, please cite it as below."
+title: "renv: a local-first research environment with span-anchored, verified citations"
+authors:
+  - family-names: Winking
+    given-names: Julian
+repository-code: "https://github.com/julianwinking/renv"
+url: "https://renv.ai"
+license: MIT
+keywords:
+  - research environment
+  - citations
+  - provenance
+  - reproducibility
+  - model context protocol

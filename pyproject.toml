@@ -28,7 +28,7 @@ dev = ["pytest>=8"]
 # leave them out of the default sync. Enable with e.g. `uv sync --extra pdf`.
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

@@ -52,23 +52,26 @@ companion.
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+).
+Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+); the cockpit build
+needs [Node](https://nodejs.org/).
 
 ```bash
 git clone https://github.com/julianwinking/renv && cd renv
 uv sync
 
-# 1. put .txt/.md/.pdf papers in library/  (two demo papers are included)
+# 1. the cockpit — the all-in-one research UI
+uv run renv web install     # one command: builds the UI + https://renv.local
+                            # (macOS on-demand site; asks once for sudo + keychain)
+# …or with zero system changes:
+(cd cockpit && npm install && npm run build)
+uv run renv web             # http://127.0.0.1:8765
+
+# 2. put .txt/.md/.pdf papers in library/  (two demo papers are included)
 uv run renv index                           # index the shared corpus
+
+# 3. cite the corpus from a project — or just read on in the cockpit's Papers tab
+uv run renv cite "Citation precision uses NLI to flag unsupported passages." projects/span-citation --write
 uv run renv status projects/span-citation   # corpus + project state
-
-# 2. cite the corpus from a project
-uv run renv cite "Citation precision uses NLI to flag unsupported passages." projects/span-citation --all
-uv run renv cite "..." projects/span-citation --write   # -> citations.json
-
-uv run renv resolve "smaller passages are easier to verify"
-uv run renv preamble                        # LaTeX \spancite macro
-uv run pytest                                # run the test suite
 ```
 
 Prefer to let your agent do the setup? Paste this into Claude Code or Codex:
@@ -138,32 +141,14 @@ are supported through registered ssh remotes with graded provenance; see
 
 ## The web cockpit
 
-```bash
-uv run renv web                 # http://127.0.0.1:8765
-```
-
-One frontend, the **React cockpit** ([`cockpit/`](cockpit/)): experiment
-branches, claims, findings, citations, and papers as connected, expandable
-nodes on an interactive canvas, plus a tabbed PDF viewer that highlights each
-cited span in place. Until it is built, the server answers with a
-build-instructions page (the JSON API works either way).
-
-```bash
-cd cockpit && npm install && npm run build   # build once; renv web serves it
-```
-
-Prefer a real address over an IP? One command turns the cockpit into an
-on-demand local site at **https://renv.local** (macOS: mkcert TLS + launchd
-socket activation — the server starts on first request and exits when idle):
-
-```bash
-uv run renv web install        # asks once for sudo (/etc/hosts) + keychain
-uv run renv web uninstall      # reverses everything
-```
-
-It also builds the cockpit bundle if Node is available, so this is the whole
-setup. System changes only ever happen through this explicit command, never on
-package install.
+The **React cockpit** ([`cockpit/`](cockpit/)) is the all-in-one UI for
+driving a project: the paper library with a PDF reader (span-anchored
+citations and reference intelligence highlighted in place), the
+claim/evidence graph, experiment branches with runs and metrics, findings
+review, the decision log, and the full interactive canvas. Setup is in the
+Quickstart above; `renv web uninstall` reverses the renv.local install, and
+system changes only ever happen through that explicit command, never on
+package install. Development mode and details: [`cockpit/README.md`](cockpit/README.md).
 
 ## Drive it from an agent (MCP)
 

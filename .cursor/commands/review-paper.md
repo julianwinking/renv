@@ -1,1 +1,1 @@
-../../.claude/commands/review-paper.md
+../../skills/review-paper.md

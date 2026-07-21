@@ -51,14 +51,14 @@ entry point defers to it rather than duplicating it:
 - **Codex** reads root `AGENTS.md` natively; `.codex/config.toml` registers
   the renv MCP server project-scoped.
 - **Claude Code**: `CLAUDE.md` is a symlink to `AGENTS.md`; `.mcp.json`
-  registers the MCP server; commands live in `.claude/commands/`.
+  registers the MCP server; `.claude/commands/*` are symlinks into `skills/`.
 - **Cursor**: `.cursor/rules/protocol.mdc` points at `AGENTS.md`;
-  `.cursor/mcp.json` and `.cursor/commands/` are symlinks into the same
-  `.mcp.json` and `.claude/commands/`.
+  `.cursor/mcp.json` symlinks `.mcp.json`; `.cursor/commands/*` are symlinks
+  into `skills/`.
 
-Add new agent guidance to `AGENTS.md` only. New commands go in
-`.claude/commands/` and get a symlink in `.cursor/commands/` (Codex custom
-prompts are user-level, not repo-level).
+Add new agent guidance to `AGENTS.md` only. Skill/command content lives in
+the vendor-neutral `skills/` directory — each agent folder only holds a
+symlink to it (Codex custom prompts are user-level, not repo-level).
 
 ## Commit style
 

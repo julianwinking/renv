@@ -6,7 +6,6 @@
   <a href="https://github.com/julianwinking/renv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/julianwinking/renv/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776AB.svg" />
-  <a href="https://renv.ai"><img alt="renv.ai" src="https://img.shields.io/badge/publish-renv.ai-10b981.svg" /></a>
 </p>
 
 ---
@@ -20,9 +19,8 @@ cockpit, and all three go through the same domain functions.
 The result is research state you can audit. Measured numbers can only enter
 the record through recorded runs. Claim status is derived from linked
 evidence, never asserted. Citations anchor to the exact quoted source span,
-so they are self-verifying. When a paper is ready, `renv publish` puts the
-verifiable graph behind it on [renv.ai](https://renv.ai) as an interactive
-companion.
+so they are self-verifying. A `renv publish` step that puts the verifiable
+graph behind a finished paper on renv.ai is planned but not live yet.
 
 ## Why renv
 
@@ -158,20 +156,12 @@ an agent can run the whole loop: `search_corpus`, `cite_claim`,
 through the same code paths and constraints as the CLI.
 [`AGENTS.md`](AGENTS.md) is the operating protocol.
 
-## Publish to renv.ai
+## Publishing (planned)
 
-When a paper is ready, publish the clean, publishable subgraph (thesis and
-contribution claims, their evidence, the experiments and runs behind that
-evidence, cited papers with span citations) to [renv.ai](https://renv.ai):
-
-```bash
-renv publish span-citation
-# → live at renv.ai/<you>/span-citation
-```
-
-Readers get the scaffolding a PDF hides: how well-backed each claim is, which
-run produced which number, and the exact source span behind every citation.
-The engine stays fully usable without the platform.
+`renv publish` — pushing a paper's verifiable subgraph (claims, evidence,
+runs, span citations) to renv.ai as an interactive companion — is a planned
+future feature. It is not currently served on https://renv.ai; the engine is
+fully usable without it.
 
 ## Optional SOTA backends
 
@@ -215,8 +205,7 @@ If renv is useful in your research, please cite it:
 }
 ```
 
-Projects published on renv.ai additionally get a per-project citation with a
-stable URL.
+
 
 ## License
 

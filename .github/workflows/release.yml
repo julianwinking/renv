@@ -1,0 +1,33 @@
+# Tag vX.Y.Z → build the cockpit INTO the wheel (renv/web/dist) and publish a
+# GitHub release. pip users then get the real UI with no Node toolchain.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cockpit/package-lock.json
+      - name: Build cockpit into the package
+        run: |
+          cd cockpit && npm ci && npm run build
+          mkdir -p ../renv/web/dist
+          cp -R dist/. ../renv/web/dist/
+      - uses: astral-sh/setup-uv@v5
+      - name: Build wheel + sdist (cockpit bundled)
+        run: uv build
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes

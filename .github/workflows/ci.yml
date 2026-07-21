@@ -28,8 +28,8 @@ jobs:
         run: uv sync --python ${{ matrix.python }}
       - name: Lint (ruff — correctness + import hygiene)
         run: uv run --no-sync ruff check renv tests
-      - name: Run test suite
-        run: uv run --no-sync pytest -q
+      - name: Run test suite (coverage ratchet — raise, never lower)
+        run: uv run --no-sync pytest -q --cov=renv --cov-fail-under=55
 
   cockpit:
     name: cockpit

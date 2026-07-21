@@ -595,8 +595,12 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     con.close()
             self._serve_app(path)
-        except Exception as exc:
+        except (KeyError, ValueError) as exc:      # domain rejections: caller's fault
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 400, cache="no-store")
+        except Exception as exc:                    # everything else is OUR bug
+            import traceback
+            traceback.print_exc()
+            self._send({"error": f"{type(exc).__name__}: {exc}"}, 500, cache="no-store")
 
     def _get_api(self, con, path):
         parts = path.strip("/").split("/")           # ['api', ...]
@@ -694,8 +698,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(self._post_api(con, path, data), cache="no-store")
             finally:
                 con.close()
-        except Exception as exc:
+        except (KeyError, ValueError) as exc:      # domain rejections: caller's fault
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 400, cache="no-store")
+        except Exception as exc:                    # everything else is OUR bug
+            import traceback
+            traceback.print_exc()
+            self._send({"error": f"{type(exc).__name__}: {exc}"}, 500, cache="no-store")
 
     def _post_api(self, con, path, d):
         if path == "/api/finding/adjudicate":

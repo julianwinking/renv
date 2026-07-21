@@ -1,0 +1,4 @@
+{"description": "Test accuracy on the held-out split", "direction": "maximize", "fmt": ".3f", "id": 1, "label": "Accuracy", "name": "acc", "unit": null}
+{"description": "Accuracy without perturbation (upper bound)", "direction": "maximize", "fmt": ".3f", "id": 2, "label": "Clean accuracy", "name": "acc_clean", "unit": null}
+{"description": "acc_clean - acc under perturbation", "direction": "minimize", "fmt": ".3f", "id": 3, "label": "Accuracy drop", "name": "drop", "unit": null}
+{"description": "L2 perturbation budget", "direction": "info", "fmt": ".2f", "id": 4, "label": "Budget", "name": "eps", "unit": null}

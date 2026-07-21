@@ -31,10 +31,18 @@ EXPORT_DIRNAME = "export"
 # Tables in dependency order — also the export order.
 TABLES = [
     "project", "paper", "card", "paper_reference", "dataset", "experiment",
-    "config", "run", "metric", "artifact", "citation", "claim", "claim_evidence",
-    "experiment_test", "log_entry", "log_evidence", "note",
-    "review_run", "finding", "finding_evidence", "adjudication",
+    "config", "run", "metric", "metric_def", "artifact", "citation", "claim",
+    "claim_evidence", "claim_relation", "experiment_test", "log_entry",
+    "log_evidence", "note", "review_run", "finding", "finding_evidence",
+    "adjudication", "plan_item", "remote", "context_link", "paper_note",
+    "paper_doc",
 ]
+
+# Deliberately NOT exported: pure presentation state (canvas positions and
+# geometry). Everything else the store knows must be in TABLES — an invariant
+# test compares this pair against the live schema, so a new table cannot be
+# silently left out of the committed snapshot.
+PRESENTATION_TABLES = {"graph_layout", "graph_region", "phase_band"}
 
 # --- schema, versioned via PRAGMA user_version -------------------------------
 # Each migration is one schema step. Append new migrations; never edit old ones.
@@ -801,6 +809,11 @@ _PROJECT_FILTER = {
     "finding": "project_id = :pid",
     "finding_evidence": "finding_id IN (SELECT id FROM finding WHERE project_id=:pid)",
     "adjudication": "finding_id IN (SELECT id FROM finding WHERE project_id=:pid)",
+    "claim_relation": "claim_id IN (SELECT id FROM claim WHERE project_id=:pid)",
+    "plan_item": "project_id = :pid",
+    "context_link": "project_id = :pid",
+    "paper_note": "project_id = :pid",
+    "paper_doc": "project_id = :pid",
 }
 
 

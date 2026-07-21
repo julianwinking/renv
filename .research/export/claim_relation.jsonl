@@ -1,0 +1,17 @@
+{"claim_id": 1, "id": 1, "kind": "depends_on", "note": null, "related_id": 2}
+{"claim_id": 17, "id": 2, "kind": "depends_on", "note": null, "related_id": 8}
+{"claim_id": 17, "id": 3, "kind": "depends_on", "note": null, "related_id": 9}
+{"claim_id": 17, "id": 4, "kind": "depends_on", "note": null, "related_id": 10}
+{"claim_id": 17, "id": 5, "kind": "depends_on", "note": null, "related_id": 11}
+{"claim_id": 17, "id": 6, "kind": "depends_on", "note": null, "related_id": 13}
+{"claim_id": 17, "id": 7, "kind": "depends_on", "note": null, "related_id": 14}
+{"claim_id": 17, "id": 8, "kind": "depends_on", "note": null, "related_id": 16}
+{"claim_id": 17, "id": 9, "kind": "depends_on", "note": null, "related_id": 18}
+{"claim_id": 17, "id": 10, "kind": "depends_on", "note": null, "related_id": 19}
+{"claim_id": 17, "id": 11, "kind": "depends_on", "note": null, "related_id": 20}
+{"claim_id": 19, "id": 12, "kind": "depends_on", "note": null, "related_id": 8}
+{"claim_id": 19, "id": 13, "kind": "depends_on", "note": null, "related_id": 11}
+{"claim_id": 20, "id": 14, "kind": "depends_on", "note": null, "related_id": 12}
+{"claim_id": 20, "id": 15, "kind": "depends_on", "note": null, "related_id": 16}
+{"claim_id": 18, "id": 16, "kind": "depends_on", "note": null, "related_id": 12}
+{"claim_id": 18, "id": 17, "kind": "depends_on", "note": null, "related_id": 15}

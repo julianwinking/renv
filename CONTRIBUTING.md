@@ -34,9 +34,16 @@ npm run build           # production bundle served by `renv web`
      a domain function and expose it through all three.
    - **Provenance is enforced.** Measured numbers enter only via recorded
      runs; claim and question status is derived from evidence, never set.
-   - **stdlib-first.** The default install must not require compilation or
-     heavy packages. New heavy backends go behind an optional extra and a lazy
-     import.
+   - **Lean core.** The default install is one small pure-Python dependency
+     (pdfminer.six) — no compilation, no heavy packages. New heavy backends go
+     behind an optional extra and a lazy import:
+
+     | Layer | Default | Upgrade (extra) |
+     |---|---|---|
+     | PDF parse | `pdfminer.six` | Docling (`parse-sota`) |
+     | Embeddings | builtin TF-IDF | Qwen3-Embedding / BGE-M3 (`embed-local`) |
+     | Verify support | lexical overlap | FactCG-DeBERTa-v3 (`verify-local`) |
+     | Re-anchor | stdlib `difflib` | RapidFuzz (`anchor`) |
 3. Add or extend tests in `tests/`. The suite is dependency-free on purpose;
    keep it that way.
 4. Run `uv run pytest` and, if you touched the cockpit, `npm run build`.

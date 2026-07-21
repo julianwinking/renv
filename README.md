@@ -46,13 +46,13 @@ companion.
 - **Agent-native.** The repo ships a stdio MCP server and an operating
   protocol ([`AGENTS.md`](AGENTS.md)). An agent runs the whole loop through
   the same code paths and constraints as the CLI.
-- **stdlib-first.** The core has zero runtime dependencies and installs in
-  seconds. Heavy SOTA backends are optional extras behind lazy imports.
+- **Lean core.** One small pure-Python dependency (PDF parsing) and nothing
+  else; it installs in seconds. Heavy SOTA backends are optional extras
+  behind lazy imports.
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/). The default stack is stdlib-only,
-so one sync gives you a working environment with nothing to compile.
+Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+).
 
 ```bash
 git clone https://github.com/julianwinking/renv && cd renv
@@ -152,9 +152,18 @@ build-instructions page (the JSON API works either way).
 cd cockpit && npm install && npm run build   # build once; renv web serves it
 ```
 
-On macOS, `./install.sh` sets up an on-demand local site with TLS
-(launchd socket activation, mkcert) so the cockpit starts on first request and
-exits when idle. See the script for details.
+Prefer a real address over an IP? One command turns the cockpit into an
+on-demand local site at **https://renv.local** (macOS: mkcert TLS + launchd
+socket activation — the server starts on first request and exits when idle):
+
+```bash
+uv run renv web install        # asks once for sudo (/etc/hosts) + keychain
+uv run renv web uninstall      # reverses everything
+```
+
+It also builds the cockpit bundle if Node is available, so this is the whole
+setup. System changes only ever happen through this explicit command, never on
+package install.
 
 ## Drive it from an agent (MCP)
 
@@ -181,21 +190,11 @@ The engine stays fully usable without the platform.
 
 ## Optional SOTA backends
 
-Defaults are lightweight; verified SOTA picks are drop-in adapters behind
-optional extras. All options are commercially permissive.
-
-| Layer | Default | Upgrade |
-|---|---|---|
-| PDF parse | `pdfminer.six` | **Docling** (`page_no` + `bbox` + `charspan`) |
-| Embeddings | builtin TF-IDF | **Qwen3-Embedding-0.6B** / **BGE-M3** |
-| Span citation | retrieve + anchor | **LongCite-llama3.1-8b** |
-| Verify support | lexical overlap | **FactCG-DeBERTa-v3** |
-| Re-anchor | stdlib `difflib` | **RapidFuzz** |
-
-```bash
-uv sync --extra pdf --extra anchor                                    # light
-uv sync --extra parse-sota --extra embed-local --extra verify-local   # full (needs torch)
-```
+The defaults (TF-IDF retrieval, lexical verification, pdfminer parsing) are
+fast and dependency-light. Drop-in SOTA upgrades — local embeddings, NLI-based
+citation verification, layout-aware parsing — live behind extras
+(`uv sync --extra verify-local` etc.); the full matrix is in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Repository layout
 

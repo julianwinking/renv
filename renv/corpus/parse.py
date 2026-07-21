@@ -1,7 +1,7 @@
 """Parse a source document to plain text + per-page offsets.
 
-Default backend is stdlib (.txt / .md). PDFs use pdfminer.six (MIT, light) if
-installed; Docling (MIT, page_no + bbox + charspan) is the documented upgrade for
+Default backend is stdlib (.txt / .md). PDFs use pdfminer.six (a core
+dependency); Docling (MIT, page_no + bbox + charspan) is the documented upgrade for
 precise layout-aware offsets. All backends return text whose character indices
 are the coordinate system every downstream offset (chunks, selectors) refers to.
 """

@@ -40,6 +40,29 @@ WEB_DIR = Path(__file__).parent / "web"
 _BUNDLED_DIST = Path(__file__).parent / "web" / "dist"
 _REPO_DIST = Path(__file__).parent.parent / "cockpit" / "dist"
 DIST = _BUNDLED_DIST if (_BUNDLED_DIST / "index.html").exists() else _REPO_DIST
+
+
+def ensure_cockpit_built() -> str:
+    """Build the cockpit bundle if it is missing; returns what happened.
+
+    Called by `renv web install` so the on-demand site is complete after one
+    command. Degrades honestly: without a cockpit checkout or npm, the server
+    keeps serving its build-instructions page."""
+    import shutil
+    import subprocess
+    if (DIST / "index.html").exists():
+        return "present"
+    cockpit = Path(__file__).parent.parent / "cockpit"
+    if not (cockpit / "package.json").exists():
+        return "skipped — no cockpit/ checkout here"
+    npm = shutil.which("npm")
+    if not npm:
+        return "skipped — npm not found (install Node, then: cd cockpit && npm ci && npm run build)"
+    subprocess.run([npm, "ci"], cwd=cockpit, check=True)
+    subprocess.run([npm, "run", "build"], cwd=cockpit, check=True)
+    return "built"
+
+
 _MIME = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
          ".html": "text/html", ".svg": "image/svg+xml", ".json": "application/json",
          ".map": "application/json", ".wasm": "application/wasm"}

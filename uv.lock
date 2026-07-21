@@ -2682,6 +2682,9 @@ wheels = [
 name = "renv"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "pdfminer-six" },
+]
 
 [package.optional-dependencies]
 anchor = [
@@ -2696,9 +2699,6 @@ embed-local = [
 ]
 parse-sota = [
     { name = "docling" },
-]
-pdf = [
-    { name = "pdfminer-six" },
 ]
 verify-local = [
     { name = "torch" },
@@ -2717,13 +2717,13 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'api'" },
     { name = "docling", marker = "extra == 'parse-sota'" },
     { name = "openai", marker = "extra == 'api'" },
-    { name = "pdfminer-six", marker = "extra == 'pdf'" },
+    { name = "pdfminer-six", specifier = ">=20221105" },
     { name = "rapidfuzz", marker = "extra == 'anchor'" },
     { name = "sentence-transformers", marker = "extra == 'embed-local'" },
     { name = "torch", marker = "extra == 'verify-local'" },
     { name = "transformers", marker = "extra == 'verify-local'" },
 ]
-provides-extras = ["pdf", "parse-sota", "anchor", "embed-local", "verify-local", "api"]
+provides-extras = ["parse-sota", "anchor", "embed-local", "verify-local", "api"]
 
 [package.metadata.requires-dev]
 dev = [

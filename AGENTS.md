@@ -42,8 +42,8 @@ This file is what you follow.
 8. **The cockpit's admin surface edits allowlisted instruction files and
    settings — never code.** Agent behavior is controlled through AGENTS.md;
    tool prompts stay in code and defer to it.
-9. **stdlib-first.** The core runs dependency-free; heavy SOTA backends are
-   optional extras.
+9. **Lean core.** The core carries one small pure-Python dependency
+   (pdfminer.six); heavy SOTA backends are optional extras.
 
 ## The operating loop
 

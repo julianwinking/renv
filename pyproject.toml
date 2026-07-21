@@ -6,10 +6,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 # Core runs on the stdlib only. Heavy SOTA backends are optional extras
 # (lazy-imported) so the pipeline works today on Python 3.14 without torch.
-dependencies = []
+dependencies = ["pdfminer.six>=20221105"]
 
 [project.optional-dependencies]
-pdf = ["pdfminer.six"]            # light, MIT — default PDF text extraction
 parse-sota = ["docling"]          # MIT — page_no + bbox + charspan (upgrade)
 anchor = ["rapidfuzz"]            # MIT — robust fuzzy re-anchoring across versions
 embed-local = ["sentence-transformers"]  # Qwen3-Embedding / BGE-M3
@@ -24,8 +23,8 @@ renv = "renv.cli:main"
 dev = ["pytest>=8", "ruff>=0.8"]
 
 [tool.uv]
-# All optional-dependencies extras are lazy-imported heavy SOTA backends;
-# leave them out of the default sync. Enable with e.g. `uv sync --extra pdf`.
+# Optional extras are lazy-imported heavy SOTA backends; leave them out of
+# the default sync. Enable with e.g. `uv sync --extra verify-local`.
 
 [build-system]
 requires = ["setuptools>=61"]

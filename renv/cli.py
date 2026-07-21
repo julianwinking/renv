@@ -1018,6 +1018,8 @@ def cmd_web(args):
                 print(f"  In Safari, use {safe[0]} (a reserved local TLD — always local).")
             else:
                 print("  For Safari, add a reserved-TLD domain too, e.g. --domain renv.local")
+        built = webmod.ensure_cockpit_built()
+        print(f"cockpit bundle: {built}")
         try:
             info = webmod.install_launch_agent(
                 args.corpus, domains=domains, port=args.domain_port,

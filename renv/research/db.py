@@ -725,7 +725,12 @@ def connect(root=".", *, read_only: bool = False) -> sqlite3.Connection:
 
 def _migrate(con: sqlite3.Connection) -> None:
     version = con.execute("PRAGMA user_version").fetchone()[0]
-    if version >= len(MIGRATIONS):
+    if version > len(MIGRATIONS):
+        raise RuntimeError(
+            f"this database is schema v{version}, but this renv only knows "
+            f"v{len(MIGRATIONS)} — it was created by a newer renv; update first "
+            "(migrations are forward-only, never down)")
+    if version == len(MIGRATIONS):
         return
     # Table-rebuild migrations DROP+rename; with FKs on, the DROP would cascade
     # into child tables. SQLite's recipe: FKs off for the pass, verify after.
@@ -835,6 +840,10 @@ def export(con: sqlite3.Connection, root=".", project: str | None = None) -> Pat
         rows = con.execute(sql, params).fetchall()
         lines = [json.dumps(dict(r), sort_keys=True) for r in rows]
         (out / f"{table}.jsonl").write_text("\n".join(lines) + ("\n" if lines else ""))
+    # deterministic (no timestamp): records which schema wrote this snapshot so
+    # import can refuse a from-the-future export instead of half-loading it
+    (out / "manifest.json").write_text(
+        json.dumps({"schema_version": len(MIGRATIONS)}, sort_keys=True) + "\n")
     return out
 
 
@@ -844,6 +853,13 @@ def import_jsonl(con: sqlite3.Connection, root=".", source: Path | None = None) 
     src = Path(source) if source else Path(root) / DB_DIRNAME / EXPORT_DIRNAME
     if not src.exists():
         raise FileNotFoundError(f"no export at {src} — run `renv export` first")
+    manifest = src / "manifest.json"
+    if manifest.exists():   # pre-manifest exports load fine (older schema ⊂ ours)
+        exported = json.loads(manifest.read_text()).get("schema_version", 0)
+        if exported > len(MIGRATIONS):
+            raise RuntimeError(
+                f"export written by schema v{exported}, this renv knows "
+                f"v{len(MIGRATIONS)} — update renv before importing")
     con.execute("PRAGMA foreign_keys=OFF")
     loaded = 0
     for table in TABLES:

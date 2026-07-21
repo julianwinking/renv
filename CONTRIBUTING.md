@@ -43,6 +43,23 @@ npm run build           # production bundle served by `renv web`
 5. Open a PR using the template. CI runs the test suite on the oldest and
    newest supported Python plus a cockpit build; all checks must pass.
 
+## Coding agents (Claude Code, Codex, Cursor, …)
+
+`AGENTS.md` is the single canonical instruction file — every agent-specific
+entry point defers to it rather than duplicating it:
+
+- **Codex** reads root `AGENTS.md` natively; `.codex/config.toml` registers
+  the renv MCP server project-scoped.
+- **Claude Code**: `CLAUDE.md` is a symlink to `AGENTS.md`; `.mcp.json`
+  registers the MCP server; commands live in `.claude/commands/`.
+- **Cursor**: `.cursor/rules/protocol.mdc` points at `AGENTS.md`;
+  `.cursor/mcp.json` and `.cursor/commands/` are symlinks into the same
+  `.mcp.json` and `.claude/commands/`.
+
+Add new agent guidance to `AGENTS.md` only. New commands go in
+`.claude/commands/` and get a symlink in `.cursor/commands/` (Codex custom
+prompts are user-level, not repo-level).
+
 ## Commit style
 
 Short imperative subject lines, optionally prefixed by the area you touched

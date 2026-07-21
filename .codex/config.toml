@@ -1,0 +1,8 @@
+# Project-scoped Codex configuration. Instructions live in AGENTS.md at the
+# repo root (Codex reads it natively); this only wires up the renv MCP server
+# so Codex gets the same tools as Claude Code (.mcp.json) and Cursor
+# (.cursor/mcp.json).
+
+[mcp_servers.renv]
+command = "uv"
+args = ["run", "renv", "mcp"]

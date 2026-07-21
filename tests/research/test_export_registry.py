@@ -47,6 +47,7 @@ def test_future_database_is_refused(tmp_path):
 
 def test_future_export_is_refused_and_manifest_deterministic(tmp_path):
     import json as _j
+
     import pytest
     con = db.connect(tmp_path / "a")
     out = db.export(con, tmp_path / "a")

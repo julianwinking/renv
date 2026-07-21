@@ -48,17 +48,19 @@ npm run build           # production bundle served by `renv web`
 `AGENTS.md` is the single canonical instruction file — every agent-specific
 entry point defers to it rather than duplicating it:
 
-- **Codex** reads root `AGENTS.md` natively; `.codex/config.toml` registers
-  the renv MCP server project-scoped.
-- **Claude Code**: `CLAUDE.md` is a symlink to `AGENTS.md`; `.mcp.json`
-  registers the MCP server; `.claude/commands/*` are symlinks into `skills/`.
-- **Cursor**: `.cursor/rules/protocol.mdc` points at `AGENTS.md`;
-  `.cursor/mcp.json` symlinks `.mcp.json`; `.cursor/commands/*` are symlinks
-  into `skills/`.
+Skills use the cross-vendor `SKILL.md` shape (one folder per skill in the
+neutral `skills/` directory); each agent folder holds only a symlink:
 
-Add new agent guidance to `AGENTS.md` only. Skill/command content lives in
-the vendor-neutral `skills/` directory — each agent folder only holds a
-symlink to it (Codex custom prompts are user-level, not repo-level).
+- **Codex**: reads root `AGENTS.md` natively; `.codex/skills/<name>` →
+  `skills/<name>`; `.codex/config.toml` registers the renv MCP server.
+- **Claude Code**: `CLAUDE.md` → `AGENTS.md`; `.claude/skills/<name>` →
+  `skills/<name>`; `.mcp.json` registers the MCP server.
+- **Cursor**: `.cursor/rules/protocol.mdc` points at `AGENTS.md`;
+  `.cursor/commands/<name>.md` → `skills/<name>/SKILL.md`;
+  `.cursor/mcp.json` → `.mcp.json`.
+
+Add new agent guidance to `AGENTS.md` only. New skill: create
+`skills/<name>/SKILL.md`, then add the three symlinks above.
 
 ## Commit style
 

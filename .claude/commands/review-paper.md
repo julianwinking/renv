@@ -1,1 +1,0 @@
-../../skills/review-paper.md

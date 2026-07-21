@@ -1,20 +1,20 @@
 ---
-description: Per-section agentic paper review — automated checks + adversarially-verified LLM checks
-argument-hint: <project-slug>
+name: review-paper
+description: Per-section agentic paper review — automated checks + adversarially-verified LLM checks. Invoke with a project slug.
 ---
 
-Review the paper for project **$1** in fine-grained, per-section detail. Do NOT do
+Review the paper for the given project slug in fine-grained, per-section detail. Do NOT do
 one big sweep — work the rubric check by check.
 
 ## 1. Automated checks (ground truth — run first)
-Run `uv run renv review $1`. These are deterministic facts cross-checked against
+Run `uv run renv review <project-slug>`. These are deterministic facts cross-checked against
 the store (abstract numbers vs. metric rows, `\spancite` vs. verified citations,
 bib coverage, results-table freshness, experiment hypotheses). Treat every HIGH
 finding as a blocker. Read the saved report path it prints.
 
 ## 2. LLM checks (the rubric's `verify: llm` rows)
 Fetch the rubric: call the `rubric` MCP tool (or read `renv/review.py:RUBRIC`).
-For each `llm` check, and for each major section of `projects/$1/text/paper.tex`:
+For each `llm` check, and for each major section of `projects/<project-slug>/text/paper.tex`:
 
 - **Find** concrete, located issues for that (section × dimension) — quote the
   exact sentence, give a one-line fix. Be specific; "tighten the intro" is useless.

@@ -63,3 +63,27 @@ def test_live_server_get_and_post(tmp_path):
         assert finding.get_finding(db.connect(tmp_path), fid)["status"] == "rejected"
     finally:
         httpd.shutdown()
+
+
+# --- no cockpit build: the server explains itself instead of shipping a
+# second, drifting mini-UI ----------------------------------------------------
+def test_unbuilt_cockpit_serves_build_instructions(tmp_path, monkeypatch):
+    from renv import web
+    monkeypatch.setattr(web, "DIST", tmp_path / "nowhere" / "dist")
+    web.Handler.root = str(tmp_path)
+    db.connect(tmp_path)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), web.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True); t.start()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        body = urllib.request.urlopen(f"{base}/").read().decode()
+        assert "npm run build" in body and "cockpit" in body
+        # deep links still resolve to the instructions page, assets stay honest 404s
+        assert "npm run build" in urllib.request.urlopen(f"{base}/overview").read().decode()
+        try:
+            urllib.request.urlopen(f"{base}/assets/app-abc123.js")
+            raise AssertionError("missing asset must 404")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        httpd.shutdown()

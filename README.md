@@ -142,14 +142,11 @@ are supported through registered ssh remotes with graded provenance; see
 uv run renv web                 # http://127.0.0.1:8765
 ```
 
-Two frontends over the same JSON API:
-
-- A **buildless page** (stdlib only, zero toolchain): dashboard, papers with a
-  citation usage map, branch explorer, findings, claim graph, timeline.
-- A **React Flow graph app** ([`cockpit/`](cockpit/)): experiment branches,
-  claims, findings, citations, and papers as connected, expandable nodes on an
-  interactive canvas, plus a tabbed PDF viewer that highlights each cited span
-  in place.
+One frontend, the **React cockpit** ([`cockpit/`](cockpit/)): experiment
+branches, claims, findings, citations, and papers as connected, expandable
+nodes on an interactive canvas, plus a tabbed PDF viewer that highlights each
+cited span in place. Until it is built, the server answers with a
+build-instructions page (the JSON API works either way).
 
 ```bash
 cd cockpit && npm install && npm run build   # build once; renv web serves it
@@ -205,7 +202,7 @@ uv sync --extra parse-sota --extra embed-local --extra verify-local   # full (ne
 ```
 renv/          the engine: indexing, retrieval, anchoring, verification,
                 store, experiments, claims, weave, CLI, MCP server, web API
-cockpit/        React Flow graph UI (optional; buildless fallback included)
+cockpit/        the React cockpit UI (build once; served by `renv web`)
 tests/          dependency-free unit + integration tests
 library/        shared corpus of reference papers (index once)
 .renv/         derived index + lockfile

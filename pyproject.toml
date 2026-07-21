@@ -35,7 +35,7 @@ build-backend = "setuptools.build_meta"
 include = ["renv*"]
 
 [tool.setuptools.package-data]
-renv = ["web/*.html"]
+renv = ["web/*.html", "web/dist/*", "web/dist/assets/*"]
 
 [tool.ruff]
 line-length = 100

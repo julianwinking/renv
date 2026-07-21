@@ -35,7 +35,11 @@ from renv.research import log as logmod
 
 _LOCAL_ORIGIN = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
 WEB_DIR = Path(__file__).parent / "web"
-DIST = Path(__file__).parent.parent / "cockpit" / "dist"   # built React Flow app (if present)
+# The built cockpit. A release wheel bundles it inside the package
+# (renv/web/dist); a development checkout serves it from cockpit/dist.
+_BUNDLED_DIST = Path(__file__).parent / "web" / "dist"
+_REPO_DIST = Path(__file__).parent.parent / "cockpit" / "dist"
+DIST = _BUNDLED_DIST if (_BUNDLED_DIST / "index.html").exists() else _REPO_DIST
 _MIME = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
          ".html": "text/html", ".svg": "image/svg+xml", ".json": "application/json",
          ".map": "application/json", ".wasm": "application/wasm"}
@@ -515,8 +519,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(b"", 204, "text/plain")
 
     def _serve_app(self, path):
-        """Serve the built React Flow app from cockpit/dist if present, else the
-        simple buildless page. Clean-URL routing: real assets are served as-is,
+        """Serve the built cockpit, or the build-instructions page when no
+        build exists. Clean-URL routing: real assets are served as-is,
         a missing asset stays a 404, and any other path (``/overview``,
         ``/papers/<key>``, …) returns the SPA shell so reloads and deep links
         resolve to the client router."""

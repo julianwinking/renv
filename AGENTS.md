@@ -44,6 +44,18 @@ This file is what you follow.
    tool prompts stay in code and defer to it.
 9. **Lean core.** The core carries one small pure-Python dependency
    (pdfminer.six); heavy SOTA backends are optional extras.
+10. **Clients split on touch, never big-bang.** cli.py / web.py / mcp_server.py
+    are long-but-flat shells; wholesale splitting moves thousands of lines for
+    zero invariant gain (the domain boundary is already test-enforced). A new
+    command or route surface starts as its own module; existing ones migrate
+    only when a change touches them anyway. web.py's if-chain becomes a
+    dispatch table at its next substantive change.
+11. **No typing retrofit.** The dict-row domain style caps a type checker's
+    value (measured: 38 mypy errors, all Optional/dict-shape noise, zero of
+    this codebase's real bugs). Correctness lives in executable invariants,
+    the test suite, and ruff. Annotate new pure-logic modules as written;
+    revisit only if outside contributors arrive or a bug appears that typing
+    would demonstrably have caught.
 
 ## The operating loop
 

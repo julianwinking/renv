@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/); versions tag `vX.Y.Z`.
 
 ## [Unreleased]
 
+- Property-based tests (hypothesis) for the reference-list and BibTeX parsers.
+- Architecture decisions #10 (clients split on touch) and #11 (no typing
+  retrofit) recorded in AGENTS.md.
+
 ## [0.1.0] — 2026-07-21
 
 First coherent cut of the engine + cockpit.

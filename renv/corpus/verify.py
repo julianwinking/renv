@@ -61,9 +61,9 @@ class LexicalOverlapVerifier:
 
 
 class FactCGVerifier:
-    """SOTA permissive grounding check: derenlei/FactCG-DeBERTa-v3-Large (MIT)."""
+    """SOTA permissive grounding check: yaxili96/FactCG-DeBERTa-v3-Large (MIT)."""
 
-    def __init__(self, model: str = "derenlei/FactCG-DeBERTa-v3-Large"):
+    def __init__(self, model: str = "yaxili96/FactCG-DeBERTa-v3-Large"):
         self.model = model
         self._pipe = None
 

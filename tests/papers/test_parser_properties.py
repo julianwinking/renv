@@ -5,7 +5,8 @@ tests is input breadth, not randomness."""
 
 from __future__ import annotations
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from renv.papers import bibliography as bib
 from renv.papers.ingest import parse_bibtex

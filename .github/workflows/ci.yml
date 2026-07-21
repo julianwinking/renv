@@ -26,6 +26,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install (stdlib-only core + dev tooling)
         run: uv sync --python ${{ matrix.python }}
+      - name: Lint (ruff — correctness + import hygiene)
+        run: uv run --no-sync ruff check renv tests
       - name: Run test suite
         run: uv run --no-sync pytest -q
 

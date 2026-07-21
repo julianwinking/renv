@@ -21,7 +21,7 @@ renv = "renv.cli:main"
 
 [dependency-groups]
 # Dev tooling, installed by `uv sync` but not shipped with the package.
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.8"]
 
 [tool.uv]
 # All optional-dependencies extras are lazy-imported heavy SOTA backends;
@@ -36,3 +36,19 @@ include = ["renv*"]
 
 [tool.setuptools.package-data]
 renv = ["web/*.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# correctness + import hygiene; formatting stays human (match the file around you)
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = ["E741"]
+
+[tool.ruff.lint.per-file-ignores]
+# the compact test idiom (setup pairs on one line) and script-style headers
+"tests/*" = ["E702", "E402", "F841"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["renv"]

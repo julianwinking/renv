@@ -19,8 +19,8 @@ from __future__ import annotations
 import json
 import sys
 
-from . import db, experiment, log
-from .dataset import list_datasets, register_dataset
+from renv.research import db, experiment, log
+from renv.research.dataset import register_dataset
 
 SERVER_INFO = {"name": "renv", "version": "0.1.0"}
 DEFAULT_PROTOCOL = "2025-06-18"
@@ -40,12 +40,13 @@ def _conn(root):
 
 # --- corpus retriever (lazy; mirrors the CLI loader but raises) ---------------
 def _retriever(root, verifier: str = "lexical"):
+    from renv.corpus.embed import get_embedder
+    from renv.corpus.index_store import Index
+    from renv.corpus.retrieve import Retriever
+    from renv.corpus.verify import get_verifier
+
     from .config import Lockfile
-    from .embed import get_embedder
     from .project import Corpus
-    from .retrieve import Retriever
-    from .store import Index
-    from .verify import get_verifier
 
     corpus = Corpus(root)
     if not corpus.is_indexed():
@@ -60,13 +61,13 @@ def _retriever(root, verifier: str = "lexical"):
 
 # --- tool handlers: each takes (root, args) -> JSON-able result ---------------
 def h_status(root, a):
-    from .project import Corpus, Project
+    from .project import Corpus
     corpus = Corpus(root)
     out = {"corpus": str(corpus.root), "indexed": corpus.is_indexed()}
     if a.get("project"):
         con = _conn(root)
         try:
-            pid = db.project_id(con, a["project"])
+            db.project_id(con, a["project"])   # existence check
             out["project"] = a["project"]
             out["experiments"] = experiment.list_experiments(con, a["project"])
             out["log_violations"] = log.check_invariants(con)
@@ -88,7 +89,8 @@ def h_search_corpus(root, a):
 
 
 def h_cite_claim(root, a):
-    from .cite import append_sidecar, make_citation
+    from renv.corpus.cite import append_sidecar, make_citation
+
     from .project import Project
     r, lock = _retriever(root, a.get("verifier", "lexical"))
     hashes = {s.source_id: s.sha256 for s in lock.sources}
@@ -106,7 +108,7 @@ def h_cite_claim(root, a):
                             "force=true to write anyway")
         return result
     if a.get("project") and a.get("write"):
-        from . import ingest
+        from renv.papers import ingest
         proj = Project(__import__("pathlib").Path(root) / "projects" / a["project"])
         try:  # citation table is source of truth; citations.json is derived
             con = _conn(root)
@@ -155,7 +157,7 @@ def h_run_experiment(root, a):
     con = _conn(root)
     dataset_id = None
     if a.get("dataset"):
-        from .dataset import get_dataset
+        from renv.research.dataset import get_dataset
         slug, _, ver = a["dataset"].partition("@")
         ds = get_dataset(con, slug, ver or "1")
         if not ds:
@@ -173,7 +175,7 @@ def h_start_run(root, a):
     con = _conn(root)
     dataset_id = None
     if a.get("dataset"):
-        from .dataset import get_dataset
+        from renv.research.dataset import get_dataset
         slug, _, ver = a["dataset"].partition("@")
         ds = get_dataset(con, slug, ver or "1")
         if not ds:
@@ -203,7 +205,7 @@ def h_list_log(root, a):
 
 def h_check_invariants(root, a):
     if a.get("project"):     # full lint catalog, persisted as adjudicable findings
-        from . import lint
+        from renv.research import lint
         return lint.run(_conn(root), a["project"])
     return log.check_invariants(_conn(root))   # DB-wide §0 quick audit
 
@@ -220,14 +222,14 @@ def h_register_dataset(root, a):
 
 
 def h_add_remote(root, a):
-    from . import remote
+    from renv.research import remote
     return remote.add_remote(_conn(root), a["name"], host=a.get("host"),
                              data_root=a.get("data_root"),
                              description=a.get("description"))
 
 
 def h_list_remotes(root, a):
-    from . import remote
+    from renv.research import remote
     return remote.list_remotes(_conn(root))
 
 
@@ -240,7 +242,8 @@ def h_ingest_run(root, a):
 
 def h_scaffold_project(root, a):
     from pathlib import Path
-    from . import authoring
+
+    from renv.research import authoring
     con = _conn(root)
     title = a.get("title") or a["slug"]
     pid = db.ensure_project(con, a["slug"], title=title)
@@ -256,35 +259,36 @@ def h_scaffold_project(root, a):
 
 def h_weave(root, a):
     from pathlib import Path
-    from . import authoring
+
+    from renv.research import authoring
     con = _conn(root)
     paths = authoring.weave(con, a["project"], Path(root) / "projects" / a["project"])
     return {"generated": [str(p) for p in paths]}
 
 
 def h_add_paper(root, a):
-    from . import ingest
+    from renv.papers import ingest
     return ingest.add(_conn(root), root, a["source"],
                       key=a.get("key"), download=a.get("download", False))
 
 
 def h_list_papers(root, a):
-    from . import ingest
+    from renv.papers import ingest
     return ingest.list_papers(_conn(root))
 
 
 def h_discover_papers(root, a):
-    from . import ingest
+    from renv.papers import ingest
     return ingest.search_arxiv(a["query"], max_results=a.get("limit", 10))
 
 
 def h_paper_usage(root, a):
-    from . import ingest
+    from renv.papers import ingest
     return ingest.paper_usage(_conn(root), a["key"])
 
 
 def h_get_card(root, a):
-    from . import extract
+    from renv.papers import extract
     con = _conn(root)
     card = extract.get_card(con, a["key"])
     if not card or a.get("refresh"):
@@ -293,46 +297,46 @@ def h_get_card(root, a):
 
 
 def h_review(root, a):
-    from . import review
+    from renv.research import review
     return review.review(_conn(root), root, a["project"])
 
 
 def h_rubric(root, a):
-    from .review import RUBRIC
+    from renv.research.review import RUBRIC
     return RUBRIC
 
 
 def h_add_claim(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.add_claim(_conn(root), a["project"], a["text"],
                            kind=a.get("kind", "assertion"), manuscript_loc=a.get("manuscript_loc"))
 
 
 def h_link_claim_evidence(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.link_evidence(_conn(root), a["claim_id"], citation_id=a.get("citation_id"),
                                run_id=a.get("run_id"), stance=a.get("stance", "supports"),
                                grade=a.get("grade", "suggestive"), note=a.get("note"))
 
 
 def h_declare_test(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.declare_test(_conn(root), a["project"], a["experiment"], a["claim_id"])
 
 
 def h_retract_evidence(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.retract_evidence(_conn(root), a["evidence_id"], a["reason"],
                                   superseded_by=a.get("superseded_by"))
 
 
 def h_confirm_evidence(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.confirm_evidence(_conn(root), a["evidence_id"])
 
 
 def h_add_plan_item(root, a):
-    from . import plan
+    from renv.research import plan
     return plan.add_item(_conn(root), a["project"], a["title"], due=a["due"],
                          kind=a.get("kind", "phase"), start=a.get("start"),
                          note=a.get("note"),
@@ -342,23 +346,23 @@ def h_add_plan_item(root, a):
 
 
 def h_list_plan(root, a):
-    from . import plan
+    from renv.research import plan
     return plan.list_items(_conn(root), a["project"])
 
 
 def h_relate_claims(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.relate(_conn(root), a["claim_id"], a["related_id"],
                         kind=a.get("kind", "depends_on"), note=a.get("note"))
 
 
 def h_analyze_argument(root, a):
-    from . import argument
+    from renv.research import argument
     return argument.analyze(_conn(root), a["project"])
 
 
 def h_link_context(root, a):
-    from . import links
+    from renv.research import links
     return links.add_link(_conn(root), a["project"], from_kind=a["from_kind"],
                           from_id=a["from_id"], to_kind=a["to_kind"],
                           to_id=a["to_id"], relation=a.get("relation", "relates_to"),
@@ -366,12 +370,12 @@ def h_link_context(root, a):
 
 
 def h_list_claims(root, a):
-    from . import claim
+    from renv.research import claim
     return claim.list_claims(_conn(root), a["project"], status=a.get("status"))
 
 
 def h_get_claim(root, a):
-    from . import claim
+    from renv.research import claim
     c = claim.get_claim(_conn(root), a["id"])
     if not c:
         raise KeyError(f"no claim #{a['id']}")
@@ -384,22 +388,22 @@ def h_set_experiment_status(root, a):
 
 
 def h_scan_refs(root, a):
-    from . import refs
+    from renv.research import refs
     return refs.validate(_conn(root), refs.scan(root))
 
 
 def h_code_refs_for(root, a):
-    from . import refs
+    from renv.research import refs
     return refs.code_refs_for(_conn(root), root, a["kind"], a["id"])
 
 
 def h_list_findings(root, a):
-    from . import finding
+    from renv.research import finding
     return finding.list_findings(_conn(root), a["project"], status=a.get("status"))
 
 
 def h_get_finding(root, a):
-    from . import finding
+    from renv.research import finding
     f = finding.get_finding(_conn(root), a["id"])
     if not f:
         raise KeyError(f"no finding #{a['id']}")
@@ -407,19 +411,19 @@ def h_get_finding(root, a):
 
 
 def h_adjudicate_finding(root, a):
-    from . import finding
+    from renv.research import finding
     return finding.adjudicate(_conn(root), a["id"], a["verdict"], a["reasoning"],
                               by=a.get("by", "agent"))
 
 
 def h_search(root, a):
-    from . import search as searchmod
+    from renv.research import search as searchmod
     return searchmod.search(_conn(root), a["query"], project=a.get("project"),
                             limit=a.get("limit", 30))
 
 
 def h_list_citations(root, a):
-    from . import ingest
+    from renv.papers import ingest
     con = _conn(root)
     rows = ingest.citations_for_project(con, a["project"], live_only=False)
     for r in rows:
@@ -430,8 +434,8 @@ def h_list_citations(root, a):
 
 
 def h_remove_citation(root, a):
-    from . import ingest
-    from .project import Project
+    from renv.papers import ingest
+
     con = _conn(root)
     res = ingest.remove_citation(con, a["citation_id"], force=a.get("force", False))
     if res["project"]:
@@ -442,7 +446,7 @@ def h_remove_citation(root, a):
 
 
 def h_list_paper_references(root, a):
-    from . import bibliography
+    from renv.papers import bibliography
     con = _conn(root)
     if a.get("build"):
         bibliography.build_references(con, root, a["key"])
@@ -450,20 +454,20 @@ def h_list_paper_references(root, a):
 
 
 def h_mark_reference(root, a):
-    from . import bibliography
+    from renv.papers import bibliography
     return bibliography.mark_reference(_conn(root), a["reference_id"],
                                        a.get("verdict"), a.get("comment"))
 
 
 def h_add_reference(root, a):
-    from . import bibliography
+    from renv.papers import bibliography
     res = bibliography.add_reference(_conn(root), root, a["reference_id"],
                                      download=a.get("download", True))
     return {"paper": res["paper"], "landed": res["landed"], "reindex": res["reindex"]}
 
 
 def h_inbox(root, a):
-    from . import bibliography
+    from renv.papers import bibliography
     con = _conn(root)
     if a.get("mark_read"):
         return bibliography.mark_read(con, a["mark_read"])

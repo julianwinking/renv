@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from renv import authoring, db
+from renv.research import authoring, db
 
 REPO = Path(__file__).resolve().parent.parent
 

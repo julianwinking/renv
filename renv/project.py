@@ -46,8 +46,9 @@ class Corpus:
         return self.artifacts
 
     def is_indexed(self) -> bool:
+        from renv.corpus.index_store import INDEX_FILENAME
+
         from .config import CONFIG_FILENAME
-        from .store import INDEX_FILENAME
         return (self.artifacts / CONFIG_FILENAME).exists() and \
                (self.artifacts / INDEX_FILENAME).exists()
 

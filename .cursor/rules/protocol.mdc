@@ -1,0 +1,8 @@
+---
+description: renv operating protocol
+alwaysApply: true
+---
+
+Follow AGENTS.md at the repository root — it is the canonical operating
+protocol for every coding agent in this repo (architecture invariants, the
+claim/citation loop, and where state lives).

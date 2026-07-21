@@ -12,19 +12,21 @@ One shared corpus (library/ + .renv/) at --corpus; many projects retrieve it.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from . import db, experiment, log
-from .cite import LATEX_PREAMBLE, append_sidecar, make_citation
+from renv.corpus.cite import LATEX_PREAMBLE, append_sidecar, make_citation
+from renv.corpus.embed import get_embedder
+from renv.corpus.index_store import Index
+from renv.corpus.indexer import build_index
+from renv.corpus.retrieve import Retriever
+from renv.corpus.verify import get_verifier
+from renv.research import db, experiment, log
+from renv.research.dataset import get_dataset, list_datasets, register_dataset
+
 from .config import Config, Lockfile
-from .dataset import get_dataset, list_datasets, register_dataset
-from .embed import get_embedder
-from .indexer import build_index
 from .project import Corpus, Project
-from .retrieve import Retriever
-from .store import Index
-from .verify import get_verifier
 
 
 def _resolve_project(corpus, ref: str) -> tuple[Path, str]:
@@ -95,7 +97,7 @@ def cmd_cite(args):
                      "--source, try --verifier factcg, or pass --force to write anyway.")
         # the citation table is the source of truth; citations.json is derived from it
         try:
-            from . import ingest
+            from renv.papers import ingest
             con = db.connect(args.corpus)
             db.project_id(con, pslug)
             row = ingest.record_citation(con, pslug, cit)
@@ -415,7 +417,7 @@ def cmd_metric_list(args):
 
 
 def cmd_plan_add(args):
-    from . import plan
+    from renv.research import plan
     con = db.connect(args.corpus)
     kind = "milestone" if args.milestone else "deadline" if args.deadline else "phase"
     try:
@@ -430,7 +432,7 @@ def cmd_plan_add(args):
 
 
 def cmd_plan_list(args):
-    from . import plan
+    from renv.research import plan
     con = db.connect(args.corpus)
     items = plan.list_items(con, args.project)
     if not items:
@@ -445,7 +447,7 @@ def cmd_plan_list(args):
 
 
 def cmd_plan_prepared(args):
-    from . import plan
+    from renv.research import plan
     con = db.connect(args.corpus)
     try:
         it = plan.update_item(con, args.id, prepared=0 if args.undo else 1)
@@ -455,7 +457,7 @@ def cmd_plan_prepared(args):
 
 
 def cmd_plan_done(args):
-    from . import plan
+    from renv.research import plan
     con = db.connect(args.corpus)
     try:
         it = plan.update_item(con, args.id, status="done")
@@ -465,7 +467,7 @@ def cmd_plan_done(args):
 
 
 def cmd_plan_rm(args):
-    from . import plan
+    from renv.research import plan
     con = db.connect(args.corpus)
     try:
         plan.delete_item(con, args.id)
@@ -475,7 +477,7 @@ def cmd_plan_rm(args):
 
 
 def cmd_remote_add(args):
-    from . import remote
+    from renv.research import remote
     con = db.connect(args.corpus)
     try:
         r = remote.add_remote(con, args.name, host=args.host,
@@ -487,7 +489,7 @@ def cmd_remote_add(args):
 
 
 def cmd_remote_list(args):
-    from . import remote
+    from renv.research import remote
     con = db.connect(args.corpus)
     rows = remote.list_remotes(con)
     if not rows:
@@ -500,7 +502,7 @@ def cmd_remote_list(args):
 
 
 def cmd_remote_rm(args):
-    from . import remote
+    from renv.research import remote
     con = db.connect(args.corpus)
     try:
         remote.delete_remote(con, args.name)
@@ -511,8 +513,9 @@ def cmd_remote_rm(args):
 
 def cmd_new(args):
     """Scaffold a project from templates/project/, register it, and git-init its repo."""
-    from . import authoring
     import subprocess
+
+    from renv.research import authoring
     con = db.connect(args.corpus)
     title = args.title or args.slug
     pid = db.ensure_project(con, args.slug, title=title)
@@ -535,7 +538,7 @@ def cmd_new(args):
 
 
 def cmd_draft(args):
-    from . import authoring
+    from renv.research import authoring
     con = db.connect(args.corpus)
     args.project = _resolve_project(args.corpus, args.project)[1]
     db.project_id(con, args.project)
@@ -546,7 +549,7 @@ def cmd_draft(args):
 
 
 def cmd_weave(args):
-    from . import authoring
+    from renv.research import authoring
     con = db.connect(args.corpus)
     args.project = _resolve_project(args.corpus, args.project)[1]
     root = Path(args.corpus) / "projects" / args.project
@@ -555,7 +558,7 @@ def cmd_weave(args):
 
 
 def cmd_add(args):
-    from . import ingest
+    from renv.papers import ingest
     con = db.connect(args.corpus)
     if args.source.endswith(".bib"):
         res = ingest.add_bib(con, args.corpus, args.source, download=args.download)
@@ -594,7 +597,7 @@ def cmd_add(args):
 
 
 def cmd_discover(args):
-    from . import ingest
+    from renv.papers import ingest
     results = ingest.search_arxiv(args.query, max_results=args.limit, field=args.field)
     for i, r in enumerate(results):
         print(f"[{i}] {r['title']}  ({r['year'] or '?'})  arXiv:{r['arxiv']}")
@@ -608,7 +611,7 @@ def cmd_discover(args):
 
 
 def cmd_papers(args):
-    from . import ingest
+    from renv.papers import ingest
     con = db.connect(args.corpus)
     if args.rekey:
         old, key = args.rekey
@@ -640,7 +643,7 @@ def cmd_papers(args):
 
 
 def cmd_card(args):
-    from . import extract
+    from renv.papers import extract
     con = db.connect(args.corpus)
     card = extract.get_card(con, args.key)
     if not card or args.refresh:
@@ -650,7 +653,7 @@ def cmd_card(args):
 
 
 def cmd_extract(args):
-    from . import extract
+    from renv.papers import extract
     con = db.connect(args.corpus)
     if args.all:
         for key, card in extract.extract_all(con, args.corpus).items():
@@ -663,8 +666,9 @@ def cmd_extract(args):
 
 def cmd_bib(args):
     """Print BibTeX for the whole corpus (paper table)."""
-    from . import ingest
     import json as _j
+
+    from renv.papers import ingest
     con = db.connect(args.corpus)
     for p in ingest.list_papers(con):
         authors = " and ".join(_j.loads(p["authors_json"] or "[]")) or "Unknown"
@@ -674,7 +678,7 @@ def cmd_bib(args):
 
 
 def cmd_review(args):
-    from . import review
+    from renv.research import review
     con = db.connect(args.corpus)
     res = review.review(con, args.corpus, args.project)
     print(review.render_report(args.project, res["open"], res["suppressed"]), end="")
@@ -684,7 +688,7 @@ def cmd_review(args):
 
 
 def cmd_finding_list(args):
-    from . import finding
+    from renv.research import finding
     con = db.connect(args.corpus)
     rows = finding.list_findings(con, args.project, status=args.status)
     if not rows:
@@ -695,7 +699,7 @@ def cmd_finding_list(args):
 
 
 def cmd_finding_show(args):
-    from . import finding
+    from renv.research import finding
     con = db.connect(args.corpus)
     f = finding.get_finding(con, args.id)
     if not f:
@@ -712,7 +716,7 @@ def cmd_finding_show(args):
         print("  verdict history (visible to future agents):")
         for a in f["adjudications"]:
             print(f"    [{a['verdict']}] by {a['by']} @ {a['ts']}: {a['reasoning']}")
-    from . import refs
+    from renv.research import refs
     fixes = refs.code_refs_for(con, args.corpus, "finding", str(args.id))
     if fixes:
         print("  fixed/referenced in code:")
@@ -722,7 +726,7 @@ def cmd_finding_show(args):
 
 
 def cmd_finding_adjudicate(args, verdict):
-    from . import finding
+    from renv.research import finding
     con = db.connect(args.corpus)
     try:
         f = finding.adjudicate(con, args.id, verdict, args.reason, by=args.by)
@@ -732,7 +736,7 @@ def cmd_finding_adjudicate(args, verdict):
 
 
 def cmd_claim_add(args):
-    from . import claim
+    from renv.research import claim
     con = db.connect(args.corpus)
     slug = _resolve_project(args.corpus, args.project)[1]
     c = claim.add_claim(con, slug, args.text, kind=args.kind, manuscript_loc=args.loc)
@@ -740,7 +744,7 @@ def cmd_claim_add(args):
 
 
 def cmd_claim_link(args):
-    from . import claim
+    from renv.research import claim
     con = db.connect(args.corpus)
     try:
         c = claim.link_evidence(con, args.id, citation_id=args.cite, run_id=args.run,
@@ -751,7 +755,7 @@ def cmd_claim_link(args):
 
 
 def cmd_claim_edit(args):
-    from . import claim
+    from renv.research import claim
     con = db.connect(args.corpus)
     try:
         c = claim.update_text(con, args.id, args.text)
@@ -761,7 +765,7 @@ def cmd_claim_edit(args):
 
 
 def cmd_claim_relate(args):
-    from . import claim
+    from renv.research import claim
     con = db.connect(args.corpus)
     try:
         c = claim.relate(con, args.id, args.related, kind=args.kind)
@@ -771,7 +775,7 @@ def cmd_claim_relate(args):
 
 
 def cmd_claim_list(args):
-    from . import claim
+    from renv.research import claim
     con = db.connect(args.corpus)
     slug = _resolve_project(args.corpus, args.project)[1]
     rows = claim.list_claims(con, slug, status=args.status)
@@ -785,7 +789,7 @@ def cmd_claim_list(args):
 
 
 def cmd_claim_show(args):
-    from . import claim
+    from renv.research import claim
     con = db.connect(args.corpus)
     c = claim.get_claim(con, args.id)
     if not c:
@@ -811,7 +815,7 @@ def cmd_claim_show(args):
 
 
 def cmd_citation_list(args):
-    from . import ingest
+    from renv.papers import ingest
     con = db.connect(args.corpus)
     slug = _resolve_project(args.corpus, args.project)[1]
     try:
@@ -832,7 +836,7 @@ def cmd_citation_list(args):
 
 
 def cmd_citation_rm(args):
-    from . import ingest
+    from renv.papers import ingest
     con = db.connect(args.corpus)
     try:
         res = ingest.remove_citation(con, args.id, force=args.force)
@@ -849,7 +853,7 @@ def cmd_citation_rm(args):
 
 
 def cmd_references(args):
-    from . import bibliography
+    from renv.papers import bibliography
     con = db.connect(args.corpus)
     try:
         if args.references_cmd == "build":
@@ -889,7 +893,7 @@ def cmd_references(args):
 
 
 def cmd_inbox(args):
-    from . import bibliography
+    from renv.papers import bibliography
     con = db.connect(args.corpus)
     if args.read:
         try:
@@ -936,7 +940,7 @@ def cmd_exp_status(args):
 
 
 def cmd_refs_scan(args):
-    from . import refs
+    from renv.research import refs
     con = db.connect(args.corpus)
     for r in refs.validate(con, refs.scan(args.corpus)):
         mark = "ok" if r["resolves"] else "DANGLING"
@@ -945,7 +949,7 @@ def cmd_refs_scan(args):
 
 
 def cmd_refs_check(args):
-    from . import refs
+    from renv.research import refs
     con = db.connect(args.corpus)
     dangling = [r for r in refs.validate(con, refs.scan(args.corpus)) if not r["resolves"]]
     if not dangling:
@@ -957,7 +961,7 @@ def cmd_refs_check(args):
 
 
 def cmd_refs_where(args):
-    from . import refs
+    from renv.research import refs
     hits = refs.code_refs_for(db.connect(args.corpus), args.corpus, args.kind, args.id)
     if not hits:
         print(f"(no code references to {args.kind}:{args.id})")
@@ -968,14 +972,14 @@ def cmd_refs_where(args):
 
 
 def cmd_refs_strip(args):
-    from . import refs
+    from renv.research import refs
     for f in args.files:
         refs.strip_path(Path(f), in_place=args.in_place)
         print(("stripped " if args.in_place else "would strip ") + f)
 
 
 def cmd_search(args):
-    from . import search as searchmod
+    from renv.research import search as searchmod
     con = db.connect(args.corpus)
     hits = searchmod.search(con, args.query, project=args.project, limit=args.limit)
     if not hits:

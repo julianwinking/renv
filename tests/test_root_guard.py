@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from renv import db
+from renv.research import db
 
 
 def test_refuses_new_store_inside_existing_env(tmp_path):

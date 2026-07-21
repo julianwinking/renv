@@ -27,13 +27,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from renv.papers import ingest
+from renv.research import claim as claimmod
+from renv.research import db, experiment
+from renv.research import finding as findmod
+from renv.research import log as logmod
+
 _LOCAL_ORIGIN = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
-
-from . import claim as claimmod
-from . import db, experiment, ingest
-from . import finding as findmod
-from . import log as logmod
-
 WEB_DIR = Path(__file__).parent / "web"
 DIST = Path(__file__).parent.parent / "cockpit" / "dist"   # built React Flow app (if present)
 _MIME = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
@@ -77,7 +77,7 @@ def _graph(con, root, slug):
     # positional paper notes: the reader's marginalia joins the graph, anchored
     # to its paper (which is pulled in even if never cited), free to go on to
     # motivate an experiment or argue a claim via context links
-    from . import paper_note as pnotemod
+    from renv.papers import paper_note as pnotemod
     for n_ in pnotemod.list_for_project(con, slug):
         node(f"paper:{n_['paper_id']}", "paper", n_["paper_key"], {"title": n_["paper_title"]})
         label = (n_["body_md"] or n_["quote"] or "").strip()[:48]
@@ -118,7 +118,7 @@ def _graph(con, root, slug):
                       "note": rel["note"], "etype": "relation", "eid": rel["id"]})
 
     # soft context links (feedback relates-to a claim, note about an experiment…)
-    from . import links as linksmod
+    from renv.research import links as linksmod
 
     for lk in linksmod.list_links(con, slug):
         edges.append({"source": linksmod.graph_node_id(lk["from_kind"], lk["from_id"]),
@@ -168,7 +168,7 @@ def _graph(con, root, slug):
 
 def _add_code_refs(con, root, pid, nodes, edges, seen, node):
     """Add @renv code tags that point at a node already in this graph (code↔store)."""
-    from . import refs as refsmod
+    from renv.research import refs as refsmod
     paper_id = {r["key"]: r["id"] for r in con.execute("SELECT id, key FROM paper")}
     exp_id = {e["slug"]: e["id"] for e in con.execute(
         "SELECT id, slug FROM experiment WHERE project_id=?", (pid,))}
@@ -268,7 +268,7 @@ def _health(con, root, slug):
                            "detail": f"store changed ~{max(age, 1)} min after last export — `renv export`"})
 
     # argument health: contradictions and broken foundations are real problems
-    from . import argument
+    from renv.research import argument
     arg = argument.analyze(con, slug)["summary"]
     if arg["contradictions"]:
         checks.append({"id": "argument", "label": "Argument", "status": "bad",
@@ -305,7 +305,7 @@ def _runs(con, slug):
 
 
 def _project(con, slug):
-    from . import regions as regionsmod
+    from renv.research import regions as regionsmod
     pid = db.project_id(con, slug)
     notes = [dict(r) for r in con.execute(
         "SELECT * FROM note WHERE project_id=? ORDER BY id DESC", (pid,))]
@@ -336,8 +336,8 @@ def _regions(con, slug):
     """Regions, each carrying the phases it overlaps — derived geometrically
     from the phase bands (no stored link; a region is 'in' the phases where
     it has surface)."""
-    from . import phases as phasesmod
-    from . import regions as regionsmod
+    from renv.research import phases as phasesmod
+    from renv.research import regions as regionsmod
     regs = regionsmod.list_regions(con, slug)
     bands = [p for p in phasesmod.list_phases(con, slug) if p["x0"] is not None]
     for r in regs:
@@ -381,7 +381,7 @@ def _page_mapper(root, key):
         mtime = src.stat().st_mtime
         cached = _PAGE_CACHE.get(key)
         if not cached or cached[0] != mtime:
-            from . import parse as parsemod
+            from renv.corpus import parse as parsemod
             _PAGE_CACHE[key] = (mtime, parsemod.parse(src))
         return _PAGE_CACHE[key][1].page_of
     except Exception:
@@ -409,14 +409,15 @@ def _paper_anchors(con, root, key, project):
         "support": c["support"], "claim_text": c["claim_text"],
         "page": (page_of(c["src_start"]) if page_of and c["src_start"] is not None else None),
     } for c in rows]
-    from . import paper_note
+    from renv.papers import paper_note
     return {"key": key, "citations": citations,
             "notes": paper_note.list_for_paper(con, key, project)}
 
 
 def _plan(con, slug):
     """Plan items; each phase carries the region (if any) that stands for it."""
-    from . import regions as regionsmod, plan as planmod
+    from renv.research import plan as planmod
+    from renv.research import regions as regionsmod
     items = planmod.list_items(con, slug)
     by_phase = {r["plan_item_id"]: {"id": r["id"], "label": r["label"], "color": r["color"]}
                 for r in regionsmod.list_regions(con, slug) if r.get("plan_item_id")}
@@ -581,25 +582,25 @@ class Handler(BaseHTTPRequestHandler):
             return _paper_anchors(con, self.root, unquote(parts[2]),
                                   q.get("project", [None])[0])
         if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "references":
-            from . import bibliography
+            from renv.papers import bibliography
             return {"references": bibliography.list_references(con, unquote(parts[2]))}
         if path == "/api/inbox":
-            from . import bibliography
+            from renv.papers import bibliography
             return bibliography.inbox(con)
         if parts[:3] == ["api", "paper", "doc"] and len(parts) == 4:
-            from . import paper_doc
+            from renv.papers import paper_doc
             return paper_doc.get_doc(con, int(parts[3]))
         if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "docs":
-            from . import paper_doc
+            from renv.papers import paper_doc
             q = parse_qs(urlparse(self.path).query)
             return paper_doc.list_for_paper(con, unquote(parts[2]), q.get("project", [None])[0])
         if path == "/api/metric_defs":
             return experiment.metric_defs(con)
         if path == "/api/conferences":
-            from . import conferences
+            from renv.research import conferences
             return conferences.fetch(self.root)
         if path == "/api/remotes":
-            from . import remote as remotemod
+            from renv.research import remote as remotemod
             return remotemod.list_remotes(con)
         if path == "/api/sources":
             # distinct feedback/entry authors (people), for consistent labels;
@@ -608,10 +609,10 @@ class Handler(BaseHTTPRequestHandler):
                 "SELECT DISTINCT source FROM log_entry WHERE source IS NOT NULL "
                 "AND source NOT IN ('cockpit', 'scaffold') ORDER BY source")]
         if path == "/api/rubric":
-            from .review import RUBRIC
+            from renv.research.review import RUBRIC
             return RUBRIC
         if path == "/api/connections":
-            from . import links as linksmod
+            from renv.research import links as linksmod
             return [{"from": f, "to": t,
                      "options": [{"value": v, "label": lbl, "mode": m}
                                  for v, lbl, m in rels]}
@@ -635,15 +636,15 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "graph"] and len(parts) == 3:
             return _graph(con, self.root, unquote(parts[2]))
         if parts[:2] == ["api", "argument"] and len(parts) == 3:
-            from . import argument
+            from renv.research import argument
             return argument.analyze(con, unquote(parts[2]))
         if parts[:2] == ["api", "regions"] and len(parts) == 3:
             return _regions(con, unquote(parts[2]))
         if parts[:2] == ["api", "phases"] and len(parts) == 3:
-            from . import phases as phasesmod
+            from renv.research import phases as phasesmod
             return phasesmod.list_phases(con, unquote(parts[2]))
         if path.startswith("/api/search"):
-            from . import search as searchmod
+            from renv.research import search as searchmod
             q = parse_qs(urlparse(self.path).query)
             return searchmod.search(con, (q.get("q", [""])[0]),
                                     project=(q.get("project", [None])[0]))
@@ -680,7 +681,7 @@ class Handler(BaseHTTPRequestHandler):
                                     experiment=d.get("experiment"),
                                     answers=d.get("answers"), source=d.get("source"))
         if path == "/api/plan":
-            from . import plan as planmod
+            from renv.research import plan as planmod
             return planmod.add_item(con, d["project"], d["title"], due=d["due"],
                                     kind=d.get("kind", "phase"),
                                     start=d.get("start"), note=d.get("note"),
@@ -688,12 +689,12 @@ class Handler(BaseHTTPRequestHandler):
                                     prepared=bool(d.get("prepared")),
                                     parent_id=d.get("parent_id"))
         if path == "/api/plan/update":
-            from . import plan as planmod
+            from renv.research import plan as planmod
             fields = {k: d[k] for k in ("title", "start", "due", "status", "note",
                                         "prepared", "end_deadline") if k in d}
             return planmod.update_item(con, d["id"], **fields)
         if path == "/api/plan/delete":
-            from . import plan as planmod
+            from renv.research import plan as planmod
             planmod.delete_item(con, d["id"])
             return {"deleted": d["id"]}
         if path == "/api/log/edit":
@@ -704,13 +705,13 @@ class Handler(BaseHTTPRequestHandler):
             return claimmod.add_claim(con, d["project"], d["text"],
                                       kind=d.get("kind", "assertion"))
         if path == "/api/link":
-            from . import links as linksmod
+            from renv.research import links as linksmod
             return linksmod.add_link(con, d["project"], from_kind=d["from_kind"],
                                      from_id=d["from_id"], to_kind=d["to_kind"],
                                      to_id=d["to_id"], relation=d["relation"],
                                      note=d.get("note"))
         if path == "/api/link/delete":
-            from . import links as linksmod
+            from renv.research import links as linksmod
             linksmod.delete_link(con, d["id"])
             return {"deleted": d["id"]}
         if path == "/api/claim/edit":
@@ -733,17 +734,17 @@ class Handler(BaseHTTPRequestHandler):
             claimmod.delete_relation(con, d["id"])
             return {"deleted": d["id"]}
         if path == "/api/lint":
-            from . import lint
+            from renv.research import lint
             return lint.run(con, d["project"])
         if path == "/api/phase_band":
-            from . import phases as phasesmod
+            from renv.research import phases as phasesmod
             return phasesmod.set_band(con, d["plan_item_id"], d["x0"], d["x1"])
         if path == "/api/phase_band/clear":
-            from . import phases as phasesmod
+            from renv.research import phases as phasesmod
             phasesmod.clear_band(con, d["plan_item_id"])
             return {"cleared": d["plan_item_id"]}
         if path == "/api/phase_band/color":
-            from . import phases as phasesmod
+            from renv.research import phases as phasesmod
             return phasesmod.set_color(con, d["plan_item_id"], d.get("color", ""))
         if path == "/api/paper/update":
             # metadata only (title) — the PDF, key, and anchors are immutable
@@ -760,48 +761,48 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("source is required (a file path, arXiv id, or DOI)")
             return ingest.add(con, self.root, src, download=bool(d.get("download", True)))
         if path == "/api/paper/doc":
-            from . import paper_doc
+            from renv.papers import paper_doc
             return paper_doc.create_doc(con, d["key"], d.get("project"),
                                         title=d.get("title", "Untitled note"), body=d.get("body", ""))
         if path == "/api/paper/doc/update":
-            from . import paper_doc
+            from renv.papers import paper_doc
             fields = {k: d[k] for k in ("title", "body_md") if k in d}
             return paper_doc.update_doc(con, d["id"], **fields)
         if path == "/api/paper/doc/delete":
-            from . import paper_doc
+            from renv.papers import paper_doc
             paper_doc.delete_doc(con, d["id"])
             return {"deleted": d["id"]}
         if path == "/api/paper/note":
-            from . import paper_note
+            from renv.papers import paper_note
             return paper_note.add_note(
                 con, d["key"], d.get("project"), quote=d["quote"], body=d.get("body", ""),
                 page=d.get("page"), prefix=d.get("prefix"), suffix=d.get("suffix"),
                 src_start=d.get("src_start"), src_end=d.get("src_end"),
                 color=d.get("color", "amber"), kind=d.get("kind", "note"))
         if path == "/api/paper/note/update":
-            from . import paper_note
+            from renv.papers import paper_note
             fields = {k: d[k] for k in ("body_md", "color", "page", "kind") if k in d}
             return paper_note.update_note(con, d["id"], **fields)
         if path == "/api/reference/build":
-            from . import bibliography
+            from renv.papers import bibliography
             bibliography.build_references(con, self.root, d["key"])
             return {"references": bibliography.list_references(con, d["key"])}
         if path == "/api/reference/mark":
-            from . import bibliography
+            from renv.papers import bibliography
             return bibliography.mark_reference(con, d["id"], d.get("verdict"),
                                                d.get("comment"))
         if path == "/api/reference/add":
-            from . import bibliography
+            from renv.papers import bibliography
             res = bibliography.add_reference(con, self.root, d["id"],
                                              download=d.get("download", True))
             return {"paper": res["paper"], "landed": res["landed"],
                     "reindex": res["reindex"]}
         if path == "/api/paper/read":
-            from . import bibliography
+            from renv.papers import bibliography
             return bibliography.mark_read(con, d["key"])
         if path == "/api/paper/note/delete":
-            from . import links as linksmod
-            from . import paper_note
+            from renv.papers import paper_note
+            from renv.research import links as linksmod
             # remember the project so this pnote's soft links don't go dangling
             row = con.execute(
                 "SELECT p.slug FROM paper_note n JOIN project p ON p.id=n.project_id "
@@ -811,17 +812,17 @@ class Handler(BaseHTTPRequestHandler):
                 linksmod.prune_dangling(con, row["slug"])
             return {"deleted": d["id"]}
         if path == "/api/region":
-            from . import regions
+            from renv.research import regions
             return regions.add_region(con, d["project"], x=d["x"], y=d["y"],
                                       w=d.get("w", 360), h=d.get("h", 240),
                                       label=d.get("label", ""), color=d.get("color", "slate"))
         if path == "/api/region/update":
-            from . import regions
+            from renv.research import regions
             fields = {k: d[k] for k in ("label", "color", "x", "y", "w", "h",
                                         "plan_item_id") if k in d}
             return regions.update_region(con, d["id"], **fields)
         if path == "/api/region/delete":
-            from . import regions
+            from renv.research import regions
             regions.delete_region(con, d["id"])
             return {"deleted": d["id"]}
         if path == "/api/graph/layout":
@@ -845,7 +846,7 @@ class Handler(BaseHTTPRequestHandler):
             p.write_text(content, encoding="utf-8")
             return {"saved": str(p), "bytes": len(content.encode())}
         if path == "/api/remote":
-            from . import remote as remotemod
+            from renv.research import remote as remotemod
             return remotemod.add_remote(con, d["name"], host=d.get("host"),
                                         data_root=d.get("data_root"),
                                         description=d.get("description"))
@@ -868,7 +869,8 @@ class Handler(BaseHTTPRequestHandler):
         # scaffold under projects/<slug> + its own git repo
         if path == "/api/project":
             import subprocess
-            from . import authoring
+
+            from renv.research import authoring
             slug = (d.get("slug") or "").strip()
             if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", slug):
                 raise ValueError("slug must be lowercase letters/digits/hyphens, e.g. 005-my-idea")

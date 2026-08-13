@@ -83,6 +83,7 @@ export function filesToTree(files, { strip = '' } = {}) {
     return node
   }
   for (const f of files || []) {
+    if (!f?.path) continue
     const shown = rel(f.path)
     const parts = shown.split('/').filter(Boolean)
     const name = parts.pop()

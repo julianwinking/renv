@@ -1071,10 +1071,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(target.read_bytes(),
                               ctype=_MIME.get(target.suffix, "application/octet-stream"),
                               cache="max-age=31536000, immutable")
-        # not a file: an asset request or anything with an extension is an honest
-        # 404; an extension-less path is an app route → hand back the shell
-        last = path.rsplit("/", 1)[-1]
-        if path.startswith("/assets/") or "." in last:
+        # not a file: /assets/… stays a 404 so a missing JS bundle is not
+        # silently replaced with HTML. Any other path is an app route — including
+        # deep links whose last segment has a dot (`…/AGENTS.md`).
+        if path.startswith("/assets/"):
             return self._send({"error": "not found"}, 404)
         return shell()
 

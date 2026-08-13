@@ -4,6 +4,10 @@ import { getPapers, getPaperAnchors, addPaper, getPaperDocs, createPaperDoc,
 import { asArray, Empty, Mono, Modal } from '../ui.jsx'
 import PaperViewer from './PaperViewer.jsx'
 import NoteDoc from './NoteDoc.jsx'
+import {
+  LIBRARY, loadWorkspace, openTab, closePane, closeKey, toggleSplit,
+  dropTab, pruneViews, renameDoc, activeView, isSplit,
+} from '../paperWorkspace.js'
 
 // Lucide-style line icons (rounded, 2px stroke, currentColor).
 const Ico = ({ size = 15, children, ...p }) => (
@@ -30,70 +34,138 @@ const IconSplit = (p) => (
   <Ico {...p}><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M12 3v18" /></Ico>
 )
 
-// The paper workspace: a Library tab listing the corpus; papers and note
-// documents open as their own tabs (inline, not popups), and any two tabs can
-// sit side-by-side in a split so you read the PDF while writing the note.
-// the workspace (open tabs, active tab, split) survives refreshes and view
-// switches — presentation state, so localStorage per project, house pattern
+// The paper workspace: Library plus a tab per open paper/note. A tab can be
+// a split pair (two titles, two panes) so other tabs — and other splits —
+// stay available. Presentation state, localStorage per project.
 const wsKey = (slug) => `renv-ws-${slug || 'default'}`
-const loadWs = (slug) => {
+const loadRaw = (slug) => {
   try { return JSON.parse(localStorage.getItem(wsKey(slug))) || {} } catch { return {} }
+}
+
+function dropSideAt(x, y) {
+  const el = document.querySelector('.paper-pane')
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null
+  return x < r.left + r.width / 2 ? 'left' : 'right'
+}
+
+function useTabDrag(canDrop, onDrop) {
+  const [drag, setDrag] = useState(null)
+  const canDropRef = useRef(canDrop)
+  const onDropRef = useRef(onDrop)
+  const swallow = useRef(false)
+  canDropRef.current = canDrop
+  onDropRef.current = onDrop
+
+  const onPointerDown = (e, tab) => {
+    if (e.button !== 0) return
+    if (e.target.closest('.ptab-x, .ptab-split')) return
+    const origin = { x: e.clientX, y: e.clientY }
+    const st = { tab, moved: false }
+    const move = (ev) => {
+      if (!st.moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) < 8) return
+      st.moved = true
+      document.body.classList.add('ptab-dragging')
+      const side = canDropRef.current ? dropSideAt(ev.clientX, ev.clientY) : null
+      setDrag({ tab: st.tab, x: ev.clientX, y: ev.clientY, side })
+    }
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.classList.remove('ptab-dragging')
+      if (!st.moved) { setDrag(null); return }
+      swallow.current = true
+      const side = canDropRef.current ? dropSideAt(ev.clientX, ev.clientY) : null
+      setDrag(null)
+      if (side) onDropRef.current(st.tab.key, side)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  useEffect(() => () => document.body.classList.remove('ptab-dragging'), [])
+  const dragged = () => { if (!swallow.current) return false; swallow.current = false; return true }
+  return { drag, onPointerDown, dragged }
+}
+
+function EmptyPane({ hot }) {
+  return (
+    <div className={`pp-empty ${hot ? 'hot' : ''}`}>
+      <IconSplit size={22} />
+      <div>Drop a tab here</div>
+      <div className="faint">Drag another paper or note onto this side</div>
+    </div>
+  )
+}
+
+function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerDown }) {
+  const split = isSplit(view)
+  const waiting = split && view.panes.some((p) => !p)
+  return (
+    <div className={`ptab ${selected ? 'active' : ''} ${split ? 'ptab-pair' : ''}`}
+         onClick={() => onActivate(view.id)}
+         title={view.panes.filter(Boolean).map((p) => p.title || p.key).join(' | ')}>
+      {view.panes.map((pane, i) => (
+        pane ? (
+          <span key={pane.key} className="ptab-chip"
+                onPointerDown={(e) => onPointerDown(e, pane)}>
+            {pane.type === 'doc' && <IconNote size={13} />}
+            <span className="ptab-name">{pane.title || pane.key}</span>
+            <button type="button" className="ptab-x" title="Close"
+                    onClick={(e) => { e.stopPropagation(); onClose(view.id, i) }}>✕</button>
+          </span>
+        ) : (
+          <span key="empty" className="ptab-chip ptab-chip-empty">Drop a tab</span>
+        )
+      ))}
+      {(view.panes.length === 1 || waiting) && (
+        <button type="button" className={`ptab-split ${waiting ? 'on' : ''}`}
+                title={waiting ? 'Cancel split' : 'Split this tab'}
+                onClick={(e) => { e.stopPropagation(); onSplit(view.id) }}>
+          <IconSplit size={12} />
+        </button>
+      )}
+    </div>
+  )
 }
 
 export default function Papers({ focus, slug, onMutate }) {
   const [papers, setPapers] = useState(null)
-  const [tabs, setTabs] = useState(() => loadWs(slug).tabs || [])
-  const [active, setActive] = useState(() => loadWs(slug).active || 'library')
-  const [split, setSplit] = useState(() => loadWs(slug).split || null)
+  const [ws, setWs] = useState(() => loadWorkspace(loadRaw(slug)))
   const [ratio, setRatio] = useState(() => Number(localStorage.getItem('renv-pp-ratio')) || 55)
-  const [dragKey, setDragKey] = useState(null)      // tab being dragged (for split drop zones)
   const insertRefs = useRef({})                     // docId → NoteDoc insert(text)
+  const { views, active } = ws
+  const current = activeView(ws)
+  const split = isSplit(current)
 
   const load = () => getPapers().then((p) => setPapers(asArray(p)))
   useEffect(() => { load() }, [])
 
-  // switching projects swaps in that project's saved workspace
   const slugRef = useRef(slug)
   useEffect(() => {
     if (slugRef.current === slug) return
     slugRef.current = slug
-    const ws = loadWs(slug)
-    setTabs(ws.tabs || []); setActive(ws.active || 'library'); setSplit(ws.split || null)
+    setWs(loadWorkspace(loadRaw(slug)))
   }, [slug])
   useEffect(() => {
-    localStorage.setItem(wsKey(slug), JSON.stringify({ tabs, active, split }))
-  }, [tabs, active, split, slug])
-  // drop restored paper tabs whose PDF has left the corpus
+    localStorage.setItem(wsKey(slug), JSON.stringify({ views, active }))
+  }, [views, active, slug])
   useEffect(() => {
-    if (!papers) return
-    setTabs((t) => t.filter((x) => x.type !== 'paper' || papers.some((p) => p.key === x.key && p.has_pdf)))
+    if (papers) setWs((w) => pruneViews(w, papers))
   }, [papers])
-  useEffect(() => {                                 // keep active/split pointing at live tabs
-    if (active !== 'library' && !tabs.some((t) => t.key === active)) setActive('library')
-    if (split && !tabs.some((t) => t.key === split)) setSplit(null)
-  }, [tabs])
 
   const openPaper = (p) => {
-    if (!p.has_pdf) return
-    setTabs((t) => (t.some((x) => x.key === p.key) ? t : [...t, { type: 'paper', key: p.key, title: p.title }]))
-    setActive(p.key)
+    if (typeof p === 'string') p = papers?.find((x) => x.key === p)
+    if (!p?.has_pdf) return
+    setWs((w) => openTab(w, { type: 'paper', key: p.key, title: p.title }))
   }
   const openDoc = (d) => {
-    const key = `doc:${d.id}`
-    setTabs((t) => (t.some((x) => x.key === key) ? t : [...t, { type: 'doc', key, title: d.title, docId: d.id }]))
-    setActive(key)
+    setWs((w) => openTab(w, { type: 'doc', key: `doc:${d.id}`, title: d.title, docId: d.id }))
   }
   const createDoc = async (p) => {
     const d = await createPaperDoc({ key: p.key, project: slug, title: `Notes — ${p.title || p.key}` })
     if (d && !d.error) { openDoc(d); load() }
   }
-  const closeTab = (key, e) => {
-    e?.stopPropagation()
-    setTabs((t) => t.filter((x) => x.key !== key))
-    setSplit((s) => (s === key ? null : s))
-    setActive((a) => (a === key ? 'library' : a))
-  }
-  const renameTab = (docId, title) => setTabs((t) => t.map((x) => (x.docId === docId ? { ...x, title } : x)))
   const registerInsert = (docId, fn) => { if (fn) insertRefs.current[docId] = fn; else delete insertRefs.current[docId] }
 
   useEffect(() => {
@@ -103,10 +175,8 @@ export default function Papers({ focus, slug, onMutate }) {
     }
   }, [focus, papers])
 
-  // the cite target is a note-doc currently visible in a pane
-  const visibleKeys = split ? [active, split] : [active]
-  const targetDocTab = visibleKeys.map((k) => tabs.find((t) => t.key === k)).find((t) => t && t.type === 'doc')
-
+  const visible = current ? current.panes.filter(Boolean) : []
+  const targetDocTab = visible.find((t) => t.type === 'doc')
   const citeInto = ({ quote, page, fromKey }) => {
     if (!targetDocTab) return
     const block = quote.split('\n').map((l) => `> ${l}`).join('\n')
@@ -114,12 +184,14 @@ export default function Papers({ focus, slug, onMutate }) {
     insertRefs.current[targetDocTab.docId]?.(md)
   }
 
+  const { drag, onPointerDown, dragged } = useTabDrag(
+    active !== LIBRARY, (key, side) => setWs((w) => dropTab(w, side, key)))
+
   const startSplitResize = (e) => {
     e.preventDefault()
     const pane = e.currentTarget.parentElement
     const rect = pane.getBoundingClientRect()
     let r = ratio
-    // neither pane may drop below a quarter of the split width
     const move = (ev) => { r = Math.min(75, Math.max(25, ((ev.clientX - rect.left) / rect.width) * 100)); setRatio(r) }
     const up = () => {
       window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up)
@@ -130,71 +202,70 @@ export default function Papers({ focus, slug, onMutate }) {
 
   if (!papers) return <div className="loading">reading the store…</div>
 
-  const renderContent = (key) => {
-    if (key === 'library')
-      return <Library papers={papers} project={slug} onOpen={openPaper}
-                      openKeys={tabs.map((t) => t.key)} onAdded={load}
-                      onOpenDoc={openDoc} onCreateDoc={createDoc} />
-    const tab = tabs.find((t) => t.key === key)
-    if (!tab) return null
-    if (tab.type === 'paper')
-      return <PaperViewer key={key} paperKey={tab.key} title={tab.title} project={slug} embedded
-                          onClose={() => closeTab(key)} onMutate={() => { onMutate && onMutate(); load() }}
-                          onCite={(p) => citeInto({ ...p, fromKey: tab.key })}
-                          citeTargetTitle={targetDocTab && targetDocTab.key !== key ? targetDocTab.title : null} />
-    return <NoteDoc key={key} docId={tab.docId} project={slug} registerInsert={registerInsert}
-                    onClose={() => closeTab(key)} onMutate={load} onTitle={renameTab} />
+  const openKeys = views.flatMap((v) => v.panes.filter(Boolean).map((p) => p.key))
+  const renderPane = (pane, hot) => {
+    if (!pane) return <EmptyPane hot={hot} />
+    if (pane.type === 'paper')
+      return <PaperViewer key={pane.key} paperKey={pane.key} title={pane.title} project={slug} embedded
+                          onClose={() => setWs((w) => closeKey(w, pane.key))}
+                          onMutate={() => { onMutate && onMutate(); load() }}
+                          onCite={(p) => citeInto({ ...p, fromKey: pane.key })}
+                          citeTargetTitle={targetDocTab && targetDocTab.key !== pane.key ? targetDocTab.title : null} />
+    return <NoteDoc key={pane.key} docId={pane.docId} project={slug} registerInsert={registerInsert}
+                    onClose={() => setWs((w) => closeKey(w, pane.key))} onMutate={load}
+                    onTitle={(id, title) => setWs((w) => renameDoc(w, id, title))} />
   }
 
   return (
     <div className="paper-ws">
       <div className="paper-tabs">
-        <button className={`ptab ${active === 'library' ? 'active' : ''}`} onClick={() => setActive('library')}>
+        <button className={`ptab ${active === LIBRARY ? 'active' : ''}`}
+                onClick={() => setWs((w) => ({ ...w, active: LIBRARY }))}>
           <IconDatabase size={14} style={{ marginLeft: 1 }} /> Library
           <span className="ptab-count">{papers.length}</span>
         </button>
-        {tabs.map((t) => (
-          <button key={t.key} className={`ptab ${active === t.key ? 'active' : ''} ${split === t.key ? 'split' : ''}`}
-                  onClick={() => setActive(t.key)} title={t.title || t.key}
-                  draggable onDragStart={() => setDragKey(t.key)} onDragEnd={() => setDragKey(null)}>
-            {t.type === 'doc' && <IconNote size={13} />}
-            <span className="ptab-name">{t.title || t.key}</span>
-            {t.key !== active && (
-              <span className="ptab-split" title="Open in split view"
-                    onClick={(e) => { e.stopPropagation(); setSplit(split === t.key ? null : t.key) }}>
-                <IconSplit size={12} />
-              </span>
-            )}
-            <span className="ptab-x" onClick={(e) => closeTab(t.key, e)} title="Close tab">✕</span>
-          </button>
+        {views.map((v) => (
+          <WorkspaceTab key={v.id} view={v} selected={active === v.id}
+                        onActivate={(id) => { if (dragged()) return; setWs((w) => ({ ...w, active: id })) }}
+                        onClose={(id, i) => setWs((w) => closePane(w, id, i))}
+                        onSplit={(id) => setWs((w) => toggleSplit(w, id))}
+                        onPointerDown={onPointerDown} />
         ))}
       </div>
 
       <div className="paper-pane">
-        <div className="pp-pane" style={split ? { flexBasis: `${ratio}%`, flexGrow: 0 } : { flex: 1 }}>
-          {renderContent(active)}
-        </div>
-        {split && (
-          <>
-            <div className="pp-divider" onMouseDown={startSplitResize} title="Drag to resize" />
-            <div className="pp-pane" style={{ flex: 1 }}>
-              {renderContent(split)}
-            </div>
-          </>
+        {active === LIBRARY ? (
+          <div className="pp-pane" style={{ flex: 1 }}>
+            <Library papers={papers} project={slug} onOpen={openPaper} openKeys={openKeys}
+                     onAdded={load} onOpenDoc={openDoc} onCreateDoc={createDoc} />
+          </div>
+        ) : (
+          (current?.panes || []).map((pane, i) => (
+            <React.Fragment key={pane?.key || `empty-${i}`}>
+              {i > 0 && <div className="pp-divider" onMouseDown={startSplitResize} title="Drag to resize" />}
+              <div className="pp-pane" style={split && i === 0 ? { flexBasis: `${ratio}%`, flexGrow: 0 } : { flex: 1 }}>
+                {renderPane(pane, !!(drag && ((i === 0 && drag.side === 'left') || (i === 1 && drag.side === 'right'))))}
+              </div>
+            </React.Fragment>
+          ))
         )}
-        {dragKey && (
+        {drag && active !== LIBRARY && (
           <div className="pp-dz-wrap">
-            <div className="pp-dz" onDragOver={(e) => e.preventDefault()}
-                 onDrop={() => { setActive(dragKey); setDragKey(null) }}>
-              <span>Open here</span>
+            <div className={`pp-dz ${drag.side === 'left' ? 'hot' : ''}`}>
+              <span>{split && !current?.panes[0] ? 'Drop here' : 'Split left'}</span>
             </div>
-            <div className="pp-dz right" onDragOver={(e) => e.preventDefault()}
-                 onDrop={() => { if (dragKey !== active) setSplit(dragKey); setDragKey(null) }}>
-              <span>Split →</span>
+            <div className={`pp-dz right ${drag.side === 'right' ? 'hot' : ''}`}>
+              <span>{split && !current?.panes[1] ? 'Drop here' : 'Split right'}</span>
             </div>
           </div>
         )}
       </div>
+      {drag && (
+        <div className="ptab-ghost" style={{ left: drag.x + 12, top: drag.y + 8 }}>
+          {drag.tab.type === 'doc' && <IconNote size={13} />}
+          {drag.tab.title || drag.tab.key}
+        </div>
+      )}
     </div>
   )
 }

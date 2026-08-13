@@ -35,7 +35,7 @@ PAPER_TEMPLATE = r"""\documentclass{{article}}
 \maketitle
 
 \begin{{abstract}}
-% Every quantitative claim here must match a metric row (see results_table.tex).
+% Every quantitative claim here must match a cell in results_table.tex.
 \end{{abstract}}
 
 \section{{Introduction}}
@@ -140,15 +140,25 @@ def scaffold_paper(project_root: Path, slug: str, title: str) -> list[Path]:
 
 
 # --- Pillar 6: assembly (numbers + bib are generated, never typed) -----------
+def _weave_run_comment(con: sqlite3.Connection, rows: list) -> str:
+    parts = []
+    for r in rows:
+        rid = experiment.latest_run_id(con, r["id"])
+        if rid is not None:
+            parts.append(f"{r['slug']}={rid}")
+    return ("% runs: " + " ".join(parts) + "\n") if parts else ""
+
+
 def weave_results_table(con: sqlite3.Connection, project: str, project_root: Path) -> Path:
     """Regenerate results_table.tex from the latest metric rows of each experiment."""
     rows = experiment.list_experiments(con, project)
     cols = sorted({name for r in rows for name in (r["metrics"] or {})})
     out = Path(project_root) / "text" / "results_table.tex"
     out.parent.mkdir(parents=True, exist_ok=True)
+    comment = _weave_run_comment(con, rows)
 
     if not cols:
-        out.write_text(GENERATED_BANNER +
+        out.write_text(GENERATED_BANNER + comment +
                        "% No metrics yet — run an experiment, then `renv weave`.\n")
         return out
 
@@ -165,7 +175,7 @@ def weave_results_table(con: sqlite3.Connection, project: str, project_root: Pat
         body.append(r["slug"].replace("_", r"\_") + " & " + " & ".join(cells) + r" \\")
 
     table = (
-        GENERATED_BANNER
+        GENERATED_BANNER + comment
         + "\\begin{table}[h]\\centering\n\\begin{tabular}{l" + "c" * len(cols) + "}\n"
         + "\\toprule\n" + header + "\n\\midrule\n"
         + "\n".join(body) + "\n\\bottomrule\n\\end{tabular}\n"

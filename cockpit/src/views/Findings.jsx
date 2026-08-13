@@ -34,7 +34,7 @@ function OpenFinding({ f, onDone }) {
           <>
             <textarea
               autoFocus
-              placeholder={`Why ${verdict}? Rejected findings are remembered and never re-raised.`}
+              placeholder={`Why ${verdict}? Waivable rejects are remembered; provenance findings cannot be dismissed.`}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />

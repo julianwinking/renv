@@ -680,11 +680,39 @@ def cmd_bib(args):
 def cmd_review(args):
     from renv.research import review
     con = db.connect(args.corpus)
-    res = review.review(con, args.corpus, args.project)
-    print(review.render_report(args.project, res["open"], res["suppressed"]), end="")
+    slug = _resolve_project(args.corpus, args.project)[1]
+    high = False
+    if getattr(args, "strict", False):
+        from renv.research import lint
+        high = _print_lint(slug, lint.run(con, slug))
+        print()
+    res = review.review(con, args.corpus, slug)
+    print(review.render_report(slug, res["open"], res["suppressed"]), end="")
     print(f"(report saved: {res['report']})")
-    if any(f["severity"] == "high" for f in res["open"]):
+    if high or any(f["severity"] == "high" for f in res["open"]):
         sys.exit(1)
+
+
+def cmd_lint(args):
+    from renv.research import lint
+    con = db.connect(args.corpus)
+    slug = _resolve_project(args.corpus, args.project)[1]
+    if _print_lint(slug, lint.run(con, slug)):
+        sys.exit(1)
+
+
+def _print_lint(project, res) -> bool:
+    """Print a lint.run result. Returns True if any open finding is HIGH."""
+    order = {"high": 0, "medium": 1, "low": 2}
+    open_ = sorted(res["open"], key=lambda f: order.get(f["severity"], 3))
+    print(f"# Lint — {project}")
+    print(f"{len(open_)} open; {res['suppressed']} previously dismissed; "
+          f"{res['resolved']} resolved this run.")
+    if not open_:
+        print("✓ No open graph lints.")
+    for f in open_:
+        print(f"- **{f['severity'].upper()}** (#{f['id']}) lint-{f['rule']}: {f['issue']}")
+    return any(f["severity"] == "high" for f in open_)
 
 
 def cmd_finding_list(args):
@@ -732,7 +760,9 @@ def cmd_finding_adjudicate(args, verdict):
         f = finding.adjudicate(con, args.id, verdict, args.reason, by=args.by)
     except (ValueError, KeyError) as exc:
         sys.exit(f"! {exc}")
-    print(f"#{f['id']} → {f['status']}  (reason recorded; future reviews won't re-raise it)")
+    print(f"#{f['id']} → {f['status']}  (reason recorded"
+          + ("; future reviews won't re-raise it" if verdict == "reject" else "")
+          + ")")
 
 
 def cmd_claim_add(args):
@@ -1356,8 +1386,14 @@ def main(argv=None):
     pbib = sub.add_parser("bib", help="print BibTeX for the whole corpus")
     pbib.set_defaults(func=cmd_bib)
 
+    plint = sub.add_parser("lint", help="run the graph-lint catalog (unbacked claims, §0, stale evidence)")
+    plint.add_argument("project")
+    plint.set_defaults(func=cmd_lint)
+
     prev = sub.add_parser("review", help="run automated per-section paper checks (Pillar 8)")
     prev.add_argument("project")
+    prev.add_argument("--strict", action="store_true",
+                      help="also run graph lints; exit 1 if either has open HIGH findings")
     prev.set_defaults(func=cmd_review)
 
     pf = sub.add_parser("finding", help="adjudicate review findings (accept/reject + reasoning)"
@@ -1375,7 +1411,7 @@ def main(argv=None):
     fa.add_argument("--reason", required=True)
     fa.add_argument("--by", default="human")
     fa.set_defaults(func=lambda a: cmd_finding_adjudicate(a, "accept"))
-    fr = pf.add_parser("reject", help="reject a finding so it is never re-raised (with reasoning)")
+    fr = pf.add_parser("reject", help="dismiss a waivable finding so it is not re-raised (with reasoning)")
     fr.add_argument("id", type=int)
     fr.add_argument("--reason", required=True)
     fr.add_argument("--by", default="human")

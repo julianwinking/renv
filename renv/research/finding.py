@@ -1,16 +1,18 @@
 """Review findings as persistent, branchable, adjudicable nodes (Pillar 8).
 
-A `renv review` no longer just prints a report — it persists each finding as a
-node you (or an agent) can investigate and rule on. From a finding you can branch
-into the proof/reference it cited (`finding_evidence`), then **accept** or
-**reject** it with reasoning. The verdict is remembered: a future review or agent
-that would surface the *same* finding (matched by fingerprint) sees it was already
-settled and does not re-raise it. That dedup-by-memory is what stops repeated and
-hallucinated findings from piling up.
+A `renv review` / `renv lint` persists each finding as a node you (or an agent)
+can investigate and rule on. From a finding you can branch into the proof it
+cited (`finding_evidence`), then **accept** or **reject** it with reasoning.
+
+Most findings are waivable: a reject is remembered by fingerprint and a future
+run does not re-raise it (that stops coincidence nags and hallucinated LLM
+findings from piling up). Provenance findings in `NON_WAIVABLE` cannot be
+dismissed — `adjudicate(..., reject)` raises, persist/lint will not suppress
+them, and a row that is already `rejected` is reopened rather than duplicated.
 
 Fingerprint = stable identity of a finding (check + section + the anchored
 location), independent of incidental wording, so "the same issue" is recognized
-across review runs.
+across review runs. Lint fingerprints are `hash(["lint", rule, entity])`.
 """
 
 from __future__ import annotations
@@ -21,6 +23,20 @@ import sqlite3
 from renv.research.db import canonical_hash, now, project_id, row_to_dict
 
 _STATUS_FOR = {"accept": "accepted", "reject": "rejected", "defer": "open"}
+
+# Provenance holes: the manuscript or graph is claiming something the store
+# cannot back. Coincidence leftovers (unmatched prose numbers) stay waivable.
+NON_WAIVABLE = frozenset({
+    "cites-verify-full",
+    "results-table-fresh",
+    "bib-known-paper",
+    "lint-support-verdict-none",
+    "lint-result-without-run",
+})
+
+
+def is_non_waivable(check_id: str | None) -> bool:
+    return (check_id or "") in NON_WAIVABLE
 
 
 def fingerprint(f: dict) -> str:
@@ -55,8 +71,24 @@ def _link_evidence(con: sqlite3.Connection, finding_id: int, f: dict) -> None:
                     "VALUES (?,?,?)", (finding_id, row["id"], "cited span"))
 
 
+def reopen_rejected(con: sqlite3.Connection, pid: int, fp: str) -> int | None:
+    """Re-open the latest rejected row with this fingerprint; None if none exists."""
+    row = con.execute(
+        "SELECT id FROM finding WHERE project_id=? AND fingerprint=? "
+        "AND status='rejected' ORDER BY id DESC LIMIT 1", (pid, fp)
+    ).fetchone()
+    if not row:
+        return None
+    con.execute("UPDATE finding SET status='open' WHERE id=?", (row["id"],))
+    return row["id"]
+
+
 def persist_findings(con: sqlite3.Connection, project: str, findings: list[dict]) -> dict:
-    """Insert open findings, suppressing any whose fingerprint was previously rejected."""
+    """Insert open findings, suppressing waivable ones previously rejected.
+
+    Non-waivable fingerprints are never suppressed; a rejected row is reopened
+    instead of inserting a duplicate.
+    """
     pid = project_id(con, project)
     rejected = rejected_reasons(con, pid)
     rr = con.execute(
@@ -66,7 +98,7 @@ def persist_findings(con: sqlite3.Connection, project: str, findings: list[dict]
     open_, suppressed = [], []
     for f in findings:
         fp = fingerprint(f)
-        if fp in rejected:
+        if fp in rejected and not is_non_waivable(f.get("check_id")):
             suppressed.append({**f, "fingerprint": fp, "prior_reason": rejected[fp]})
             continue
         existing = con.execute(
@@ -76,6 +108,11 @@ def persist_findings(con: sqlite3.Connection, project: str, findings: list[dict]
         if existing:                       # same live finding — don't duplicate
             open_.append({**f, "id": existing["id"], "fingerprint": fp, "carried": True})
             continue
+        if is_non_waivable(f.get("check_id")):
+            rid = reopen_rejected(con, pid, fp)
+            if rid is not None:
+                open_.append({**f, "id": rid, "fingerprint": fp, "reopened": True})
+                continue
         fid = con.execute(
             "INSERT INTO finding (project_id, review_run_id, fingerprint, check_id, "
             "section, dimension, severity, issue, location_json, created) "
@@ -117,13 +154,21 @@ def get_finding(con: sqlite3.Connection, finding_id: int) -> dict | None:
 
 def adjudicate(con: sqlite3.Connection, finding_id: int, verdict: str,
                reasoning: str, *, by: str = "agent") -> dict:
-    """Rule on a finding. Reasoning is required so future agents understand the call."""
+    """Rule on a finding. Reasoning is required so future agents understand the call.
+
+    Reject is refused for `NON_WAIVABLE` check_ids — fix the evidence instead.
+    """
     if verdict not in _STATUS_FOR:
         raise ValueError(f"verdict must be accept/reject/defer, got {verdict!r}")
     if not (reasoning or "").strip():
         raise ValueError("a verdict requires reasoning (future agents must see why)")
-    if not con.execute("SELECT 1 FROM finding WHERE id=?", (finding_id,)).fetchone():
+    row = con.execute("SELECT check_id FROM finding WHERE id=?", (finding_id,)).fetchone()
+    if not row:
         raise KeyError(f"no finding #{finding_id}")
+    if verdict == "reject" and is_non_waivable(row["check_id"]):
+        raise ValueError(
+            f"finding #{finding_id} ({row['check_id']}) is non-waivable — "
+            "fix the evidence; reject is refused")
     con.execute(
         "INSERT INTO adjudication (finding_id, verdict, reasoning, by, ts) VALUES (?,?,?,?,?)",
         (finding_id, verdict, reasoning, by, now()))
@@ -133,12 +178,21 @@ def adjudicate(con: sqlite3.Connection, finding_id: int, verdict: str,
     return get_finding(con, finding_id)
 
 
-def resolve_fixed(con: sqlite3.Connection, project: str, live_fingerprints: set[str]) -> int:
-    """Mark open/accepted findings whose condition no longer fires as 'resolved'."""
+def resolve_fixed(con: sqlite3.Connection, project: str, live_fingerprints: set[str],
+                  *, family: str = "review") -> int:
+    """Mark open/accepted findings whose condition no longer fires as 'resolved'.
+
+    family='review' ignores lint-* rows (owned by lint.run); family='lint' only those.
+    Mixing the two would let `renv review` silently resolve graph lints and vice versa.
+    """
+    if family not in ("review", "lint"):
+        raise ValueError(f"family must be review|lint, got {family!r}")
     pid = project_id(con, project)
+    extra = ("AND check_id LIKE 'lint-%'" if family == "lint"
+             else "AND check_id NOT LIKE 'lint-%'")
     rows = con.execute(
-        "SELECT id, fingerprint FROM finding WHERE project_id=? "
-        "AND status IN ('open','accepted')", (pid,)).fetchall()
+        f"SELECT id, fingerprint FROM finding WHERE project_id=? "
+        f"AND status IN ('open','accepted') {extra}", (pid,)).fetchall()
     n = 0
     for r in rows:
         if r["fingerprint"] not in live_fingerprints:

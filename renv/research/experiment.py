@@ -199,16 +199,22 @@ def list_experiments(con: sqlite3.Connection, project: str) -> list[dict]:
     return rows
 
 
-def latest_metrics(con: sqlite3.Connection, experiment_id: int) -> dict:
-    """Metrics from the most recent finished run of an experiment (for display)."""
+def latest_run_id(con: sqlite3.Connection, experiment_id: int) -> int | None:
+    """Id of the most recent finished run of an experiment, or None."""
     run = con.execute(
         "SELECT id FROM run WHERE experiment_id=? AND status='done' "
         "ORDER BY id DESC LIMIT 1", (experiment_id,)
     ).fetchone()
-    if not run:
+    return int(run["id"]) if run else None
+
+
+def latest_metrics(con: sqlite3.Connection, experiment_id: int) -> dict:
+    """Metrics from the most recent finished run of an experiment (for display)."""
+    rid = latest_run_id(con, experiment_id)
+    if rid is None:
         return {}
     rows = con.execute(
-        "SELECT name, value FROM metric WHERE run_id=?", (run["id"],)
+        "SELECT name, value FROM metric WHERE run_id=?", (rid,)
     ).fetchall()
     return {r["name"]: r["value"] for r in rows}
 

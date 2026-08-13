@@ -1,10 +1,10 @@
 """Per-section paper critique (Pillar 8) — automated checks + a rubric.
 
 The valuable, high-signal checks are *automated*: they cross-reference the draft
-against the single source of truth (metric rows, verified citations, the bib) and
-return facts, not opinions — e.g. an abstract number with no matching metric, or a
-``\\spancite`` that does not verify as full support. These run with no model and
-gate a release.
+against the single source of truth (woven table cells, verified citations, the
+bib) and return facts, not opinions — e.g. a number in the prose with no matching
+``results_table.tex`` cell, or a ``\\spancite`` that does not verify as full
+support. These run with no model and gate a release.
 
 The rubric (RUBRIC) is data: section → checks with a dimension, severity, and a
 ``verify`` mode. The ``automated`` checks are implemented here; the ``llm`` checks
@@ -26,13 +26,16 @@ from renv.research.db import now
 RUBRIC = [
     {"id": "abs-claims-match-metrics", "section": "abstract", "dimension": "correctness",
      "severity": "high", "verify": "automated",
-     "check": "Every quantitative claim in the abstract matches a metric row from a run."},
+     "check": "Every quantitative claim in the prose matches a cell in results_table.tex."},
     {"id": "cites-verify-full", "section": "all", "dimension": "correctness",
      "severity": "high", "verify": "automated",
      "check": "Every \\spancite resolves to a citation that verifies as full support."},
     {"id": "bib-coverage", "section": "all", "dimension": "completeness",
      "severity": "medium", "verify": "automated",
      "check": "Every cited key has an entry in references.bib."},
+    {"id": "bib-known-paper", "section": "all", "dimension": "correctness",
+     "severity": "high", "verify": "automated",
+     "check": "Every \\cite / \\spancite key exists as a paper row in the store."},
     {"id": "results-table-fresh", "section": "results", "dimension": "reproducibility",
      "severity": "high", "verify": "automated",
      "check": "results_table.tex is generated and reflects current metric rows."},
@@ -73,31 +76,42 @@ def _num(token: str) -> float:
     return float(token.rstrip("%"))
 
 
+def _cited_keys(tex: str) -> set[str]:
+    keys = {m[0] for m in _SPANCITE.findall(tex)}
+    for grp in _CITE.findall(tex):
+        keys.update(k.strip() for k in grp.split(",") if k.strip())
+    return keys
+
+
 # --- automated checks --------------------------------------------------------
-def _metric_values(con, project):
-    rows = experiment.list_experiments(con, project)
-    return [v for r in rows for v in (r["metrics"] or {}).values()
-            if isinstance(v, (int, float))]
+def _table_values(project_root) -> list[float]:
+    """Numeric cells from results_table.tex (comment lines are not cells)."""
+    table = Path(project_root) / "text" / "results_table.tex"
+    if not table.exists():
+        return []
+    body = "\n".join(
+        ln for ln in table.read_text().splitlines() if not ln.lstrip().startswith("%"))
+    return [_num(t) for t in _NUM.findall(body)]
 
 
-def _check_abstract_numbers(con, project, tex):
-    """Flag decimal/percent numbers in the prose that match no metric row.
+def _check_abstract_numbers(tex, project_root):
+    """Flag decimal/percent numbers in the prose that match no woven table cell.
 
     Scans the WHOLE manuscript (not just the abstract) so a fabricated number
     anywhere is caught; citation/ref args are stripped first to avoid false hits.
-    Matching is value-or-×100 (a 0.82 metric matches "0.82" or "82%"). This is a
-    coincidence check, not identity — a flagged number may be a legitimate prose
-    constant (e.g. a p-value); reject it once and adjudication won't re-raise it.
+    Matching is value-or-×100 (a 0.82 cell matches "0.82" or "82%"). This is a
+    coincidence check against the table, not metric-name identity — a leftover
+    (e.g. a p-value) stays HIGH and rejectable.
     """
     body = re.sub(r"\\(spancite|cite[tp]?|ref|input|bibliography)\{[^}]*\}", " ", tex)
-    values = _metric_values(con, project)
+    values = _table_values(project_root)
     out = []
     for tok in sorted(set(_NUM.findall(body))):
         x = _num(tok)
         if any(abs(v - x) < 1e-6 or abs(v * 100 - x) < 1e-6 for v in values):
             continue
         out.append(_finding(_by_id("abs-claims-match-metrics"),
-                            f"number {tok!r} in the text matches no metric row",
+                            f"number {tok!r} in the text matches no results_table.tex cell",
                             location={"section": "body", "quote": tok}))
     return out
 
@@ -123,12 +137,18 @@ def _check_spancite_support(con, project, tex):
 def _check_bib_coverage(project_root, tex):
     bib = Path(project_root) / "text" / "references.bib"
     have = set(_BIBKEY.findall(bib.read_text())) if bib.exists() else set()
-    referenced = set(m[0] for m in _SPANCITE.findall(tex))
-    for grp in _CITE.findall(tex):
-        referenced |= {k.strip() for k in grp.split(",")}
     return [_finding(_by_id("bib-coverage"), f"cited key {k!r} has no references.bib entry",
                      location={"quote": k})
-            for k in sorted(referenced - have)]
+            for k in sorted(_cited_keys(tex) - have)]
+
+
+def _check_bib_known_paper(con, tex):
+    from renv.papers import ingest
+    have = {p["key"] for p in ingest.list_papers(con)}
+    return [_finding(_by_id("bib-known-paper"),
+                     f"cited key {k!r} has no paper row in the store",
+                     location={"quote": k})
+            for k in sorted(_cited_keys(tex) - have)]
 
 
 def _check_results_table_fresh(con, project, project_root):
@@ -169,9 +189,10 @@ def run_automated(con: sqlite3.Connection, root, project: str) -> list[dict]:
         return [_finding(_by_id("results-table-fresh"),
                          "no text/paper.tex — run `renv draft`")]
     tex = paper.read_text()
-    return (_check_abstract_numbers(con, project, tex)
+    return (_check_abstract_numbers(tex, proot)
             + _check_spancite_support(con, project, tex)
             + _check_bib_coverage(proot, tex)
+            + _check_bib_known_paper(con, tex)
             + _check_results_table_fresh(con, project, proot)
             + _check_experiment_hypotheses(con, project)
             + _check_claims_supported(con, project))
@@ -205,7 +226,7 @@ def review(con: sqlite3.Connection, root, project: str) -> dict:
     persisted = findmod.persist_findings(con, project, findings)
     # auto-resolve prior findings whose condition no longer fires
     live = {findmod.fingerprint(f) for f in findings}
-    findmod.resolve_fixed(con, project, live)
+    findmod.resolve_fixed(con, project, live, family="review")
 
     proot = Path(root) / "projects" / project
     rdir = proot / "reviews"

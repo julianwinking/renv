@@ -73,6 +73,21 @@ def test_full_research_loop_via_tools(tmp_path):
     assert _call(tmp_path, "check_invariants", {}) == []
 
 
+def test_manuscript_files_via_tools(tmp_path):
+    db.connect(tmp_path).close()
+    _call(tmp_path, "create_project", {"slug": "p", "title": "P"})
+    from renv.research import authoring
+    authoring.scaffold_paper(tmp_path / "projects" / "p", "p", "P")
+    tree = _call(tmp_path, "manuscript_files", {"project": "p"})
+    names = {n["name"] for n in tree["tree"]}
+    assert "paper.tex" in names
+    body = _call(tmp_path, "manuscript_read", {"project": "p", "path": "paper.tex"})
+    assert "spancite" in body["content"] or "bibliography" in body["content"]
+    saved = _call(tmp_path, "manuscript_write",
+                  {"project": "p", "path": "notes.tex", "content": "% hi\n"})
+    assert saved["saved"] == "notes.tex"
+
+
 def test_query_tool_is_read_only(tmp_path):
     db.connect(tmp_path).close()
     _call(tmp_path, "create_project", {"slug": "p"})

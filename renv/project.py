@@ -58,6 +58,27 @@ class Corpus:
                 f"no shared library at {self.library} — put reference papers there"
             )
 
+    def retriever(self, verifier_name: str = "lexical"):
+        """Load the indexed corpus into a Retriever. Shared by CLI, MCP, and web.
+
+        Raises FileNotFoundError when `renv index` has not been run.
+        """
+        from renv.config import Lockfile
+        from renv.corpus.embed import get_embedder
+        from renv.corpus.index_store import Index
+        from renv.corpus.retrieve import Retriever
+        from renv.corpus.verify import get_verifier
+
+        if not self.is_indexed():
+            raise FileNotFoundError(
+                f"corpus at {self.root} is not indexed — run `renv index`")
+        lock = Lockfile.load(self.artifacts)
+        index = Index.load(self.artifacts)
+        embedder = get_embedder(lock.config.embedder, lock.config.embedder_model)
+        if lock.config.embedder == "lexical":
+            embedder.fit([r.text for r in index.records])
+        return Retriever(index, embedder, get_verifier(verifier_name)), lock
+
 
 @dataclass
 class Project:

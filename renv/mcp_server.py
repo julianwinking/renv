@@ -89,36 +89,13 @@ def h_search_corpus(root, a):
 
 
 def h_cite_claim(root, a):
-    from renv.corpus.cite import append_sidecar, make_citation
-
-    from .project import Project
-    r, lock = _retriever(root, a.get("verifier", "lexical"))
-    hashes = {s.source_id: s.sha256 for s in lock.sources}
-    cands = r.search(a["claim"], top_k=a.get("top_k", 5), verify=True,
-                     source_id=a.get("source"))
-    if not cands:
-        return {"found": False, "source": a.get("source")}
-    best = cands[0]
-    cit = make_citation(a["claim"], best, hashes.get(best.record.source_id, ""))
-    result = {"found": True, **cit.to_dict(), "latex": cit.latex()}
-    if a.get("project") and a.get("write") and cit.support == "none" and not a.get("force"):
-        result["written"] = False
-        result["reason"] = ("verifier verdict is 'none' — the span does not support the "
-                            "claim; reword closer to the source, pin `source`, or pass "
-                            "force=true to write anyway")
-        return result
-    if a.get("project") and a.get("write"):
-        from renv.papers import ingest
-        proj = Project(__import__("pathlib").Path(root) / "projects" / a["project"])
-        try:  # citation table is source of truth; citations.json is derived
-            con = _conn(root)
-            db.project_id(con, a["project"])
-            result["citation_id"] = ingest.record_citation(
-                con, a["project"], cit, manuscript_loc=a.get("manuscript_loc"))["id"]
-            result["sidecar"] = str(ingest.regenerate_sidecar(con, a["project"], proj.root))
-        except KeyError:
-            result["sidecar"] = str(append_sidecar(proj.root, cit))
-    return result
+    from renv.research import manuscript
+    write = bool(a.get("project") and a.get("write"))
+    return manuscript.cite_claim(
+        _conn(root), root, a["claim"], project=a.get("project"),
+        source=a.get("source"), write=write, force=bool(a.get("force")),
+        verifier=a.get("verifier") or "lexical", top_k=a.get("top_k") or 5,
+        manuscript_loc=a.get("manuscript_loc"))
 
 
 def h_create_project(root, a):
@@ -264,6 +241,28 @@ def h_weave(root, a):
     con = _conn(root)
     paths = authoring.weave(con, a["project"], Path(root) / "projects" / a["project"])
     return {"generated": [str(p) for p in paths]}
+
+
+def h_manuscript_files(root, a):
+    from renv.research import manuscript
+    return manuscript.list_tree(_conn(root), root, a["project"])
+
+
+def h_manuscript_read(root, a):
+    from renv.research import manuscript
+    return manuscript.read_file(_conn(root), root, a["project"], a["path"])
+
+
+def h_manuscript_write(root, a):
+    from renv.research import manuscript
+    return manuscript.write_file(_conn(root), root, a["project"], a["path"], a["content"])
+
+
+def h_compile_manuscript(root, a):
+    from renv.research import manuscript
+    return manuscript.compile_manuscript(
+        _conn(root), root, a["project"],
+        main=a.get("main") or "paper.tex", weave=a.get("weave", True))
 
 
 def h_add_paper(root, a):
@@ -564,6 +563,19 @@ TOOLS = [
      "inputSchema": _obj({"slug": _S, "title": _S}, ["slug"]), "handler": h_scaffold_project},
     {"name": "weave", "description": "Regenerate results_table.tex + references.bib from the store.",
      "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_weave},
+    {"name": "manuscript_files", "description": "List the project's text/ tree (the manuscript).",
+     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_manuscript_files},
+    {"name": "manuscript_read", "description": "Read a file under projects/<slug>/text/.",
+     "inputSchema": _obj({"project": _S, "path": _S}, ["project", "path"]),
+     "handler": h_manuscript_read},
+    {"name": "manuscript_write", "description": "Write a .tex/.bib/… file under text/. Weave outputs (results_table.tex, references.bib) are refused.",
+     "inputSchema": _obj({"project": _S, "path": _S, "content": _S},
+                         ["project", "path", "content"]),
+     "handler": h_manuscript_write},
+    {"name": "compile_manuscript", "description": "Weave numbers/bib from the store, then compile text/ to PDF with latexmk, tectonic, or pdflatex if installed.",
+     "inputSchema": _obj({"project": _S, "main": _S, "weave": {"type": "boolean"}},
+                         ["project"]),
+     "handler": h_compile_manuscript},
     {"name": "add_paper", "description": "Ingest a paper (PDF path / arXiv id / DOI) into the library + paper table.",
      "inputSchema": _obj({"source": _S, "key": _S, "download": {"type": "boolean"}}, ["source"]),
      "handler": h_add_paper},

@@ -133,6 +133,26 @@ export function paintRects(range, overlay, pageEl, className, dataset = {}) {
   return made
 }
 
+const SPAN_MARK_RE = /\[\s*([A-Za-z0-9_.:-]+):(\d+)--(\d+)\s*\]/g
+export function findSpanCiteMarkers(textLayerEl) {
+  // Markers emitted by \\spancite: [key:start--end] (thin spaces possible).
+  const { text, nodeAt } = buildIndex(textLayerEl)
+  const out = []
+  SPAN_MARK_RE.lastIndex = 0
+  let m
+  while ((m = SPAN_MARK_RE.exec(text)) && out.length < 400) {
+    const a = nodeAt(m.index)
+    const b = nodeAt(m.index + m[0].length)
+    const range = document.createRange()
+    try {
+      range.setStart(a.node, a.offset)
+      range.setEnd(b.node, b.offset)
+    } catch { continue }
+    out.push({ range, source_id: m[1], start: +m[2], end: +m[3] })
+  }
+  return out
+}
+
 // Numeric in-text citation markers ([12], [3, 7], [1-4], [1–3]) on a text
 // layer, as { range, nums }. Runs on the RAW text — normalize() would strip the
 // brackets and match every bare number on the page. `validNums` (the paper's

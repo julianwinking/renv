@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from renv import web_write
 from renv.papers import ingest
 from renv.research import claim as claimmod
 from renv.research import db, experiment
@@ -509,6 +510,473 @@ def _config_listing(root, con, project=None):
     return out
 
 
+# --- route dispatch (AGENTS.md #10: the if-chain becomes a table) -------------
+def _match(parts, spec):
+    """Match path parts against a spec; '*' captures (URL-decoded). Else None."""
+    if len(parts) != len(spec):
+        return None
+    caps = []
+    for part, want in zip(parts, spec):
+        if want == "*":
+            caps.append(unquote(part))
+        elif part != want:
+            return None
+    return caps
+
+
+def _g_paper_doc(h, con, q, did):
+    from renv.papers import paper_doc
+    return paper_doc.get_doc(con, int(did))
+
+
+def _g_paper_docs(h, con, q, key):
+    from renv.papers import paper_doc
+    return paper_doc.list_for_paper(con, key, q.get("project", [None])[0])
+
+
+def _g_paper_refs(h, con, q, key):
+    from renv.papers import bibliography
+    return {"references": bibliography.list_references(con, key)}
+
+
+def _g_inbox(h, con, q):
+    from renv.papers import bibliography
+    return bibliography.inbox(con)
+
+
+def _g_conferences(h, con, q):
+    from renv.research import conferences
+    return conferences.fetch(h.root)
+
+
+def _g_remotes(h, con, q):
+    from renv.research import remote as remotemod
+    return remotemod.list_remotes(con)
+
+
+def _g_rubric(h, con, q):
+    from renv.research.review import RUBRIC
+    return RUBRIC
+
+
+def _g_connections(h, con, q):
+    from renv.research import links as linksmod
+    return [{"from": f, "to": t,
+             "options": [{"value": v, "label": lbl, "mode": m} for v, lbl, m in rels]}
+            for (f, t), rels in linksmod.CONNECTIONS.items()]
+
+
+def _g_argument(h, con, q, slug):
+    from renv.research import argument
+    return argument.analyze(con, slug)
+
+
+def _g_phases(h, con, q, slug):
+    from renv.research import phases as phasesmod
+    return phasesmod.list_phases(con, slug)
+
+
+def _g_search(h, con, q):
+    from renv.research import search as searchmod
+    return searchmod.search(con, (q.get("q", [""])[0]),
+                            project=(q.get("project", [None])[0]))
+
+
+def _g_config_files(h, con, q):
+    return _config_listing(h.root, con, (q.get("project", [None])[0]))
+
+
+def _g_config_file(h, con, q):
+    p = _config_path(h.root, con, q["scope"][0], q["name"][0],
+                     (q.get("project", [None])[0]))
+    return {"content": p.read_text(encoding="utf-8") if p.exists() else ""}
+
+
+GET_EXACT = {
+    "/api/overview": lambda h, con, q: _overview(con),
+    "/api/papers": lambda h, con, q: _papers(con, h.root),
+    "/api/inbox": _g_inbox,
+    "/api/metric_defs": lambda h, con, q: experiment.metric_defs(con),
+    "/api/conferences": _g_conferences,
+    "/api/remotes": _g_remotes,
+    "/api/sources": lambda h, con, q: [
+        r["source"] for r in con.execute(
+            "SELECT DISTINCT source FROM log_entry WHERE source IS NOT NULL "
+            "AND source NOT IN ('cockpit', 'scaffold') ORDER BY source")],
+    "/api/rubric": _g_rubric,
+    "/api/connections": _g_connections,
+    "/api/config/files": _g_config_files,
+    "/api/config/file": _g_config_file,
+    "/api/search": _g_search,
+}
+
+# more-specific patterns first (paper/doc/* before paper/*/docs, project/*/runs
+# before project/*)
+GET_STAR = [
+    (("api", "paper", "doc", "*"), _g_paper_doc),
+    (("api", "paper", "*", "anchors"),
+     lambda h, con, q, key: _paper_anchors(con, h.root, key,
+                                           q.get("project", [None])[0])),
+    (("api", "paper", "*", "references"), _g_paper_refs),
+    (("api", "paper", "*", "docs"), _g_paper_docs),
+    (("api", "paper", "*", "usage"),
+     lambda h, con, q, key: ingest.paper_usage(con, key)),
+    (("api", "write", "*", "tree"), web_write.get_tree),
+    (("api", "write", "*", "file"), web_write.get_file),
+    (("api", "write", "*", "context"), web_write.get_context),
+    (("api", "health", "*"),
+     lambda h, con, q, slug: _health(con, h.root, slug)),
+    (("api", "plan", "*"), lambda h, con, q, slug: _plan(con, slug)),
+    (("api", "project", "*", "runs"),
+     lambda h, con, q, slug: _runs(con, slug)),
+    (("api", "project", "*"), lambda h, con, q, slug: _project(con, slug)),
+    (("api", "graph", "*"),
+     lambda h, con, q, slug: _graph(con, h.root, slug)),
+    (("api", "argument", "*"), _g_argument),
+    (("api", "regions", "*"), lambda h, con, q, slug: _regions(con, slug)),
+    (("api", "phases", "*"), _g_phases),
+    (("api", "finding", "*"),
+     lambda h, con, q, fid: findmod.get_finding(con, int(fid))),
+    (("api", "claim", "*"),
+     lambda h, con, q, cid: claimmod.get_claim(con, int(cid))),
+]
+
+
+def _p_plan(h, con, d):
+    from renv.research import plan as planmod
+    return planmod.add_item(con, d["project"], d["title"], due=d["due"],
+                            kind=d.get("kind", "phase"),
+                            start=d.get("start"), note=d.get("note"),
+                            end_deadline=bool(d.get("end_deadline")),
+                            prepared=bool(d.get("prepared")),
+                            parent_id=d.get("parent_id"))
+
+
+def _p_plan_update(h, con, d):
+    from renv.research import plan as planmod
+    fields = {k: d[k] for k in ("title", "start", "due", "status", "note",
+                                "prepared", "end_deadline") if k in d}
+    return planmod.update_item(con, d["id"], **fields)
+
+
+def _p_plan_delete(h, con, d):
+    from renv.research import plan as planmod
+    planmod.delete_item(con, d["id"])
+    return {"deleted": d["id"]}
+
+
+def _p_link(h, con, d):
+    from renv.research import links as linksmod
+    return linksmod.add_link(con, d["project"], from_kind=d["from_kind"],
+                             from_id=d["from_id"], to_kind=d["to_kind"],
+                             to_id=d["to_id"], relation=d["relation"],
+                             note=d.get("note"))
+
+
+def _p_link_delete(h, con, d):
+    from renv.research import links as linksmod
+    linksmod.delete_link(con, d["id"])
+    return {"deleted": d["id"]}
+
+
+def _p_lint(h, con, d):
+    from renv.research import lint
+    return lint.run(con, d["project"])
+
+
+def _p_phase_band(h, con, d):
+    from renv.research import phases as phasesmod
+    return phasesmod.set_band(con, d["plan_item_id"], d["x0"], d["x1"])
+
+
+def _p_phase_clear(h, con, d):
+    from renv.research import phases as phasesmod
+    phasesmod.clear_band(con, d["plan_item_id"])
+    return {"cleared": d["plan_item_id"]}
+
+
+def _p_phase_color(h, con, d):
+    from renv.research import phases as phasesmod
+    return phasesmod.set_color(con, d["plan_item_id"], d.get("color", ""))
+
+
+def _p_paper_update(h, con, d):
+    if not (d.get("title") or "").strip():
+        raise ValueError("title must not be empty")
+    if not con.execute("SELECT 1 FROM paper WHERE id=?", (d["id"],)).fetchone():
+        raise KeyError(f"no paper #{d['id']}")
+    con.execute("UPDATE paper SET title=? WHERE id=?", (d["title"].strip(), d["id"]))
+    con.commit()
+    return dict(con.execute("SELECT * FROM paper WHERE id=?", (d["id"],)).fetchone())
+
+
+def _p_paper_add(h, con, d):
+    src = (d.get("source") or "").strip()
+    if not src:
+        raise ValueError("source is required (a file path, arXiv id, or DOI)")
+    return ingest.add(con, h.root, src, download=bool(d.get("download", True)))
+
+
+def _p_paper_doc(h, con, d):
+    from renv.papers import paper_doc
+    return paper_doc.create_doc(con, d["key"], d.get("project"),
+                                title=d.get("title", "Untitled note"),
+                                body=d.get("body", ""))
+
+
+def _p_paper_doc_update(h, con, d):
+    from renv.papers import paper_doc
+    fields = {k: d[k] for k in ("title", "body_md") if k in d}
+    return paper_doc.update_doc(con, d["id"], **fields)
+
+
+def _p_paper_doc_delete(h, con, d):
+    from renv.papers import paper_doc
+    paper_doc.delete_doc(con, d["id"])
+    return {"deleted": d["id"]}
+
+
+def _p_paper_note(h, con, d):
+    from renv.papers import paper_note
+    return paper_note.add_note(
+        con, d["key"], d.get("project"), quote=d["quote"], body=d.get("body", ""),
+        page=d.get("page"), prefix=d.get("prefix"), suffix=d.get("suffix"),
+        src_start=d.get("src_start"), src_end=d.get("src_end"),
+        color=d.get("color", "amber"), kind=d.get("kind", "note"))
+
+
+def _p_paper_note_update(h, con, d):
+    from renv.papers import paper_note
+    fields = {k: d[k] for k in ("body_md", "color", "page", "kind") if k in d}
+    return paper_note.update_note(con, d["id"], **fields)
+
+
+def _p_paper_note_delete(h, con, d):
+    from renv.papers import paper_note
+    from renv.research import links as linksmod
+    row = con.execute(
+        "SELECT p.slug FROM paper_note n JOIN project p ON p.id=n.project_id "
+        "WHERE n.id=?", (d["id"],)).fetchone()
+    paper_note.delete_note(con, d["id"])
+    if row:
+        linksmod.prune_dangling(con, row["slug"])
+    return {"deleted": d["id"]}
+
+
+def _p_reference_build(h, con, d):
+    from renv.papers import bibliography
+    bibliography.build_references(con, h.root, d["key"])
+    return {"references": bibliography.list_references(con, d["key"])}
+
+
+def _p_reference_mark(h, con, d):
+    from renv.papers import bibliography
+    return bibliography.mark_reference(con, d["id"], d.get("verdict"),
+                                       d.get("comment"))
+
+
+def _p_reference_add(h, con, d):
+    from renv.papers import bibliography
+    res = bibliography.add_reference(con, h.root, d["id"],
+                                     download=d.get("download", True))
+    return {"paper": res["paper"], "landed": res["landed"],
+            "reindex": res["reindex"]}
+
+
+def _p_paper_read(h, con, d):
+    from renv.papers import bibliography
+    return bibliography.mark_read(con, d["key"])
+
+
+def _p_region(h, con, d):
+    from renv.research import regions
+    return regions.add_region(con, d["project"], x=d["x"], y=d["y"],
+                              w=d.get("w", 360), h=d.get("h", 240),
+                              label=d.get("label", ""), color=d.get("color", "slate"))
+
+
+def _p_region_update(h, con, d):
+    from renv.research import regions
+    fields = {k: d[k] for k in ("label", "color", "x", "y", "w", "h",
+                                "plan_item_id") if k in d}
+    return regions.update_region(con, d["id"], **fields)
+
+
+def _p_region_delete(h, con, d):
+    from renv.research import regions
+    regions.delete_region(con, d["id"])
+    return {"deleted": d["id"]}
+
+
+def _p_graph_layout(h, con, d):
+    pid = db.project_id(con, d["project"])
+    for nid, p in (d.get("positions") or {}).items():
+        con.execute(
+            "INSERT INTO graph_layout (project_id, node_id, x, y) VALUES (?,?,?,?) "
+            "ON CONFLICT(project_id, node_id) DO UPDATE SET x=excluded.x, y=excluded.y",
+            (pid, nid, float(p["x"]), float(p["y"])))
+    con.commit()
+    return {"saved": len(d.get("positions") or {})}
+
+
+def _p_config_file(h, con, d):
+    content = d.get("content", "")
+    if len(content.encode()) > _CONFIG_MAX_BYTES:
+        raise ValueError("file too large")
+    p = _config_path(h.root, con, d["scope"], d["name"], d.get("project"))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    return {"saved": str(p), "bytes": len(content.encode())}
+
+
+def _p_remote(h, con, d):
+    from renv.research import remote as remotemod
+    return remotemod.add_remote(con, d["name"], host=d.get("host"),
+                                data_root=d.get("data_root"),
+                                description=d.get("description"))
+
+
+def _p_project_settings(h, con, d):
+    if d.get("status") not in (None, "active", "archived"):
+        raise ValueError("status must be active or archived")
+    pid = db.project_id(con, d["slug"])
+    if d.get("title") is not None:
+        con.execute("UPDATE project SET title=? WHERE id=?", (d["title"], pid))
+    if d.get("status") is not None:
+        con.execute("UPDATE project SET status=? WHERE id=?", (d["status"], pid))
+    con.commit()
+    return dict(con.execute("SELECT * FROM project WHERE id=?", (pid,)).fetchone())
+
+
+def _p_project_create(h, con, d):
+    import subprocess
+
+    from renv.research import authoring
+    slug = (d.get("slug") or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", slug):
+        raise ValueError("slug must be lowercase letters/digits/hyphens, e.g. 005-my-idea")
+    title = (d.get("title") or "").strip() or slug
+    pid = db.ensure_project(con, slug, title=title)
+    authoring.scaffold_from_template(h.root, slug, title)
+    proot = Path(h.root) / "projects" / slug
+    if not (proot / ".git").exists():
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=str(proot), timeout=10, check=True)
+        except Exception:
+            pass
+    authoring.seed_ideation(con, slug)
+    return {"id": pid, "slug": slug, "title": title}
+
+
+def _p_link_experiment(h, con, d):
+    pid = db.project_id(con, d["project"])
+    run = con.execute(
+        "SELECT r.id FROM run r JOIN experiment e ON e.id=r.experiment_id "
+        "WHERE e.project_id=? AND e.slug=? AND r.status='done' "
+        "ORDER BY r.id DESC LIMIT 1", (pid, d["experiment"])).fetchone()
+    if not run:
+        raise ValueError(
+            f"experiment {d['experiment']!r} has no completed run yet — "
+            "run it first; claim evidence must be a recorded run (§0)")
+    return claimmod.link_evidence(con, d["claim_id"], run_id=run["id"],
+                                  stance=d.get("stance", "supports"),
+                                  grade=d.get("grade", "suggestive"),
+                                  note=d.get("note"))
+
+
+def _p_undeclare(h, con, d):
+    claimmod.undeclare_test(con, d["id"])
+    return {"deleted": d["id"]}
+
+
+def _p_delete_relation(h, con, d):
+    claimmod.delete_relation(con, d["id"])
+    return {"deleted": d["id"]}
+
+
+POST_EXACT = {
+    "/api/finding/adjudicate": lambda h, con, d: findmod.adjudicate(
+        con, d["id"], d["verdict"], d["reasoning"], by=d.get("by", "cockpit")),
+    "/api/note": lambda h, con, d: logmod.add_note(
+        con, d["project"], d["body"], title=d.get("title")),
+    "/api/log": lambda h, con, d: logmod.add_entry(
+        con, d["project"], d["type"], d["body"],
+        experiment=d.get("experiment"), answers=d.get("answers"),
+        source=d.get("source")),
+    "/api/plan": _p_plan,
+    "/api/plan/update": _p_plan_update,
+    "/api/plan/delete": _p_plan_delete,
+    "/api/log/edit": lambda h, con, d: logmod.update_entry(con, d["id"], d["body"]),
+    "/api/note/edit": lambda h, con, d: logmod.update_note(
+        con, d["id"], d["body"], title=d.get("title")),
+    "/api/claim": lambda h, con, d: claimmod.add_claim(
+        con, d["project"], d["text"], kind=d.get("kind", "assertion")),
+    "/api/link": _p_link,
+    "/api/link/delete": _p_link_delete,
+    "/api/claim/edit": lambda h, con, d: claimmod.update_text(con, d["id"], d["text"]),
+    "/api/claim/link": lambda h, con, d: claimmod.link_evidence(
+        con, d["claim_id"], citation_id=d.get("citation_id"),
+        run_id=d.get("run_id"), stance=d.get("stance", "supports"),
+        grade=d.get("grade", "suggestive"), note=d.get("note")),
+    "/api/claim/test": lambda h, con, d: claimmod.declare_test(
+        con, d["project"], d["experiment"], d["claim_id"]),
+    "/api/claim/test/delete": _p_undeclare,
+    "/api/claim/evidence/retract": lambda h, con, d: claimmod.retract_evidence(
+        con, d["id"], d["reason"], superseded_by=d.get("superseded_by")),
+    "/api/claim/evidence/confirm": lambda h, con, d: claimmod.confirm_evidence(
+        con, d["id"]),
+    "/api/claim/relation/delete": _p_delete_relation,
+    "/api/lint": _p_lint,
+    "/api/phase_band": _p_phase_band,
+    "/api/phase_band/clear": _p_phase_clear,
+    "/api/phase_band/color": _p_phase_color,
+    "/api/paper/update": _p_paper_update,
+    "/api/paper/add": _p_paper_add,
+    "/api/paper/doc": _p_paper_doc,
+    "/api/paper/doc/update": _p_paper_doc_update,
+    "/api/paper/doc/delete": _p_paper_doc_delete,
+    "/api/paper/note": _p_paper_note,
+    "/api/paper/note/update": _p_paper_note_update,
+    "/api/paper/note/delete": _p_paper_note_delete,
+    "/api/reference/build": _p_reference_build,
+    "/api/reference/mark": _p_reference_mark,
+    "/api/reference/add": _p_reference_add,
+    "/api/paper/read": _p_paper_read,
+    "/api/region": _p_region,
+    "/api/region/update": _p_region_update,
+    "/api/region/delete": _p_region_delete,
+    "/api/graph/layout": _p_graph_layout,
+    "/api/claim/relate": lambda h, con, d: claimmod.relate(
+        con, d["claim_id"], d["related_id"],
+        kind=d.get("kind", "depends_on"), note=d.get("note")),
+    "/api/config/file": _p_config_file,
+    "/api/remote": _p_remote,
+    "/api/metric_def": lambda h, con, d: experiment.define_metric(
+        con, d["name"], label=d.get("label"), unit=d.get("unit"),
+        direction=d.get("direction", "maximize"), fmt=d.get("fmt", ".3f"),
+        description=d.get("description")),
+    "/api/project/settings": _p_project_settings,
+    "/api/project": _p_project_create,
+    "/api/experiment": lambda h, con, d: experiment.create_experiment(
+        con, d["project"], d["slug"], title=d.get("title"),
+        hypothesis=d.get("hypothesis"), parent=d.get("parent")),
+    "/api/experiment/parent": lambda h, con, d: experiment.set_parent(
+        con, d["project"], d["slug"], d.get("parent")),
+    "/api/experiment/update": lambda h, con, d: experiment.update_meta(
+        con, d["project"], d["slug"], title=d.get("title"),
+        hypothesis=d.get("hypothesis"), new_slug=d.get("new_slug")),
+    "/api/claim/link_experiment": _p_link_experiment,
+}
+
+POST_STAR = [
+    (("api", "write", "*", "file"), web_write.post_file),
+    (("api", "write", "*", "delete"), web_write.post_delete),
+    (("api", "write", "*", "weave"), web_write.post_weave),
+    (("api", "write", "*", "compile"), web_write.post_compile),
+    (("api", "write", "*", "cite"), web_write.post_cite),
+]
+
+
 class Handler(BaseHTTPRequestHandler):
     root = "."
     last_activity = time.monotonic()
@@ -586,6 +1054,8 @@ class Handler(BaseHTTPRequestHandler):
             parts = path.strip("/").split("/")
             if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "pdf":
                 return self._serve_pdf(unquote(parts[2]))
+            if parts[:2] == ["api", "write"] and len(parts) == 4 and parts[3] == "pdf":
+                return web_write.serve_pdf(self, unquote(parts[2]))
             if path.startswith("/api/"):
                 con = db.connect(self.root)
                 try:
@@ -603,88 +1073,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 500, cache="no-store")
 
     def _get_api(self, con, path):
-        parts = path.strip("/").split("/")           # ['api', ...]
-        if path == "/api/overview":
-            return _overview(con)
-        if path == "/api/papers":
-            return _papers(con, self.root)
-        if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "anchors":
-            q = parse_qs(urlparse(self.path).query)
-            return _paper_anchors(con, self.root, unquote(parts[2]),
-                                  q.get("project", [None])[0])
-        if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "references":
-            from renv.papers import bibliography
-            return {"references": bibliography.list_references(con, unquote(parts[2]))}
-        if path == "/api/inbox":
-            from renv.papers import bibliography
-            return bibliography.inbox(con)
-        if parts[:3] == ["api", "paper", "doc"] and len(parts) == 4:
-            from renv.papers import paper_doc
-            return paper_doc.get_doc(con, int(parts[3]))
-        if parts[:2] == ["api", "paper"] and len(parts) == 4 and parts[3] == "docs":
-            from renv.papers import paper_doc
-            q = parse_qs(urlparse(self.path).query)
-            return paper_doc.list_for_paper(con, unquote(parts[2]), q.get("project", [None])[0])
-        if path == "/api/metric_defs":
-            return experiment.metric_defs(con)
-        if path == "/api/conferences":
-            from renv.research import conferences
-            return conferences.fetch(self.root)
-        if path == "/api/remotes":
-            from renv.research import remote as remotemod
-            return remotemod.list_remotes(con)
-        if path == "/api/sources":
-            # distinct feedback/entry authors (people), for consistent labels;
-            # system writers are not people
-            return [r["source"] for r in con.execute(
-                "SELECT DISTINCT source FROM log_entry WHERE source IS NOT NULL "
-                "AND source NOT IN ('cockpit', 'scaffold') ORDER BY source")]
-        if path == "/api/rubric":
-            from renv.research.review import RUBRIC
-            return RUBRIC
-        if path == "/api/connections":
-            from renv.research import links as linksmod
-            return [{"from": f, "to": t,
-                     "options": [{"value": v, "label": lbl, "mode": m}
-                                 for v, lbl, m in rels]}
-                    for (f, t), rels in linksmod.CONNECTIONS.items()]
-        if path == "/api/config/files":
-            q = parse_qs(urlparse(self.path).query)
-            return _config_listing(self.root, con, (q.get("project", [None])[0]))
-        if path == "/api/config/file":
-            q = parse_qs(urlparse(self.path).query)
-            p = _config_path(self.root, con, q["scope"][0], q["name"][0],
-                             (q.get("project", [None])[0]))
-            return {"content": p.read_text(encoding="utf-8") if p.exists() else ""}
-        if parts[:2] == ["api", "health"] and len(parts) == 3:
-            return _health(con, self.root, unquote(parts[2]))
-        if parts[:2] == ["api", "plan"] and len(parts) == 3:
-            return _plan(con, unquote(parts[2]))
-        if parts[:2] == ["api", "project"] and len(parts) == 4 and parts[3] == "runs":
-            return _runs(con, unquote(parts[2]))
-        if parts[:2] == ["api", "project"] and len(parts) == 3:
-            return _project(con, unquote(parts[2]))
-        if parts[:2] == ["api", "graph"] and len(parts) == 3:
-            return _graph(con, self.root, unquote(parts[2]))
-        if parts[:2] == ["api", "argument"] and len(parts) == 3:
-            from renv.research import argument
-            return argument.analyze(con, unquote(parts[2]))
-        if parts[:2] == ["api", "regions"] and len(parts) == 3:
-            return _regions(con, unquote(parts[2]))
-        if parts[:2] == ["api", "phases"] and len(parts) == 3:
-            from renv.research import phases as phasesmod
-            return phasesmod.list_phases(con, unquote(parts[2]))
-        if path.startswith("/api/search"):
-            from renv.research import search as searchmod
-            q = parse_qs(urlparse(self.path).query)
-            return searchmod.search(con, (q.get("q", [""])[0]),
-                                    project=(q.get("project", [None])[0]))
-        if parts[:2] == ["api", "paper"] and parts[-1] == "usage":
-            return ingest.paper_usage(con, unquote(parts[2]))
-        if parts[:2] == ["api", "finding"] and len(parts) == 3:
-            return findmod.get_finding(con, int(parts[2]))
-        if parts[:2] == ["api", "claim"] and len(parts) == 3:
-            return claimmod.get_claim(con, int(parts[2]))
+        q = parse_qs(urlparse(self.path).query)
+        fn = GET_EXACT.get(path)
+        if fn:
+            return fn(self, con, q)
+        parts = path.strip("/").split("/")
+        for spec, fn in GET_STAR:
+            caps = _match(parts, spec)
+            if caps is not None:
+                return fn(self, con, q, *caps)
         raise ValueError(f"unknown endpoint {path}")
 
     # --- POST (writes go through the same domain functions as CLI/MCP) ---
@@ -706,248 +1103,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 500, cache="no-store")
 
     def _post_api(self, con, path, d):
-        if path == "/api/finding/adjudicate":
-            return findmod.adjudicate(con, d["id"], d["verdict"], d["reasoning"],
-                                      by=d.get("by", "cockpit"))
-        if path == "/api/note":
-            return logmod.add_note(con, d["project"], d["body"], title=d.get("title"))
-        if path == "/api/log":
-            return logmod.add_entry(con, d["project"], d["type"], d["body"],
-                                    experiment=d.get("experiment"),
-                                    answers=d.get("answers"), source=d.get("source"))
-        if path == "/api/plan":
-            from renv.research import plan as planmod
-            return planmod.add_item(con, d["project"], d["title"], due=d["due"],
-                                    kind=d.get("kind", "phase"),
-                                    start=d.get("start"), note=d.get("note"),
-                                    end_deadline=bool(d.get("end_deadline")),
-                                    prepared=bool(d.get("prepared")),
-                                    parent_id=d.get("parent_id"))
-        if path == "/api/plan/update":
-            from renv.research import plan as planmod
-            fields = {k: d[k] for k in ("title", "start", "due", "status", "note",
-                                        "prepared", "end_deadline") if k in d}
-            return planmod.update_item(con, d["id"], **fields)
-        if path == "/api/plan/delete":
-            from renv.research import plan as planmod
-            planmod.delete_item(con, d["id"])
-            return {"deleted": d["id"]}
-        if path == "/api/log/edit":
-            return logmod.update_entry(con, d["id"], d["body"])
-        if path == "/api/note/edit":
-            return logmod.update_note(con, d["id"], d["body"], title=d.get("title"))
-        if path == "/api/claim":
-            return claimmod.add_claim(con, d["project"], d["text"],
-                                      kind=d.get("kind", "assertion"))
-        if path == "/api/link":
-            from renv.research import links as linksmod
-            return linksmod.add_link(con, d["project"], from_kind=d["from_kind"],
-                                     from_id=d["from_id"], to_kind=d["to_kind"],
-                                     to_id=d["to_id"], relation=d["relation"],
-                                     note=d.get("note"))
-        if path == "/api/link/delete":
-            from renv.research import links as linksmod
-            linksmod.delete_link(con, d["id"])
-            return {"deleted": d["id"]}
-        if path == "/api/claim/edit":
-            return claimmod.update_text(con, d["id"], d["text"])
-        if path == "/api/claim/link":
-            return claimmod.link_evidence(con, d["claim_id"], citation_id=d.get("citation_id"),
-                                          run_id=d.get("run_id"), stance=d.get("stance", "supports"),
-                                          grade=d.get("grade", "suggestive"), note=d.get("note"))
-        if path == "/api/claim/test":
-            return claimmod.declare_test(con, d["project"], d["experiment"], d["claim_id"])
-        if path == "/api/claim/test/delete":
-            claimmod.undeclare_test(con, d["id"])
-            return {"deleted": d["id"]}
-        if path == "/api/claim/evidence/retract":
-            return claimmod.retract_evidence(con, d["id"], d["reason"],
-                                             superseded_by=d.get("superseded_by"))
-        if path == "/api/claim/evidence/confirm":
-            return claimmod.confirm_evidence(con, d["id"])
-        if path == "/api/claim/relation/delete":
-            claimmod.delete_relation(con, d["id"])
-            return {"deleted": d["id"]}
-        if path == "/api/lint":
-            from renv.research import lint
-            return lint.run(con, d["project"])
-        if path == "/api/phase_band":
-            from renv.research import phases as phasesmod
-            return phasesmod.set_band(con, d["plan_item_id"], d["x0"], d["x1"])
-        if path == "/api/phase_band/clear":
-            from renv.research import phases as phasesmod
-            phasesmod.clear_band(con, d["plan_item_id"])
-            return {"cleared": d["plan_item_id"]}
-        if path == "/api/phase_band/color":
-            from renv.research import phases as phasesmod
-            return phasesmod.set_color(con, d["plan_item_id"], d.get("color", ""))
-        if path == "/api/paper/update":
-            # metadata only (title) — the PDF, key, and anchors are immutable
-            if not (d.get("title") or "").strip():
-                raise ValueError("title must not be empty")
-            if not con.execute("SELECT 1 FROM paper WHERE id=?", (d["id"],)).fetchone():
-                raise KeyError(f"no paper #{d['id']}")
-            con.execute("UPDATE paper SET title=? WHERE id=?", (d["title"].strip(), d["id"]))
-            con.commit()
-            return dict(con.execute("SELECT * FROM paper WHERE id=?", (d["id"],)).fetchone())
-        if path == "/api/paper/add":
-            src = (d.get("source") or "").strip()
-            if not src:
-                raise ValueError("source is required (a file path, arXiv id, or DOI)")
-            return ingest.add(con, self.root, src, download=bool(d.get("download", True)))
-        if path == "/api/paper/doc":
-            from renv.papers import paper_doc
-            return paper_doc.create_doc(con, d["key"], d.get("project"),
-                                        title=d.get("title", "Untitled note"), body=d.get("body", ""))
-        if path == "/api/paper/doc/update":
-            from renv.papers import paper_doc
-            fields = {k: d[k] for k in ("title", "body_md") if k in d}
-            return paper_doc.update_doc(con, d["id"], **fields)
-        if path == "/api/paper/doc/delete":
-            from renv.papers import paper_doc
-            paper_doc.delete_doc(con, d["id"])
-            return {"deleted": d["id"]}
-        if path == "/api/paper/note":
-            from renv.papers import paper_note
-            return paper_note.add_note(
-                con, d["key"], d.get("project"), quote=d["quote"], body=d.get("body", ""),
-                page=d.get("page"), prefix=d.get("prefix"), suffix=d.get("suffix"),
-                src_start=d.get("src_start"), src_end=d.get("src_end"),
-                color=d.get("color", "amber"), kind=d.get("kind", "note"))
-        if path == "/api/paper/note/update":
-            from renv.papers import paper_note
-            fields = {k: d[k] for k in ("body_md", "color", "page", "kind") if k in d}
-            return paper_note.update_note(con, d["id"], **fields)
-        if path == "/api/reference/build":
-            from renv.papers import bibliography
-            bibliography.build_references(con, self.root, d["key"])
-            return {"references": bibliography.list_references(con, d["key"])}
-        if path == "/api/reference/mark":
-            from renv.papers import bibliography
-            return bibliography.mark_reference(con, d["id"], d.get("verdict"),
-                                               d.get("comment"))
-        if path == "/api/reference/add":
-            from renv.papers import bibliography
-            res = bibliography.add_reference(con, self.root, d["id"],
-                                             download=d.get("download", True))
-            return {"paper": res["paper"], "landed": res["landed"],
-                    "reindex": res["reindex"]}
-        if path == "/api/paper/read":
-            from renv.papers import bibliography
-            return bibliography.mark_read(con, d["key"])
-        if path == "/api/paper/note/delete":
-            from renv.papers import paper_note
-            from renv.research import links as linksmod
-            # remember the project so this pnote's soft links don't go dangling
-            row = con.execute(
-                "SELECT p.slug FROM paper_note n JOIN project p ON p.id=n.project_id "
-                "WHERE n.id=?", (d["id"],)).fetchone()
-            paper_note.delete_note(con, d["id"])
-            if row:
-                linksmod.prune_dangling(con, row["slug"])
-            return {"deleted": d["id"]}
-        if path == "/api/region":
-            from renv.research import regions
-            return regions.add_region(con, d["project"], x=d["x"], y=d["y"],
-                                      w=d.get("w", 360), h=d.get("h", 240),
-                                      label=d.get("label", ""), color=d.get("color", "slate"))
-        if path == "/api/region/update":
-            from renv.research import regions
-            fields = {k: d[k] for k in ("label", "color", "x", "y", "w", "h",
-                                        "plan_item_id") if k in d}
-            return regions.update_region(con, d["id"], **fields)
-        if path == "/api/region/delete":
-            from renv.research import regions
-            regions.delete_region(con, d["id"])
-            return {"deleted": d["id"]}
-        if path == "/api/graph/layout":
-            pid = db.project_id(con, d["project"])
-            for nid, p in (d.get("positions") or {}).items():
-                con.execute(
-                    "INSERT INTO graph_layout (project_id, node_id, x, y) VALUES (?,?,?,?) "
-                    "ON CONFLICT(project_id, node_id) DO UPDATE SET x=excluded.x, y=excluded.y",
-                    (pid, nid, float(p["x"]), float(p["y"])))
-            con.commit()
-            return {"saved": len(d.get("positions") or {})}
-        if path == "/api/claim/relate":
-            return claimmod.relate(con, d["claim_id"], d["related_id"],
-                                   kind=d.get("kind", "depends_on"), note=d.get("note"))
-        if path == "/api/config/file":
-            content = d.get("content", "")
-            if len(content.encode()) > _CONFIG_MAX_BYTES:
-                raise ValueError("file too large")
-            p = _config_path(self.root, con, d["scope"], d["name"], d.get("project"))
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
-            return {"saved": str(p), "bytes": len(content.encode())}
-        if path == "/api/remote":
-            from renv.research import remote as remotemod
-            return remotemod.add_remote(con, d["name"], host=d.get("host"),
-                                        data_root=d.get("data_root"),
-                                        description=d.get("description"))
-        if path == "/api/metric_def":
-            return experiment.define_metric(
-                con, d["name"], label=d.get("label"), unit=d.get("unit"),
-                direction=d.get("direction", "maximize"), fmt=d.get("fmt", ".3f"),
-                description=d.get("description"))
-        if path == "/api/project/settings":
-            if d.get("status") not in (None, "active", "archived"):
-                raise ValueError("status must be active or archived")
-            pid = db.project_id(con, d["slug"])
-            if d.get("title") is not None:
-                con.execute("UPDATE project SET title=? WHERE id=?", (d["title"], pid))
-            if d.get("status") is not None:
-                con.execute("UPDATE project SET status=? WHERE id=?", (d["status"], pid))
-            con.commit()
-            return dict(con.execute("SELECT * FROM project WHERE id=?", (pid,)).fetchone())
-        # full project creation — same path as `renv new`: DB row + template
-        # scaffold under projects/<slug> + its own git repo
-        if path == "/api/project":
-            import subprocess
-
-            from renv.research import authoring
-            slug = (d.get("slug") or "").strip()
-            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", slug):
-                raise ValueError("slug must be lowercase letters/digits/hyphens, e.g. 005-my-idea")
-            title = (d.get("title") or "").strip() or slug
-            pid = db.ensure_project(con, slug, title=title)
-            authoring.scaffold_from_template(self.root, slug, title)
-            proot = Path(self.root) / "projects" / slug
-            if not (proot / ".git").exists():
-                try:
-                    subprocess.run(["git", "init", "-q"], cwd=str(proot), timeout=10, check=True)
-                except Exception:
-                    pass
-            authoring.seed_ideation(con, slug)   # plan starts as a graph node, not a file
-            return {"id": pid, "slug": slug, "title": title}
-        if path == "/api/experiment":
-            return experiment.create_experiment(con, d["project"], d["slug"],
-                                                title=d.get("title"),
-                                                hypothesis=d.get("hypothesis"),
-                                                parent=d.get("parent"))
-        if path == "/api/experiment/parent":
-            return experiment.set_parent(con, d["project"], d["slug"], d.get("parent"))
-        if path == "/api/experiment/update":
-            return experiment.update_meta(con, d["project"], d["slug"],
-                                          title=d.get("title"), hypothesis=d.get("hypothesis"),
-                                          new_slug=d.get("new_slug"))
-        # graph gesture: experiment→claim becomes claim evidence via the
-        # experiment's latest DONE run — §0: an edge needs a recorded run.
-        if path == "/api/claim/link_experiment":
-            pid = db.project_id(con, d["project"])
-            run = con.execute(
-                "SELECT r.id FROM run r JOIN experiment e ON e.id=r.experiment_id "
-                "WHERE e.project_id=? AND e.slug=? AND r.status='done' "
-                "ORDER BY r.id DESC LIMIT 1", (pid, d["experiment"])).fetchone()
-            if not run:
-                raise ValueError(
-                    f"experiment {d['experiment']!r} has no completed run yet — "
-                    "run it first; claim evidence must be a recorded run (§0)")
-            return claimmod.link_evidence(con, d["claim_id"], run_id=run["id"],
-                                          stance=d.get("stance", "supports"),
-                                          grade=d.get("grade", "suggestive"),
-                                          note=d.get("note"))
+        fn = POST_EXACT.get(path)
+        if fn:
+            return fn(self, con, d)
+        parts = path.strip("/").split("/")
+        for spec, fn in POST_STAR:
+            caps = _match(parts, spec)
+            if caps is not None:
+                return fn(self, con, d, *caps)
         raise ValueError(f"unknown endpoint {path}")
+
 
 
 def _launchd_sockets(name: bytes = b"Listeners") -> list[int]:

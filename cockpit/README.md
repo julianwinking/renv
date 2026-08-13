@@ -9,6 +9,10 @@ and humans always see identical live state.
 ## What's inside
 
 - **Overview** — project health, open questions, and what moved recently.
+- **Write** — Overleaf-shaped manuscript editor over `text/`: file tree, LaTeX
+  with store-backed `\\spancite` (span-anchored citations, not bare `\\cite`),
+  weave of results/bibliography from the store, and a PDF.js preview compiled
+  by `latexmk` / `tectonic` / `pdflatex` when one is on PATH.
 - **Papers** — the corpus library plus a tabbed PDF reader: positional
   annotations, span-anchored citations highlighted in place, reference
   intelligence (traffic-light `[N]` markers, hover cards, add / not-relevant

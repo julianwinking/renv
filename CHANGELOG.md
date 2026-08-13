@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/); versions tag `vX.Y.Z`.
 
 ## [Unreleased]
 
+- Cockpit **Write** view: Overleaf-shaped `text/` editor (file tree + LaTeX +
+  PDF preview). Citations insert `\\spancite` via the same retrieve/verify path
+  as `renv cite`; results tables stay woven from metric rows. Compile uses a
+  local TeX engine when present (latexmk, tectonic, or pdflatex) — WASM TeX is
+  not bundled (lean core). New CLI `renv compile` and MCP `compile_manuscript`.
+- web.py API routing is a dispatch table (AGENTS.md #10).
 - Property-based tests (hypothesis) for the reference-list and BibTeX parsers.
 - Architecture decisions #10 (clients split on touch) and #11 (no typing
   retrofit) recorded in AGENTS.md.

@@ -92,6 +92,7 @@ export default function Write({ slug, focus }) {
   const [edRev, setEdRev] = useState(0)
   const saveTimer = useRef(0)
   const contentRef = useRef('')
+  const ed = useRef(null)
   contentRef.current = content
 
   const loadTree = useCallback(() => getWriteTree(slug).then(setTree), [slug])
@@ -103,7 +104,14 @@ export default function Write({ slug, focus }) {
     else if (ctx && !ctx.engine) setCompile({ status: 'no-engine', engine: null })
   }, [ctx])
 
+  useEffect(() => {
+    if (focus && focus !== path) setPath(focus)
+  }, [focus]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const openPath = (rel) => {
+    if (rel === path) return
+    clearTimeout(saveTimer.current)
+    if (dirty && file?.writable) saveNow(path, contentRef.current)
     setPath(rel)
     navigate(routePath(slug, 'write', rel))
   }
@@ -122,12 +130,12 @@ export default function Write({ slug, focus }) {
   }, [slug, path])
 
   const saveNow = async (rel, text) => {
-    if (!file?.writable) return
+    if (rel === path && file && !file.writable) return
     setSaving(true)
     const r = await saveWriteFile(slug, rel, text)
     setSaving(false)
     if (r.error) { setErr(r.error); return }
-    setDirty(false)
+    if (rel === path) setDirty(false)
     loadTree()
   }
 
@@ -312,6 +320,7 @@ export default function Write({ slug, focus }) {
           {file && (
             <Suspense fallback={<div className="loading">loading editor…</div>}>
               <TexEditor
+                ref={ed}
                 key={slug + ':' + path + ':' + edRev}
                 doc={file.content}
                 readOnly={!file.writable}
@@ -448,6 +457,7 @@ export default function Write({ slug, focus }) {
         <div className="tx-pdf-resize" onMouseDown={startPdfResize} />
         <ManuscriptPdf
           slug={slug} bust={bust}
+          hasPdf={!!ctx?.pdf || bust > 0}
           citations={ctx?.citations || []}
           onMarker={inspect}
           status={compile.status}

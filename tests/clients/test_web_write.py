@@ -57,6 +57,15 @@ def test_write_tree_read_write_roundtrip(tmp_path):
             assert e.code == 400
         ctx = _get(base, "/api/write/p/context")
         assert "spancites" in ctx and "metrics" in ctx
+        try:
+            urllib.request.urlopen(base + "/api/write/p/pdf")
+            raise AssertionError("pdf before compile")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+        pdf = tmp_path / "projects" / "p" / "text" / "paper.pdf"
+        pdf.write_bytes(b"%PDF-1.1\ntrailer<<>>\n%%EOF\n")
+        data = urllib.request.urlopen(base + "/api/write/p/pdf").read()
+        assert data.startswith(b"%PDF")
     finally:
         httpd.shutdown()
 
@@ -81,6 +90,20 @@ def test_compile_without_engine_returns_hint(tmp_path, monkeypatch):
         assert res["ok"] is False
         assert "latexmk" in res["tried"]
         assert res["woven"]  # weave still ran
+    finally:
+        httpd.shutdown()
+
+
+def test_cite_without_index_is_client_error(tmp_path):
+    httpd, base = _start(tmp_path)
+    try:
+        try:
+            _post(base, "/api/write/p/cite", {"claim": "citation precision", "write": False})
+            raise AssertionError("cite succeeded with no index")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            body = json.loads(e.read())
+            assert "index" in body["error"].lower()
     finally:
         httpd.shutdown()
 

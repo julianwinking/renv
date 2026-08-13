@@ -95,7 +95,7 @@ def h_cite_claim(root, a):
         _conn(root), root, a["claim"], project=a.get("project"),
         source=a.get("source"), write=write, force=bool(a.get("force")),
         verifier=a.get("verifier") or "lexical", top_k=a.get("top_k") or 5,
-        manuscript_loc=a.get("manuscript_loc"))
+        manuscript_loc=a.get("manuscript_loc"), pick=int(a.get("pick") or 0))
 
 
 def h_create_project(root, a):
@@ -503,7 +503,8 @@ TOOLS = [
     {"name": "cite_claim", "description": "Anchor + verify a claim to a source span; optionally write to a project. "
                                           "`source` pins one paper key; a 'none' verdict is not written unless `force`.",
      "inputSchema": _obj({"claim": _S, "project": _S, "top_k": _I, "source": _S,
-                          "write": {"type": "boolean"}, "force": {"type": "boolean"}}, ["claim"]),
+                          "write": {"type": "boolean"}, "force": {"type": "boolean"},
+                          "pick": _I, "verifier": _S, "manuscript_loc": _S}, ["claim"]),
      "handler": h_cite_claim},
     {"name": "list_citations", "description": "A project's recorded citation rows with live claim-link counts.",
      "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_list_citations},

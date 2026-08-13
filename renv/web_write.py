@@ -59,10 +59,13 @@ def post_compile(h, con, d, slug):
 
 
 def post_cite(h, con, d, slug):
-    return manuscript.cite_claim(
-        con, h.root, d.get("claim", ""),
-        project=slug, source=d.get("source"), write=bool(d.get("write")),
-        force=bool(d.get("force")), verifier=d.get("verifier") or "lexical",
-        top_k=int(d.get("top_k") or 5),
-        manuscript_loc=d.get("manuscript_loc"),
-        pick=int(d.get("pick") or 0))
+    try:
+        return manuscript.cite_claim(
+            con, h.root, d.get("claim", ""),
+            project=slug, source=d.get("source"), write=bool(d.get("write")),
+            force=bool(d.get("force")), verifier=d.get("verifier") or "lexical",
+            top_k=int(d.get("top_k") or 5),
+            manuscript_loc=d.get("manuscript_loc"),
+            pick=int(d.get("pick") or 0))
+    except FileNotFoundError as exc:
+        raise ValueError(str(exc)) from exc

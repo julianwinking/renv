@@ -220,7 +220,7 @@ aside {
 
 /* ---------- content ---------- */
 .content { flex: 1; overflow-y: auto; padding: 22px; overscroll-behavior: contain; }
-.content.full { padding: 0; position: relative; }
+.content.full { padding: 0; position: relative; overflow: hidden; }
 
 .pagehead { margin: 2px 2px 18px; }
 .pagehead h1 { font-size: 19px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }

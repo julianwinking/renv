@@ -227,16 +227,19 @@ def detect_engine(which=shutil.which) -> dict | None:
 def _commands(engine: str, main: str) -> list[list[str]]:
     if engine == "latexmk":
         return [["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error",
-                 "-file-line-error", main]]
+                 "-file-line-error", "-no-shell-escape", main]]
     if engine == "tectonic":
         return [["tectonic", main]]
     if engine == "pdflatex":
         stem = Path(main).stem
         return [
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", main],
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error",
+             "-no-shell-escape", main],
             ["bibtex", stem],
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", main],
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", main],
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error",
+             "-no-shell-escape", main],
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error",
+             "-no-shell-escape", main],
         ]
     raise ValueError(f"unknown engine {engine!r}")
 

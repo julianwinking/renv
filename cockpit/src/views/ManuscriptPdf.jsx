@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { writePdfUrl } from '../api.js'
 import { findSpanCiteMarkers, paintRects } from '../pdfhl.js'
 
-export default function ManuscriptPdf({ slug, bust, citations, onMarker, status, log, errors, engine }) {
+export default function ManuscriptPdf({ slug, bust, hasPdf, citations, onMarker, status, log, errors, engine }) {
   const [ready, setReady] = useState(false)
   const [err, setErr] = useState('')
   const [scale, setScale] = useState(1.15)
@@ -24,6 +24,7 @@ export default function ManuscriptPdf({ slug, bust, citations, onMarker, status,
   useEffect(() => {
     let cancelled = false
     setReady(false); setErr('')
+    if (!hasPdf) return undefined
     ;(async () => {
       try {
         const pdfjs = await import('pdfjs-dist')
@@ -42,7 +43,7 @@ export default function ManuscriptPdf({ slug, bust, citations, onMarker, status,
       }
     })()
     return () => { cancelled = true; try { pdfRef.current?.destroy() } catch {} }
-  }, [slug, bust])
+  }, [slug, bust, hasPdf])
 
   useEffect(() => { if (ready) renderPages(scale) }, [scale]) // eslint-disable-line
   useEffect(() => { if (ready) paintMarkers() }, [citations, ready])

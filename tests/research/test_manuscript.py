@@ -91,6 +91,14 @@ def test_parse_spancite_and_cite(tmp_path):
     assert parsed["inputs"][0]["name"] == "results_table"
 
 
+def test_compile_commands_disable_shell_escape():
+    latexmk = manuscript._commands("latexmk", "paper.tex")[0]
+    assert "-no-shell-escape" in latexmk
+    for cmd in manuscript._commands("pdflatex", "paper.tex"):
+        if cmd[0] != "bibtex":
+            assert "-no-shell-escape" in cmd
+
+
 def test_compile_without_engine_is_honest(tmp_path, monkeypatch):
     con, _ = _project(tmp_path)
     monkeypatch.setattr(manuscript, "detect_engine", lambda which=None: None)

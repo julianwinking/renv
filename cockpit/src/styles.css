@@ -1009,6 +1009,10 @@ textarea.fileedit {
 }
 .ptab-chip + .ptab-chip { border-left: 1px solid var(--line-strong); }
 .ptab-chip-empty { color: var(--faint); font-style: italic; max-width: 110px; cursor: default; }
+.ptab-insert {
+  flex: 0 0 3px; margin: 6px 1px; border-radius: 2px;
+  background: var(--accent); pointer-events: none;
+}
 .ptab-ico { color: var(--faint); font-size: 12px; }
 .ptab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ptab-count {

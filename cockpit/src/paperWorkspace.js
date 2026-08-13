@@ -120,6 +120,50 @@ export function toggleSplit(ws, viewId) {
   return { views, active: viewId }
 }
 
+function insertView(views, view, insertBeforeId) {
+  if (!insertBeforeId) return [...views, view]
+  const i = views.findIndex((v) => v.id === insertBeforeId)
+  if (i < 0) return [...views, view]
+  return [...views.slice(0, i), view, ...views.slice(i)]
+}
+
+// Pull a pane out of a split so it is its own tab. insertBeforeId is a view
+// id to sit in front of, or omitted to append. The leftover pane stays put.
+export function undockTab(ws, key, insertBeforeId) {
+  const source = ws.views.find((v) => v.panes.some((p) => p?.key === key))
+  if (!source) return ws
+  const filled = source.panes.filter(Boolean)
+  if (filled.length < 2) return ws
+  const tab = source.panes.find((p) => p?.key === key)
+  const rest = compactView({
+    ...source,
+    panes: source.panes.map((p) => (p?.key === key ? null : p)),
+  })
+  const extracted = { id: newId(), panes: [tab] }
+  const base = []
+  for (const v of ws.views) {
+    if (v.id === source.id) { if (rest) base.push(rest); continue }
+    base.push(v)
+  }
+  return { views: insertView(base, extracted, insertBeforeId), active: extracted.id }
+}
+
+export function moveView(ws, viewId, insertBeforeId) {
+  const view = ws.views.find((v) => v.id === viewId)
+  if (!view || insertBeforeId === viewId) return ws
+  const base = ws.views.filter((v) => v.id !== viewId)
+  return { views: insertView(base, view, insertBeforeId), active: viewId }
+}
+
+// Drop onto the tab bar: a chip from a pair becomes its own tab; a whole
+// single (or waiting split) just moves.
+export function placeTab(ws, key, insertBeforeId) {
+  const source = ws.views.find((v) => v.panes.some((p) => p?.key === key))
+  if (!source) return ws
+  if (source.panes.filter(Boolean).length >= 2) return undockTab(ws, key, insertBeforeId)
+  return moveView(ws, source.id, insertBeforeId)
+}
+
 export function dropTab(ws, side, key, targetId) {
   const { views } = ws
   const dest = targetId || ws.active

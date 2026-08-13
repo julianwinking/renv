@@ -6,7 +6,7 @@ import PaperViewer from './PaperViewer.jsx'
 import NoteDoc from './NoteDoc.jsx'
 import {
   LIBRARY, loadWorkspace, openTab, closePane, closeKey, toggleSplit,
-  dropTab, pruneViews, renameDoc, activeView, isSplit,
+  dropTab, placeTab, pruneViews, renameDoc, activeView, isSplit,
 } from '../paperWorkspace.js'
 
 // Lucide-style line icons (rounded, 2px stroke, currentColor).
@@ -42,13 +42,50 @@ const loadRaw = (slug) => {
   try { return JSON.parse(localStorage.getItem(wsKey(slug))) || {} } catch { return {} }
 }
 
-function dropTargetAt(x, y, activeId) {
+function insertBeforeAt(x) {
+  const tabs = [...document.querySelectorAll('.paper-tabs [data-view-id]')]
+  for (const el of tabs) {
+    const r = el.getBoundingClientRect()
+    if (x < r.left + r.width / 2) return el.dataset.viewId
+  }
+  return null
+}
+
+function dropTargetAt(x, y, activeId, dragTab) {
   const hit = document.elementsFromPoint(x, y)
+  let sourceViewId = null
+  if (dragTab?.key) {
+    for (const chip of document.querySelectorAll('[data-pane-key]')) {
+      if (chip.dataset.paneKey === dragTab.key) {
+        sourceViewId = chip.closest('[data-view-id]')?.dataset.viewId || null
+        break
+      }
+    }
+  }
+
   const tab = hit.map((n) => n.closest?.('[data-view-id]')).find(Boolean)
-  if (tab?.dataset.viewId) {
+  const overChip = hit.map((n) => n.closest?.('[data-pane-key]')).find(Boolean)
+  const overOwn = overChip?.dataset.paneKey === dragTab?.key
+  const sameView = !!(sourceViewId && tab?.dataset.viewId === sourceViewId)
+  // Still sitting on the chip you picked up (or the pair chrome): not a drop.
+  // Leaving the pair onto the tab bar ungroups; the sibling chip still splits.
+  const insideSource = sameView && (!overChip || overOwn)
+
+  if (tab?.dataset.viewId && !insideSource) {
     const r = tab.getBoundingClientRect()
     return { viewId: tab.dataset.viewId, side: x < r.left + r.width / 2 ? 'left' : 'right', via: 'tab' }
   }
+
+  if (!insideSource) {
+    const bar = document.querySelector('.paper-tabs')
+    if (bar) {
+      const r = bar.getBoundingClientRect()
+      if (y >= r.top - 10 && y <= r.bottom + 14 && x >= r.left && x <= r.right) {
+        return { via: 'bar', insertBeforeId: insertBeforeAt(x) }
+      }
+    }
+  }
+
   const pane = document.querySelector('.paper-pane')
   if (!pane || activeId === LIBRARY) return null
   const r = pane.getBoundingClientRect()
@@ -74,7 +111,7 @@ function useTabDrag(activeId, onDrop) {
       if (!st.moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) < 12) return
       st.moved = true
       document.body.classList.add('ptab-dragging')
-      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current)
+      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current, st.tab)
       setDrag({ tab: st.tab, x: ev.clientX, y: ev.clientY, ...(t || {}) })
     }
     const up = (ev) => {
@@ -83,9 +120,9 @@ function useTabDrag(activeId, onDrop) {
       document.body.classList.remove('ptab-dragging')
       if (!st.moved) { setDrag(null); return }
       swallow.current = true
-      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current)
+      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current, st.tab)
       setDrag(null)
-      if (t) onDropRef.current(st.tab.key, t.side, t.viewId)
+      if (t) onDropRef.current(st.tab.key, t)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -124,6 +161,7 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
       {view.panes.map((pane, i) => (
         pane ? (
           <span key={pane.key} className="ptab-chip" draggable={false}
+                data-pane-key={pane.key}
                 title={pane.title || pane.key}
                 onPointerDown={(e) => onPointerDown(e, pane)}
                 onDragStart={(e) => e.preventDefault()}>
@@ -196,8 +234,8 @@ export default function Papers({ focus, slug, onMutate }) {
     insertRefs.current[targetDocTab.docId]?.(md)
   }
 
-  const { drag, onPointerDown, dragged } = useTabDrag(active, (key, side, viewId) => {
-    setWs((w) => dropTab(w, side, key, viewId))
+  const { drag, onPointerDown, dragged } = useTabDrag(active, (key, t) => {
+    setWs((w) => (t.via === 'bar' ? placeTab(w, key, t.insertBeforeId) : dropTab(w, t.side, key, t.viewId)))
   })
 
   const startSplitResize = (e) => {
@@ -238,13 +276,17 @@ export default function Papers({ focus, slug, onMutate }) {
           <span className="ptab-count">{papers.length}</span>
         </button>
         {views.map((v) => (
-          <WorkspaceTab key={v.id} view={v} selected={active === v.id}
-                        dropSide={drag?.via === 'tab' && drag.viewId === v.id ? drag.side : null}
-                        onActivate={(id) => { if (dragged()) return; setWs((w) => ({ ...w, active: id })) }}
-                        onClose={(id, i) => setWs((w) => closePane(w, id, i))}
-                        onSplit={(id) => setWs((w) => toggleSplit(w, id))}
-                        onPointerDown={onPointerDown} />
+          <React.Fragment key={v.id}>
+            {drag?.via === 'bar' && drag.insertBeforeId === v.id && <div className="ptab-insert" />}
+            <WorkspaceTab view={v} selected={active === v.id}
+                          dropSide={drag?.via === 'tab' && drag.viewId === v.id ? drag.side : null}
+                          onActivate={(id) => { if (dragged()) return; setWs((w) => ({ ...w, active: id })) }}
+                          onClose={(id, i) => setWs((w) => closePane(w, id, i))}
+                          onSplit={(id) => setWs((w) => toggleSplit(w, id))}
+                          onPointerDown={onPointerDown} />
+          </React.Fragment>
         ))}
+        {drag?.via === 'bar' && !drag.insertBeforeId && <div className="ptab-insert" />}
       </div>
 
       <div className="paper-pane">
@@ -280,6 +322,10 @@ export default function Papers({ focus, slug, onMutate }) {
         <div className="ptab-ghost" style={{ left: drag.x + 12, top: drag.y + 8 }}>
           {drag.tab.type === 'doc' && <IconNote size={13} />}
           {drag.tab.title || drag.tab.key}
+          {drag.via === 'bar' && views.some((v) => v.panes.filter(Boolean).length >= 2
+            && v.panes.some((p) => p?.key === drag.tab.key)) && (
+            <span className="faint"> · ungroup</span>
+          )}
         </div>
       )}
     </div>

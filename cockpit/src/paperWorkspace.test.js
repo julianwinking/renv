@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   LIBRARY, loadWorkspace, openTab, closePane, closeKey, toggleSplit,
-  dropTab, pruneViews, renameDoc, activeView, isSplit,
+  dropTab, undockTab, placeTab, moveView, pruneViews, renameDoc, activeView, isSplit,
 } from './paperWorkspace.js'
 
 const paper = (key, title = key) => ({ type: 'paper', key, title })
@@ -137,6 +137,50 @@ describe('dropTab', () => {
   it('keeps a waiting split when the lone filled chip is dropped on itself', () => {
     const ws = wsOf([paper('a'), null])
     assert.deepEqual(dropTab(ws, 'right', 'a'), ws)
+  })
+})
+
+describe('undockTab / placeTab', () => {
+  it('pulls a chip out of a pair into its own tab after the leftover', () => {
+    const ws = { views: [{ id: 'v0', panes: [paper('a'), paper('b')] }, { id: 'v1', panes: [paper('c')] }], active: 'v0' }
+    const next = undockTab(ws, 'b')
+    assert.equal(next.views.length, 3)
+    assert.deepEqual(next.views[0].panes.map((p) => p.key), ['a'])
+    assert.equal(next.views[1].panes[0].key, 'c')
+    assert.equal(next.views[2].panes[0].key, 'b')
+    assert.equal(next.active, next.views[2].id)
+    assert.equal(isSplit(next.views[0]), false)
+  })
+
+  it('inserts the extracted tab before a given view', () => {
+    const ws = { views: [{ id: 'v0', panes: [paper('a'), paper('b')] }, { id: 'v1', panes: [paper('c')] }], active: 'v0' }
+    const next = undockTab(ws, 'b', 'v0')
+    assert.equal(next.views[0].panes[0].key, 'b')
+    assert.deepEqual(next.views[1].panes.map((p) => p.key), ['a'])
+    assert.equal(next.views[2].panes[0].key, 'c')
+  })
+
+  it('is a no-op on a single tab', () => {
+    const ws = wsOf([paper('a')])
+    assert.deepEqual(undockTab(ws, 'a'), ws)
+  })
+
+  it('placeTab undocks a pair chip and reorders a single', () => {
+    const pair = { views: [{ id: 'v0', panes: [paper('a'), paper('b')] }], active: 'v0' }
+    const pulled = placeTab(pair, 'a')
+    assert.equal(pulled.views.length, 2)
+    assert.equal(pulled.views[0].panes[0].key, 'b')
+    assert.equal(pulled.views[1].panes[0].key, 'a')
+
+    const singles = { views: [{ id: 'v0', panes: [paper('a')] }, { id: 'v1', panes: [paper('b')] }], active: 'v1' }
+    const moved = placeTab(singles, 'b', 'v0')
+    assert.deepEqual(moved.views.map((v) => v.panes[0].key), ['b', 'a'])
+    assert.equal(moved.active, 'v1')
+  })
+
+  it('moveView is a no-op when dropping a view onto itself', () => {
+    const ws = wsOf([paper('a')], [paper('b')])
+    assert.deepEqual(moveView(ws, 'v0', 'v0'), ws)
   })
 })
 

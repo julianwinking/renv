@@ -357,7 +357,7 @@ def cmd_log_list(args):
             mark += f" (answered by #{e['answered_by']})" if e.get("answered_by") else " (open)"
         elif e.get("answers"):
             mark += f" (answers #{e['answers']})"
-        print(f"{e['ts']}  [{e['type']}]{mark} {head}{tail}")
+        print(f"#{e['id']} {e['ts']}  [{e['type']}]{mark} {head}{tail}")
 
 
 def cmd_log_check(args):
@@ -657,11 +657,19 @@ def cmd_extract(args):
     con = db.connect(args.corpus)
     if args.all:
         for key, card in extract.extract_all(con, args.corpus).items():
-            n = len(card) if "skipped" not in card else 0
-            print(f"  {key}: {n} field(s)" + (f"  ({card['skipped']})" if not n else ""))
-    else:
-        card = extract.extract_card(con, args.corpus, args.key)
-        print(f"{args.key}: extracted {len(card)} field(s) — {', '.join(card)}")
+            # extract_all uses {"skipped": reason} only when the source file is
+            # missing. A successful extract can still be empty (no cue hits) —
+            # that dict has no "skipped" key, so do not treat n==0 as skipped.
+            if "skipped" in card:
+                print(f"  {key}: 0 field(s)  ({card['skipped']})")
+            else:
+                extra = f" — {', '.join(card)}" if card else ""
+                print(f"  {key}: {len(card)} field(s){extra}")
+        return
+    if not args.key:
+        sys.exit("! extract needs a paper key or --all")
+    card = extract.extract_card(con, args.corpus, args.key)
+    print(f"{args.key}: extracted {len(card)} field(s) — {', '.join(card)}")
 
 
 def cmd_bib(args):
@@ -786,6 +794,54 @@ def cmd_claim_list(args):
     for c in rows:
         print(f"#{c['id']} {mark.get(c['status'], '?')} [{c['kind']}] {c['text']}  "
               f"({c['evidence_count']} evidence)")
+
+
+def cmd_claim_test(args):
+    """Pre-register: this experiment will test this claim — must run BEFORE the run."""
+    from renv.research import claim
+    con = db.connect(args.corpus)
+    slug = _resolve_project(args.corpus, args.project)[1]
+    try:
+        c = claim.declare_test(con, slug, args.experiment, args.claim_id)
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    print(f"claim #{c['id']} pre-registered on experiment {args.experiment}")
+
+
+def cmd_annotate_add(args):
+    from renv.papers import paper_note
+    con = db.connect(args.corpus)
+    slug = _resolve_project(args.corpus, args.project)[1] if args.project else None
+    try:
+        n = paper_note.add_note(
+            con, args.paper, slug, quote=args.quote, body=args.body or "",
+            page=args.page, color=args.color, kind=args.kind)
+    except (ValueError, KeyError) as exc:
+        sys.exit(f"! {exc}")
+    proj = f"  project={slug}" if slug else ""
+    print(f"pnote #{n['id']} [{n['kind']}] {args.paper}{proj}: "
+          f"“{(n['quote'] or '')[:70]}…”")
+
+
+def cmd_annotate_list(args):
+    from renv.papers import paper_note
+    con = db.connect(args.corpus)
+    if args.project:
+        slug = _resolve_project(args.corpus, args.project)[1]
+        rows = paper_note.list_for_project(con, slug)
+    else:
+        rows = paper_note.list_for_paper(con, args.paper) if args.paper else []
+        if not args.paper:
+            sys.exit("! annotate list needs --project or a paper key")
+    if not rows:
+        print("(no paper notes)")
+        return
+    for n in rows:
+        key = n.get("paper_key") or args.paper
+        body = (n.get("body_md") or "").replace("\n", " ").strip()
+        tail = f"  — {body[:60]}" if body else ""
+        print(f"  #{n['id']} [{n['kind']}/{n['color']}] {key} p.{n['page'] or '-'} "
+              f"“{(n['quote'] or '')[:50]}…”{tail}")
 
 
 def cmd_claim_show(args):
@@ -984,6 +1040,9 @@ def cmd_search(args):
     hits = searchmod.search(con, args.query, project=args.project, limit=args.limit)
     if not hits:
         print("(no matches)")
+        print("  hint: `renv search` is store FTS (titles, cards, paper notes, "
+              "claims, log). For passage retrieval over PDFs use `renv cite` / "
+              "`renv resolve` (or MCP search_corpus).")
         return
     for h in hits:
         proj = f" {h['project']}" if h.get("project") else ""
@@ -1416,6 +1475,29 @@ def main(argv=None):
     cls = pcl.add_parser("show", help="a claim + its evidence")
     cls.add_argument("id", type=int)
     cls.set_defaults(func=cmd_claim_show)
+    clt = pcl.add_parser("test", help="pre-register: experiment tests this claim (before the run)")
+    clt.add_argument("project")
+    clt.add_argument("experiment", help="experiment slug")
+    clt.add_argument("claim_id", type=int)
+    clt.set_defaults(func=cmd_claim_test)
+
+    pann = sub.add_parser("annotate", help="anchor a highlight on a paper (joins the project graph)")
+    pann_sub = pann.add_subparsers(dest="annotate_cmd", required=True)
+    ana = pann_sub.add_parser("add", help="add a span-anchored paper note")
+    ana.add_argument("paper", help="paper key")
+    ana.add_argument("--project", default=None,
+                     help="project slug — the note appears on that project's graph")
+    ana.add_argument("--quote", required=True, help="the highlighted span (required anchor)")
+    ana.add_argument("--body", default="", help="your marginalia")
+    ana.add_argument("--kind", default="note", choices=["note", "question", "hypothesis"])
+    ana.add_argument("--color", default="amber",
+                     choices=["amber", "teal", "violet", "rose", "blue", "slate"])
+    ana.add_argument("--page", type=int, default=None)
+    ana.set_defaults(func=cmd_annotate_add)
+    anl = pann_sub.add_parser("list", help="list paper notes")
+    anl.add_argument("paper", nargs="?", default=None, help="paper key")
+    anl.add_argument("--project", default=None, help="list every note in this project")
+    anl.set_defaults(func=cmd_annotate_list)
 
     pref = sub.add_parser("refs", help="code↔store cross-references (@renv tags)"
                           ).add_subparsers(dest="refs_cmd", required=True)
@@ -1433,7 +1515,9 @@ def main(argv=None):
     rst.add_argument("--in-place", action="store_true")
     rst.set_defaults(func=cmd_refs_strip)
 
-    psr = sub.add_parser("search", help="full-text search the knowledge base (papers/cards/notes/log/claims)")
+    psr = sub.add_parser(
+        "search",
+        help="full-text search the store (papers/cards/paper notes/log/claims) — not the corpus index")
     psr.add_argument("query")
     psr.add_argument("--project", default=None, help="scope to one project")
     psr.add_argument("--limit", type=int, default=30)

@@ -73,6 +73,20 @@ def test_full_research_loop_via_tools(tmp_path):
     assert _call(tmp_path, "check_invariants", {}) == []
 
 
+def test_annotate_paper_tool(tmp_path):
+    from renv.papers import ingest
+    db.connect(tmp_path).close()
+    _call(tmp_path, "create_project", {"slug": "p"})
+    ingest.add_paper(db.connect(tmp_path), {"title": "ALCE"}, key="gao2023_alce")
+    n = _call(tmp_path, "annotate_paper", {
+        "paper": "gao2023_alce", "project": "p",
+        "quote": "ALCE evaluates citation quality along two axes.",
+        "body": "recall vs precision", "kind": "note",
+    })
+    assert n["kind"] == "note"
+    assert "two axes" in n["quote"]
+
+
 def test_query_tool_is_read_only(tmp_path):
     db.connect(tmp_path).close()
     _call(tmp_path, "create_project", {"slug": "p"})

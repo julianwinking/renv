@@ -25,8 +25,11 @@ function themeExt(dark) {
   return EditorView.theme({
     '&': { height: '100%', fontSize: '13px', backgroundColor: 'transparent', color: 'var(--ink)' },
     '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.55', overflow: 'auto' },
-    '.cm-content': { caretColor: 'var(--accent)', padding: '10px 0 24px' },
-    '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--faint)', border: 'none' },
+    '.cm-content': { caretColor: 'var(--accent)', padding: '8px 12px 24px 4px' },
+    '.cm-gutters': {
+      backgroundColor: 'transparent', color: 'var(--faint)', border: 'none',
+      padding: '0 8px 0 12px',
+    },
     '.cm-activeLine': { backgroundColor: 'var(--accent-soft)' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink)' },
     '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {

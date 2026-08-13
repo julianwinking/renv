@@ -1329,46 +1329,97 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 .gnode-promote:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- write (Overleaf-shaped manuscript) ---------- */
-.tx { position: absolute; inset: 0; display: flex; min-height: 0; background: var(--bg); }
+/* Chrome height matches .paper-tabs (40px). --tx-pad is the shared left
+   inset for pane titles AND root file names, so `text/` sits on the same
+   baseline as the filename / PDF titles and on the same x as `paper.tex`. */
+.tx {
+  --tx-chrome-h: 40px;
+  --tx-pad: 12px;
+  --tx-indent: 12px;
+  --tx-row: 28px;
+  position: absolute; inset: 0; display: flex; min-height: 0; background: var(--bg);
+}
+.tx-chrome {
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+  height: var(--tx-chrome-h); padding: 0 var(--tx-pad);
+  border-bottom: 1px solid var(--line); background: var(--surface);
+  flex-shrink: 0; min-width: 0; overflow: hidden;
+}
+.tx-title {
+  font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.tx-chrome .pv-zoom {
+  margin-left: 2px; padding-left: 8px; border-left: 1px solid var(--line);
+}
+.tx-status { color: var(--faint); font-size: 12px; line-height: 1; flex-shrink: 0; }
+.tx-chrome-actions {
+  margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.tx-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px; padding: 0 11px; border-radius: 6px;
+  font: inherit; font-size: 12.5px; font-weight: 500; line-height: 1;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.tx-tool.primary {
+  background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600;
+}
+.tx-tool.primary:hover { filter: brightness(1.06); }
+.tx-tool.primary:disabled { opacity: 0.45; cursor: default; filter: none; }
+.tx-tool.ghost {
+  background: none; color: var(--muted); border: 1px solid var(--line);
+}
+.tx-tool.ghost:hover { color: var(--ink); border-color: var(--line-strong); }
+.tx-tool.ghost.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.tx-tool.ghost.danger:hover {
+  color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+  background: var(--bad-soft);
+}
+
 .tx-files {
   flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
+  padding: 0; overflow: hidden;
   border-right: 1px solid var(--line); background: var(--surface); position: relative;
 }
-.tx-files-h {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 8px 6px 12px; border-bottom: 1px solid var(--line);
-}
 .tx-files-resize {
-  position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 2;
+  position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2;
 }
 .tx-files-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-.tx-tree { flex: 1; overflow: auto; padding: 6px 0 12px; }
+.tx-tree { flex: 1; overflow: auto; padding: 4px 0 12px; background: var(--bg); }
+.tx-files .muted { padding: var(--tx-pad); }
 .tx-fn {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  background: none; border: 0; color: var(--ink); font: inherit; font-size: 12.5px;
-  text-align: left; padding: 3px 10px; cursor: pointer; border-radius: 0;
+  display: flex; align-items: center; width: 100%; height: var(--tx-row);
+  background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px;
+  line-height: 1; text-align: left; cursor: pointer; position: relative;
+  padding: 0 10px 0 calc(var(--tx-pad) + (var(--d, 0) * var(--tx-indent)));
 }
 .tx-fn:hover { background: var(--surface2); }
 .tx-fn.on { background: var(--accent-soft); color: var(--accent); }
 .tx-fn.gen { color: var(--muted); }
 .tx-dir { font-weight: 500; }
-.tx-chev { width: 10px; color: var(--faint); font-size: 10px; }
+.tx-chev {
+  position: absolute; left: calc(2px + var(--d, 0) * var(--tx-indent)); top: 0; bottom: 0;
+  width: 10px; color: var(--faint); font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.tx-fn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tx-tag {
-  font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--faint); background: var(--surface2); border-radius: 4px; padding: 1px 5px;
-  margin-left: auto;
+  font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.4;
+  color: var(--faint); background: var(--surface2); border-radius: 4px; padding: 2px 5px;
+  flex-shrink: 0;
 }
-.tx-new { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
+.tx-fn .tx-tag { margin-left: auto; }
+.tx-new {
+  display: flex; align-items: center; gap: 6px; height: var(--tx-chrome-h);
+  padding: 0 var(--tx-pad); border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.tx-new .text { width: auto; flex: 1; min-width: 0; height: 26px; padding: 0 8px; font-size: 12.5px; }
+
 .tx-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-.tx-bar {
-  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
-  border-bottom: 1px solid var(--line); background: var(--surface); flex-shrink: 0;
-}
-.tx-path { font-size: 12px; }
-.tx-bar-actions { margin-left: auto; display: flex; gap: 6px; }
 .tx-editor { flex: 1; min-height: 0; position: relative; background: var(--bg); }
 .tx-host, .tx-host .cm-editor { height: 100%; }
-.tx-err { padding: 6px 12px; color: var(--bad); background: var(--bad-soft); font-size: 12px; }
+.tx-err { padding: 6px var(--tx-pad); color: var(--bad); background: var(--bad-soft); font-size: 12px; }
 .tx-span { border-radius: 2px; cursor: pointer; }
 .tx-span-full { background: var(--ok-soft); outline: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
 .tx-span-partial { background: var(--warn-soft); }
@@ -1376,19 +1427,30 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 .tx-span-missing { background: color-mix(in srgb, var(--warn) 18%, transparent);
   outline: 1px dashed var(--warn); }
 .tx-cite-plain { background: var(--surface2); outline: 1px dashed var(--faint); }
+
 .tx-palette {
-  flex: 0 0 210px; border-top: 1px solid var(--line); background: var(--surface);
+  flex: 0 0 220px; border-top: 1px solid var(--line); background: var(--surface);
   display: flex; flex-direction: column; min-height: 0;
 }
-.tx-ptabs { display: flex; border-bottom: 1px solid var(--line); }
-.tx-ptab {
-  background: none; border: 0; border-bottom: 2px solid transparent;
-  color: var(--muted); padding: 7px 12px; font: inherit; cursor: pointer;
+.tx-ptabs {
+  display: flex; align-items: stretch; height: 36px; padding: 0;
+  border-bottom: 1px solid var(--line); flex-shrink: 0;
 }
+.tx-ptab {
+  background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  color: var(--muted); padding: 0 12px; font: inherit; font-weight: 500; cursor: pointer;
+}
+.tx-ptab:hover { color: var(--ink); }
 .tx-ptab.on { color: var(--ink); border-bottom-color: var(--accent); }
-.tx-ppane { flex: 1; overflow: auto; padding: 10px 12px 16px; display: grid; gap: 8px; }
-.tx-cite-row { display: flex; gap: 8px; }
-.tx-cite-row .text { flex: 1; }
+.tx-ppane { flex: 1; overflow: auto; padding: 10px 12px 16px; display: grid; gap: 8px; align-content: start; }
+.tx-ppane .inline-edit { width: 100%; min-height: 52px; resize: vertical; field-sizing: fixed; }
+.tx-help { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.tx-kicker {
+  font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--faint); margin: 4px 0 0;
+}
+.tx-cite-row { display: flex; gap: 8px; align-items: center; }
+.tx-cite-row .text { flex: 1; width: auto; height: 26px; padding: 0 30px 0 10px; font-size: 12.5px; }
 .tx-hit {
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
   background: var(--bg);
@@ -1406,21 +1468,18 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
   display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px;
   padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
 }
+
 .tx-right {
-  flex: 0 0 auto; min-width: 240px; position: relative;
+  flex: 0 0 auto; min-width: 280px; position: relative;
   border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0;
   background: var(--surface);
 }
 .tx-pdf-resize {
-  position: absolute; top: 0; left: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 2;
+  position: absolute; top: 0; left: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2;
 }
 .tx-pdf-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 .tx-pdf { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.tx-pdf-bar {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  border-bottom: 1px solid var(--line); flex-shrink: 0;
-}
-.tx-pdf-body { flex: 1; min-height: 0; position: relative; overflow: auto; }
+.tx-pdf-body { flex: 1; min-height: 0; position: relative; overflow: auto; background: var(--bg); }
 .tx-pdf-msg { padding: 24px 18px; color: var(--muted); max-width: 36em; }
 .tx-pdf-msg b { color: var(--ink); display: block; margin-bottom: 6px; }
 .tx-log {

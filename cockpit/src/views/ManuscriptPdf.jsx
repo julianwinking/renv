@@ -4,11 +4,10 @@ import React, { useEffect, useRef, useState } from 'react'
 import { writePdfUrl } from '../api.js'
 import { findSpanCiteMarkers, paintRects } from '../pdfhl.js'
 
-export default function ManuscriptPdf({ slug, bust, hasPdf, citations, onMarker, status, log, errors, engine }) {
+export default function ManuscriptPdf({ slug, bust, hasPdf, citations, onMarker, status, log, errors, engine, onWeave, onCompile }) {
   const [ready, setReady] = useState(false)
   const [err, setErr] = useState('')
   const [scale, setScale] = useState(1.15)
-  const [numPages, setNumPages] = useState(0)
   const [logOpen, setLogOpen] = useState(false)
   const docScrollRef = useRef(null)
   const containerRef = useRef(null)
@@ -35,7 +34,6 @@ export default function ManuscriptPdf({ slug, bust, hasPdf, citations, onMarker,
         if (cancelled) { doc.destroy(); return }
         pdfjsRef.current = pdfjs
         pdfRef.current = doc
-        setNumPages(doc.numPages)
         await renderPages(1.15)
         if (!cancelled) setReady(true)
       } catch (e) {
@@ -119,16 +117,28 @@ export default function ManuscriptPdf({ slug, bust, hasPdf, citations, onMarker,
 
   return (
     <div className="tx-pdf">
-      <div className="tx-pdf-bar">
-        <span className="eyebrow" style={{ margin: 0 }}>PDF</span>
-        {engine && <span className="mono faint" style={{ fontSize: 10.5 }}>{engine}</span>}
-        <div className="pv-zoom" style={{ marginLeft: 'auto' }}>
-          <button className="pv-tbtn" onClick={() => setScale((s) => Math.max(0.6, s - 0.1))} disabled={!ready}>−</button>
-          <span className="pv-zoom-n">{Math.round(scale * 100)}%</span>
-          <button className="pv-tbtn" onClick={() => setScale((s) => Math.min(2.4, s + 0.1))} disabled={!ready}>+</button>
+      <div className="tx-chrome">
+        <span className="tx-title">PDF</span>
+        <div className="tx-chrome-actions">
+          {onWeave && (
+            <button className="tx-tool ghost" onClick={onWeave}
+                    title="Regenerate results_table.tex and references.bib from the store">Weave</button>
+          )}
+          {onCompile && (
+            <button className="tx-tool primary" onClick={onCompile} disabled={compiling}
+                    title="⌘/Ctrl+Enter — weave, then compile">
+              {compiling ? 'Compiling…' : 'Recompile'}
+            </button>
+          )}
+          {ready && (
+            <span className="pv-zoom" title={engine || undefined}>
+              <button className="pv-tbtn" onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}>−</button>
+              <span className="pv-zoom-n">{Math.round(scale * 100)}%</span>
+              <button className="pv-tbtn" onClick={() => setScale((s) => Math.min(2.4, s + 0.1))}>+</button>
+            </span>
+          )}
+          <button className={`tx-tool ghost ${logOpen ? 'on' : ''}`} onClick={() => setLogOpen((v) => !v)}>Log</button>
         </div>
-        {numPages > 0 && <span className="faint" style={{ fontSize: 11.5 }}>{numPages}p</span>}
-        <button className={`pv-tbtn ${logOpen ? 'on' : ''}`} onClick={() => setLogOpen((v) => !v)}>Log</button>
       </div>
       <div className="tx-pdf-body">
         {compiling && <div className="tx-pdf-msg">Compiling…</div>}
@@ -138,7 +148,7 @@ export default function ManuscriptPdf({ slug, bust, hasPdf, citations, onMarker,
             <p className="muted">
               {status === 'no-engine'
                 ? 'No LaTeX engine on PATH (latexmk, tectonic, or pdflatex). The editor, weave, and \\spancite still work — install TeX Live or tectonic to preview.'
-                : 'Click Recompile to weave numbers from the store and build the PDF.'}
+                : `Click Recompile to weave numbers from the store and build the PDF.${engine ? ` Engine: ${engine}.` : ''}`}
             </p>
           </div>
         )}

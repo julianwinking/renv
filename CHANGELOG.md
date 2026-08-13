@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/); versions tag `vX.Y.Z`.
   as `renv cite`; results tables stay woven from metric rows. Compile uses a
   local TeX engine when present (latexmk, tectonic, or pdflatex) — WASM TeX is
   not bundled (lean core). New CLI `renv compile` and MCP `compile_manuscript`.
+  Pane chrome is a shared 40px bar (same as Papers tabs) so `text/`, the
+  filename, and PDF sit on one baseline; the file tree is not a nav `<aside>`
+  (that padding was dropping the `text/` title off the filename). Weave/Recompile
+  live on the PDF pane.
 - web.py API routing is a dispatch table (AGENTS.md #10).
 - Property-based tests (hypothesis) for the reference-list and BibTeX parsers.
 - Architecture decisions #10 (clients split on touch) and #11 (no typing

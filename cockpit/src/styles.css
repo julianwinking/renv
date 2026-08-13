@@ -976,13 +976,50 @@ textarea.fileedit {
   overflow-x: auto; overflow-y: hidden;
 }
 .ptab {
-  display: flex; align-items: center; gap: 7px; max-width: 220px; flex: 0 0 auto;
-  padding: 0 12px; border: 0; background: none; cursor: pointer; font: inherit;
+  position: relative;
+  display: flex; align-items: center; gap: 7px; max-width: 260px; flex: 0 0 auto;
+  padding: 0 8px; border: 0; background: none; cursor: pointer; font: inherit;
   color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
   font-weight: 500;   /* constant weight — active is shown by color + underline, so switching never reflows the tab */
 }
 .ptab:hover { color: var(--ink); background: var(--surface2); }
 .ptab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.ptab-pair {
+  max-width: 460px; padding: 0 4px 0 2px; gap: 0;
+  background: var(--surface2); border-radius: 8px 8px 0 0;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.ptab-pair:hover { background: var(--surface2); }
+.ptab-pair.active {
+  border-bottom-color: var(--claim);
+  background: color-mix(in srgb, var(--claim) 10%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--claim) 35%, var(--line));
+}
+.ptab.drop-left::before, .ptab.drop-right::before {
+  content: ""; position: absolute; top: 4px; bottom: 4px; width: 50%;
+  background: var(--accent-soft); border: 1px dashed var(--accent);
+  border-radius: 6px; pointer-events: none;
+}
+.ptab.drop-left::before { left: 2px; }
+.ptab.drop-right::before { right: 2px; }
+.ptab-chip {
+  display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 170px;
+  height: 100%; padding: 0 6px; cursor: grab; touch-action: none;
+  -webkit-user-drag: none; user-select: none; border-radius: 6px;
+}
+.ptab-chip + .ptab-chip { border-left: 1px solid var(--line-strong); }
+.ptab-chip.drop-hot, .ptab-chip-empty.drop-hot {
+  background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+.ptab-chip-empty { color: var(--faint); font-style: italic; max-width: 110px; cursor: default; }
+.ptab-insert {
+  flex: 0 0 0; width: 0; position: relative; pointer-events: none; z-index: 2;
+}
+.ptab-insert::before {
+  content: ""; position: absolute; top: 6px; bottom: 6px; left: -1.5px;
+  width: 3px; border-radius: 2px; background: var(--accent);
+}
 .ptab-ico { color: var(--faint); font-size: 12px; }
 .ptab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ptab-count {
@@ -990,7 +1027,10 @@ textarea.fileedit {
   background: var(--surface2); border-radius: 7px; padding: 0 6px;
 }
 .ptab.active .ptab-count { color: var(--accent); }
-.ptab-x { color: var(--faint); font-size: 11px; padding: 2px; border-radius: 4px; }
+.ptab-x {
+  border: 0; background: none; color: var(--faint); font: inherit; font-size: 11px;
+  padding: 2px; border-radius: 4px; cursor: pointer; line-height: 1; flex-shrink: 0;
+}
 .ptab-x:hover { background: var(--line-strong); color: var(--ink); }
 
 .paper-pane { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: row; }
@@ -1149,24 +1189,44 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 
 /* ---------- split panes on the paper page ---------- */
 .pp-pane { position: relative; min-width: 0; height: 100%; overflow: hidden; }
+.pp-pane:has(.pp-empty) { min-width: 220px; }
 .pp-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); position: relative; }
 .pp-divider:hover { background: var(--accent); }
-.ptab.split { border-bottom-color: var(--claim); }
-.ptab[draggable] { cursor: grab; }
-/* drag a tab over the pane → drop left to open, right to split */
-.pp-dz-wrap { position: absolute; inset: 0; z-index: 30; display: flex; }
+.pp-empty {
+  position: absolute; inset: 16px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; color: var(--muted);
+  background: var(--surface2); border: 2px dashed var(--line-strong); border-radius: 12px;
+  text-align: center; padding: 20px;
+}
+.pp-empty.hot { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pp-dz-wrap { position: absolute; inset: 0; z-index: 30; display: flex; pointer-events: none; }
+.pp-dz-gap { flex: 0 0 5px; }
 .pp-dz {
-  flex: 1; display: grid; place-items: center;
-  background: color-mix(in srgb, var(--accent) 5%, transparent); transition: background 0.12s;
+  flex: 1; display: grid; place-items: center; min-width: 0;
+  background: color-mix(in srgb, var(--accent) 6%, transparent); transition: background 0.12s;
 }
 .pp-dz.right { border-left: 1px dashed var(--accent); }
-.pp-dz:hover { background: var(--accent-soft); }
+.pp-dz.hot { background: var(--accent-soft); }
 .pp-dz span {
   color: var(--accent); font-size: 13px; font-weight: 600; background: var(--surface);
-  padding: 7px 14px; border-radius: 9px; box-shadow: var(--shadow); pointer-events: none;
+  padding: 7px 14px; border-radius: 9px; box-shadow: var(--shadow);
 }
-.ptab-split { display: inline-grid; place-items: center; color: var(--faint); padding: 1px; border-radius: 4px; }
+.ptab-split {
+  display: inline-grid; place-items: center; color: var(--muted);
+  width: 28px; height: 28px; padding: 0; margin-right: 2px;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 6px;
+  cursor: pointer; flex-shrink: 0;
+}
 .ptab-split:hover { background: var(--line-strong); color: var(--ink); }
+.ptab-split.on { color: var(--accent); background: var(--accent-soft); }
+.ptab-ghost {
+  position: fixed; z-index: 80; pointer-events: none;
+  display: flex; align-items: center; gap: 6px; max-width: 220px;
+  padding: 6px 12px; border-radius: 8px; background: var(--surface); color: var(--ink);
+  box-shadow: var(--shadow); border: 1px solid var(--line);
+  font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.ptab-dragging, body.ptab-dragging * { cursor: grabbing !important; user-select: none !important; }
 
 /* ---------- note document (markdown editor) ---------- */
 .nd { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--surface); }

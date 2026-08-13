@@ -46,5 +46,7 @@ jobs:
           cache-dependency-path: cockpit/package-lock.json
       - name: Install
         run: npm ci
+      - name: Workspace unit tests
+        run: npm test
       - name: Build production bundle
         run: npm run build

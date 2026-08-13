@@ -55,6 +55,48 @@ def test_abstract_number_requires_woven_table(tmp_path):
                for f in findings)
 
 
+def test_comment_only_table_is_stale(tmp_path):
+    """A comment containing the metric string is not a cell and not freshness."""
+    con, root = _project_with_run(tmp_path, recall=0.80)
+    (root / "text" / "results_table.tex").write_text("% GENERATED\n% 0.800\n")
+    _write_paper(root, abstract="We reach recall of 0.800 on the benchmark.")
+    ids = {f["check_id"] for f in review.run_automated(con, str(tmp_path), "p")}
+    assert "results-table-fresh" in ids
+    assert "abs-claims-match-metrics" in ids
+
+
+def test_table_trailing_comment_is_not_a_cell(tmp_path):
+    con, root = _project_with_run(tmp_path, recall=0.80)
+    table = root / "text" / "results_table.tex"
+    table.write_text(table.read_text().replace("0.800", "0.800 % 0.990", 1))
+    _write_paper(root, abstract="We reach accuracy 0.990.")
+    findings = review.run_automated(con, str(tmp_path), "p")
+    assert any(f["check_id"] == "abs-claims-match-metrics" and "0.990" in f["issue"]
+               for f in findings)
+
+
+def test_experiment_slug_is_not_a_table_cell(tmp_path):
+    con, root = _project_with_run(tmp_path, recall=0.80)
+    (root / "text" / "results_table.tex").write_text(
+        "% GENERATED\n\\begin{tabular}{lc}\n"
+        "sota-0.990 & 0.800 \\\\\n\\end{tabular}\n")
+    _write_paper(root, abstract="We reach accuracy 0.990.")
+    findings = review.run_automated(con, str(tmp_path), "p")
+    assert any(f["check_id"] == "abs-claims-match-metrics" and "0.990" in f["issue"]
+               for f in findings)
+
+
+def test_input_sidecar_is_scanned(tmp_path):
+    con, root = _project_with_run(tmp_path, recall=0.80)
+    (root / "text" / "abs.tex").write_text("We reach accuracy 0.990.\\cite{invented}\n")
+    (root / "text" / "paper.tex").write_text(
+        "\\begin{abstract}\\input{abs}\\end{abstract}\n"
+        "\\input{results_table}\n\\bibliography{references}\n")
+    ids = {f["check_id"] for f in review.run_automated(con, str(tmp_path), "p")}
+    assert "abs-claims-match-metrics" in ids
+    assert "bib-known-paper" in ids
+
+
 def test_unverified_spancite_is_flagged(tmp_path):
     con, root = _project_with_run(tmp_path)
     # a citation row where the cite only partially supports the claim
@@ -89,6 +131,14 @@ def test_cite_key_without_paper_row_is_flagged(tmp_path):
     ids = {f["check_id"] for f in findings if "smith2024" in f["issue"]}
     assert "bib-known-paper" in ids
     assert "bib-coverage" not in ids
+
+
+def test_spancite_unknown_key_is_bib_known_paper(tmp_path):
+    con, root = _project_with_run(tmp_path)
+    _write_paper(root, body="A claim.\\spancite{nobody}{1}{2}{q}")
+    findings = review.run_automated(con, str(tmp_path), "p")
+    assert any(f["check_id"] == "bib-known-paper" and "nobody" in f["issue"]
+               for f in findings)
 
 
 def test_review_writes_report(tmp_path):

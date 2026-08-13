@@ -333,7 +333,8 @@ def test_lint_result_without_run_is_non_waivable(tmp_path):
 def test_lint_cited_paper_no_text(tmp_path):
     con = _proj(tmp_path)
     _cite(con)  # add_paper without sha256
-    assert [f for f in lint.run(con, "p")["open"] if f["rule"] == "cited-paper-no-text"]
+    hits = [f for f in lint.run(con, "p")["open"] if f["rule"] == "cited-paper-no-text"]
+    assert hits and hits[0]["severity"] == "medium"
     con.execute("UPDATE paper SET sha256='abc' WHERE key='t2024'")
     con.commit()
     assert not [f for f in lint.run(con, "p")["open"] if f["rule"] == "cited-paper-no-text"]
@@ -347,7 +348,11 @@ def test_lint_run_not_reproducible_typed_remote(tmp_path):
         remote="ssh://cluster/scratch/runs/x")
     c = claim.add_claim(con, "p", "cluster result", kind="contribution")
     claim.link_evidence(con, c["id"], run_id=run["id"], stance="supports")
-    assert [f for f in lint.run(con, "p")["open"] if f["rule"] == "run-not-reproducible"]
+    hits = [f for f in lint.run(con, "p")["open"] if f["rule"] == "run-not-reproducible"]
+    assert hits and hits[0]["severity"] == "medium"
+    from renv.research import finding as findmod
+    findmod.adjudicate(con, hits[0]["id"], "reject", "cluster ingest is enough here")
+    assert not [f for f in lint.run(con, "p")["open"] if f["rule"] == "run-not-reproducible"]
 
 
 def test_lint_local_degraded_run_is_not_run_not_reproducible(tmp_path):
@@ -373,7 +378,8 @@ def test_lint_table_latest_not_evidential(tmp_path):
     c = claim.add_claim(con, "p", "old run", kind="contribution")
     linked = claim.link_evidence(con, c["id"], run_id=run1["id"], stance="supports",
                                  grade="confirmatory")
-    assert [f for f in lint.run(con, "p")["open"] if f["rule"] == "table-latest-not-evidential"]
+    hits = [f for f in lint.run(con, "p")["open"] if f["rule"] == "table-latest-not-evidential"]
+    assert hits and hits[0]["severity"] == "medium"
     claim.retract_evidence(con, linked["evidence"][0]["id"], "superseded by later run")
     claim.link_evidence(con, c["id"], run_id=run2["id"], stance="supports",
                         grade="confirmatory")

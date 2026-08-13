@@ -11,8 +11,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/); versions tag `vX.Y.Z`.
   unknown cite keys, §0 result-without-run, and none-verdict "support" cannot
   be rejected; a prior reject is reopened rather than duplicated. Coincidence
   unmatched numbers stay waivable.
-- Prose numbers must match a `results_table.tex` cell, not merely a metric in
-  the DB (so skipping `renv weave` no longer lets an abstract number pass).
+- Prose numbers must match a `results_table.tex` *tabular cell*, not a
+  comment, slug, or a metric that only lives in the DB. `\\input` sidecars
+  are scanned; `results_table` itself is the allowlist, not prose.
 - `bib-known-paper`: every `\cite` / `\spancite` key must exist as a paper row
   (HIGH, non-waivable). `bib-coverage` still flags keys missing from the bib.
 - Graph lints (medium, waivable): cited paper with no PDF text; typed remote

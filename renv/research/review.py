@@ -59,6 +59,7 @@ _SPANCITE = re.compile(r"\\spancite\{([^}]*)\}\{(\d+)\}\{(\d+)\}")
 _CITE = re.compile(r"\\cite[tp]?\{([^}]*)\}")
 _BIBKEY = re.compile(r"@\w+\{([^,]+),")
 _ABSTRACT = re.compile(r"\\begin\{abstract\}(.*?)\\end\{abstract\}", re.S)
+_INPUT = re.compile(r"\\(?:input|include)\{([^}]+)\}")
 
 
 def _finding(check, issue, *, location=None, verified=True):
@@ -83,27 +84,57 @@ def _cited_keys(tex: str) -> set[str]:
     return keys
 
 
+def _expand_tex(project_root, tex: str, *, _seen: set | None = None) -> str:
+    """Inline \\input/\\include except results_table (the number allowlist, not prose)."""
+    seen = _seen if _seen is not None else set()
+    text_dir = Path(project_root) / "text"
+
+    def repl(m):
+        name = m.group(1).strip()
+        stem = Path(name).stem
+        if stem == "results_table":
+            return " "
+        path = text_dir / (name if name.endswith(".tex") else f"{name}.tex")
+        key = str(path)
+        if key in seen or not path.is_file():
+            return " "
+        seen.add(key)
+        return _expand_tex(project_root, path.read_text(), _seen=seen)
+
+    return _INPUT.sub(repl, tex)
+
+
+def _tabular_numeric_cells(text: str) -> list[str]:
+    """Numeric tabular cells only — not comments, slugs, or glue dimensions."""
+    cells = []
+    for ln in text.splitlines():
+        ln = ln.split("%", 1)[0]
+        for raw in re.split(r"\\\\|&", ln):
+            tok = raw.strip()
+            if _NUM.fullmatch(tok):
+                cells.append(tok)
+    return cells
+
+
 # --- automated checks --------------------------------------------------------
 def _table_values(project_root) -> list[float]:
-    """Numeric cells from results_table.tex (comment lines are not cells)."""
     table = Path(project_root) / "text" / "results_table.tex"
     if not table.exists():
         return []
-    body = "\n".join(
-        ln for ln in table.read_text().splitlines() if not ln.lstrip().startswith("%"))
-    return [_num(t) for t in _NUM.findall(body)]
+    return [_num(t) for t in _tabular_numeric_cells(table.read_text())]
 
 
 def _check_abstract_numbers(tex, project_root):
     """Flag decimal/percent numbers in the prose that match no woven table cell.
 
-    Scans the WHOLE manuscript (not just the abstract) so a fabricated number
-    anywhere is caught; citation/ref args are stripped first to avoid false hits.
-    Matching is value-or-×100 (a 0.82 cell matches "0.82" or "82%"). This is a
-    coincidence check against the table, not metric-name identity — a leftover
-    (e.g. a p-value) stays HIGH and rejectable.
+    Scans the manuscript (not just the abstract). Callers must already have
+    inlined \\input/\\include except results_table so a fabricated number
+    cannot hide in a sidecar. Citation/ref args are stripped first. Matching
+    is value-or-×100 (a 0.82 cell matches "0.82" or "82%"). This is a
+    coincidence check against table *cells*, not metric-name identity — a
+    leftover (e.g. a p-value) stays HIGH and rejectable.
     """
-    body = re.sub(r"\\(spancite|cite[tp]?|ref|input|bibliography)\{[^}]*\}", " ", tex)
+    body = re.sub(r"\\(spancite|cite[tp]?|ref|input|include|bibliography)\{[^}]*\}", " ", tex)
     values = _table_values(project_root)
     out = []
     for tok in sorted(set(_NUM.findall(body))):
@@ -157,10 +188,11 @@ def _check_results_table_fresh(con, project, project_root):
         return [_finding(_by_id("results-table-fresh"),
                          "results_table.tex missing — run `renv weave`")]
     text = table.read_text()
+    cells = set(_tabular_numeric_cells(text))
     out = []
     for r in experiment.list_experiments(con, project):
         for v in (r["metrics"] or {}).values():
-            if isinstance(v, float) and f"{v:.3f}" not in text:
+            if isinstance(v, float) and f"{v:.3f}" not in cells:
                 out.append(_finding(_by_id("results-table-fresh"),
                                     f"metric {v:.3f} ({r['slug']}) not in results_table.tex — stale; run `renv weave`"))
     return out
@@ -188,7 +220,7 @@ def run_automated(con: sqlite3.Connection, root, project: str) -> list[dict]:
     if not paper.exists():
         return [_finding(_by_id("results-table-fresh"),
                          "no text/paper.tex — run `renv draft`")]
-    tex = paper.read_text()
+    tex = _expand_tex(proot, paper.read_text())
     return (_check_abstract_numbers(tex, proot)
             + _check_spancite_support(con, project, tex)
             + _check_bib_coverage(proot, tex)

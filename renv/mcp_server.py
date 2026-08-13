@@ -299,11 +299,14 @@ def h_get_card(root, a):
 def h_review(root, a):
     from renv.research import review
     con = _conn(root)
-    res = review.review(con, root, a["project"])
+    lint_res = None
     if a.get("strict"):
         from renv.research import lint
+        lint_res = lint.run(con, a["project"])
+    res = review.review(con, root, a["project"])
+    if lint_res is not None:
         res = dict(res)
-        res["lint"] = lint.run(con, a["project"])
+        res["lint"] = lint_res
     return res
 
 

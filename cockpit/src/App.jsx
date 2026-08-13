@@ -399,7 +399,7 @@ export default function App() {
           </button>
         </div>
 
-        <div className={`content ${view === 'graph' || view === 'papers' || view === 'write' ? 'full' : ''}`}>
+        <div className={`content ${view === 'graph' || view === 'papers' || view === 'write' || view === 'instructions' || view === 'templates' ? 'full' : ''}`}>
           <ErrorBoundary key={view + '|' + slug}>
           {!slug && <div className="loading">no project selected</div>}
           {slug && view === 'overview' && <Overview slug={slug} project={project} defs={defs} counts={counts} />}
@@ -411,8 +411,8 @@ export default function App() {
           {slug && view === 'claims' && <Claims slug={slug} focus={focus} />}
           {slug && view === 'findings' && <Findings slug={slug} />}
           {slug && view === 'log' && <Timeline slug={slug} focus={focus} />}
-          {slug && view === 'instructions' && <Instructions slug={slug} />}
-          {view === 'templates' && <Templates slug={slug} />}
+          {slug && view === 'instructions' && <Instructions slug={slug} focus={focus} />}
+          {view === 'templates' && <Templates slug={slug} focus={focus} />}
           {slug && view === 'settings' && <Settings slug={slug} project={project} onMutate={loadOverview} />}
           {slug && view === 'conferences' && <Conferences slug={slug} />}
           </ErrorBoundary>

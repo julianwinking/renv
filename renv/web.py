@@ -509,6 +509,17 @@ _CONFIG_FILES = {
 _CONFIG_MAX_BYTES = 512 * 1024
 
 
+def _config_rel_path(scope: str, name: str, project: str | None = None) -> str:
+    """Repo-relative path — the tree in the cockpit is this layout, not tabs."""
+    if scope == "env":
+        return name
+    if scope == "template":
+        return f"templates/project/{name}"
+    if scope == "writing":
+        return f"templates/writing/{name}"
+    return f"projects/{project}/{name}"
+
+
 def _config_path(root, con, scope, name, project=None) -> Path:
     if name not in (_CONFIG_FILES.get(scope) or {}):
         raise ValueError(f"not an editable file: {scope}/{name}")
@@ -532,6 +543,7 @@ def _config_listing(root, con, project=None):
             p = _config_path(root, con, scope, name, project)
             out.append({"scope": scope, "name": name, "description": desc,
                         "project": project if scope == "project" else None,
+                        "path": _config_rel_path(scope, name, project),
                         "exists": p.exists(),
                         "size": p.stat().st_size if p.exists() else 0})
     return out

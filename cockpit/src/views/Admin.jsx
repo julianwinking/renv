@@ -4,19 +4,22 @@
 // start. What is deliberately NOT here: CLI/MCP tool prompts (they are code;
 // their designed control point IS AGENTS.md) and the review rubric (hardcoded
 // in review.py today — shown read-only until it moves to data).
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   getConfigFiles, getConfigFile, saveConfigFile, getMetricDefs, defineMetric,
   saveProjectSettings, getRubric, getRemotes, addRemote,
 } from '../api.js'
+import { FileTree, filesToTree } from '../FileTree.jsx'
+import { navigate, routePath } from '../nav.js'
 import { asArray, Stamp, Section, Empty, Mono } from '../ui.jsx'
 
-function FileEditor({ scopes, slug, banner }) {
+function FileEditor({ scopes, slug, view, focus, banner, rootLabel, strip }) {
   const [files, setFiles] = useState(null)
-  const [sel, setSel] = useState(null)          // {scope, name, project}
+  const [sel, setSel] = useState(null)          // listing row
   const [content, setContent] = useState('')
   const [dirty, setDirty] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [treeW, setTreeW] = useState(() => Number(localStorage.getItem('renv-cfg-tree')) || 220)
 
   useEffect(() => {
     let live = true
@@ -24,10 +27,17 @@ function FileEditor({ scopes, slug, banner }) {
       if (!live) return
       const mine = asArray(all).filter((f) => scopes.includes(f.scope))
       setFiles(mine)
-      setSel((cur) => cur || mine[0] || null)
+      const want = focus && mine.find((f) => f.path === focus || f.name === focus)
+      setSel((cur) => {
+        if (want) return want
+        if (cur && mine.some((f) => f.path === cur.path)) {
+          return mine.find((f) => f.path === cur.path) || cur
+        }
+        return mine[0] || null
+      })
     })
     return () => { live = false }
-  }, [slug, scopes])
+  }, [slug, scopes, focus])
 
   useEffect(() => {
     if (!sel) return
@@ -38,81 +48,112 @@ function FileEditor({ scopes, slug, banner }) {
     return () => { live = false }
   }, [sel])
 
-  const save = async () => {
-    const r = await saveConfigFile(sel.scope, sel.name, content, sel.project)
+  const tree = useMemo(() => filesToTree(files || [], { strip }), [files, strip])
+
+  const save = async (row = sel, text = content) => {
+    if (!row) return
+    const r = await saveConfigFile(row.scope, row.name, text, row.project)
     if (r.error) { setMsg({ bad: true, text: r.error }); return }
     setDirty(false)
     setMsg({ text: `saved to ${r.saved}` })
   }
 
+  const openFile = (row) => {
+    if (!row || (sel && row.path === sel.path)) return
+    if (dirty && sel) save(sel, content)
+    setSel(row)
+    if (slug && view) navigate(routePath(slug, view, row.path))
+  }
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault(); save()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sel, content, dirty])
+
+  const startTreeResize = (e) => {
+    e.preventDefault()
+    const x0 = e.clientX, w0 = treeW
+    let w = w0
+    const move = (ev) => { w = Math.min(360, Math.max(140, w0 + ev.clientX - x0)); setTreeW(w) }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      localStorage.setItem('renv-cfg-tree', String(w))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
   if (!files) return <div className="loading">reading files…</div>
 
   return (
-    <>
-      <div className="filetabs">
-        {files.map((f) => (
-          <button
-            key={f.scope + f.name}
-            className={`btn ghost ${sel && sel.scope === f.scope && sel.name === f.name ? 'active-tab' : ''}`}
-            onClick={() => setSel(f)}
-          >
-            <span className="mono">
-              {f.scope === 'project' ? `${f.project}/` : f.scope === 'template' ? 'template/'
-                : f.scope === 'writing' ? 'writing/' : ''}{f.name}
-            </span>
-          </button>
-        ))}
+    <div className="tx">
+      <div className="tx-files" style={{ width: treeW }}>
+        <div className="tx-chrome">
+          <span className="tx-title" title={banner}>{rootLabel}</span>
+        </div>
+        <FileTree tree={tree} active={sel?.path}
+                  onOpen={(n) => { if (n.kind === 'file' && n.file) openFile(n.file) }} />
+        <div className="tx-files-resize" onMouseDown={startTreeResize} />
       </div>
-      {sel && (
-        <Section title={sel.name} aside={dirty ? 'Unsaved changes' : 'Saved'}>
-          <div style={{ padding: '0 16px 6px' }} className="muted">
-            {files.find((f) => f.scope === sel.scope && f.name === sel.name)?.description} {banner}
-          </div>
-          <div style={{ padding: '6px 16px 14px' }}>
-            <textarea
-              className="fileedit"
-              value={content}
-              onChange={(e) => { setContent(e.target.value); setDirty(true) }}
-              spellCheck={false}
-            />
-            {msg && <div style={{ color: msg.bad ? 'var(--bad)' : 'var(--ok)', marginTop: 6, fontSize: 12 }} className="mono">{msg.text}</div>}
-            <div className="gnode-actions">
-              <button className="btn" onClick={save} disabled={!dirty}>Save file</button>
+      <div className="tx-mid">
+        <div className="tx-chrome">
+          <span className="tx-title" title={sel?.path}>{sel?.path || ''}</span>
+          {dirty && <span className="tx-status">unsaved</span>}
+          {sel && (
+            <div className="tx-chrome-actions">
+              <button className="tx-tool primary" onClick={() => save()} disabled={!dirty}>Save</button>
             </div>
-          </div>
-        </Section>
-      )}
-    </>
+          )}
+        </div>
+        {sel && (
+          <>
+            <div className="tx-file-help">
+              {sel.description} {banner}
+            </div>
+            {msg && (
+              <div className={`tx-err ${msg.bad ? '' : 'ok'}`}>{msg.text}</div>
+            )}
+            <div className="tx-fileedit-wrap">
+              <textarea
+                className="fileedit"
+                value={content}
+                onChange={(e) => { setContent(e.target.value); setDirty(true) }}
+                spellCheck={false}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
-export function Instructions({ slug }) {
+const INSTR_SCOPES = ['env', 'project']
+const TMPL_SCOPES = ['writing', 'template']
+
+export function Instructions({ slug, focus }) {
   return (
-    <>
-      <div className="pagehead">
-        <h1>Instructions</h1>
-        <div className="sub">
-          the protocol agents load at session start — saving changes what they do on their next session
-        </div>
-      </div>
-      <FileEditor scopes={['env', 'project']} slug={slug}
-                  banner="Agents (Claude Code via MCP/CLI) read this file — edits take effect next session." />
-    </>
+    <FileEditor
+      scopes={INSTR_SCOPES} slug={slug} view="instructions" focus={focus}
+      rootLabel="."
+      banner="Agents read this at session start — edits take effect next session."
+    />
   )
 }
 
-export function Templates({ slug }) {
+export function Templates({ slug, focus }) {
   return (
-    <>
-      <div className="pagehead">
-        <h1>Templates & writing</h1>
-        <div className="sub">
-          how a paper is built, how a thesis argues, sentences worth reusing — plus the project scaffold
-        </div>
-      </div>
-      <FileEditor scopes={['writing', 'template']} slug={slug}
-                  banner="Agents read the writing guides before drafting text; template files apply to every FUTURE `renv new`." />
-    </>
+    <FileEditor
+      scopes={TMPL_SCOPES} slug={slug} view="templates" focus={focus}
+      rootLabel="templates/" strip="templates"
+      banner="Writing guides apply when drafting; template files apply to every FUTURE `renv new`."
+    />
   )
 }
 

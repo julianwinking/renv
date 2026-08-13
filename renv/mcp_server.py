@@ -296,6 +296,15 @@ def h_get_card(root, a):
     return card
 
 
+def h_annotate_paper(root, a):
+    from renv.papers import paper_note
+    return paper_note.add_note(
+        _conn(root), a["paper"], a.get("project"),
+        quote=a["quote"], body=a.get("body") or "",
+        page=a.get("page"), color=a.get("color") or "amber",
+        kind=a.get("kind") or "note")
+
+
 def h_review(root, a):
     from renv.research import review
     return review.review(_conn(root), root, a["project"])
@@ -575,6 +584,11 @@ TOOLS = [
      "inputSchema": _obj({"key": _S}, ["key"]), "handler": h_paper_usage},
     {"name": "get_card", "description": "A paper's structured card (problem/method/results…); generates if missing.",
      "inputSchema": _obj({"key": _S, "refresh": {"type": "boolean"}}, ["key"]), "handler": h_get_card},
+    {"name": "annotate_paper", "description": "Anchor a highlight/note on a paper span. Project-scoped notes join that project's graph (pnote nodes). Agents use this the way a human highlights in the cockpit PDF.",
+     "inputSchema": _obj({"paper": _S, "quote": _S, "project": _S, "body": _S,
+                          "kind": {"type": "string", "enum": ["note", "question", "hypothesis"]},
+                          "color": _S, "page": _I}, ["paper", "quote"]),
+     "handler": h_annotate_paper},
     {"name": "review", "description": "Run automated per-section paper checks; returns findings + a saved report.",
      "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_review},
     {"name": "rubric", "description": "The review rubric (section → checks); the agentic layer runs the llm checks.",

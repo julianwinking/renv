@@ -44,6 +44,17 @@ def test_search_empty_query(tmp_path):
     assert search.search(con, "   ") == []
 
 
+def test_search_finds_paper_notes(tmp_path):
+    from renv.papers import paper_note
+    con = _seed(tmp_path)
+    paper_note.add_note(
+        con, "gao2023_alce", "p",
+        quote="telephone-effect citation drift in downstream papers",
+        body="highlight: fidelity loss compounds")
+    hits = search.search(con, "fidelity", project="p")
+    assert any(h["kind"] == "pnote" for h in hits)
+
+
 def test_search_handles_special_chars(tmp_path):
     con = _seed(tmp_path)
     # must not raise on FTS operator characters

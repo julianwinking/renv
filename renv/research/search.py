@@ -1,4 +1,4 @@
-"""Knowledge-base search across the store — papers, cards, notes, log, claims.
+"""Knowledge-base search across the store — papers, cards, notes, paper notes, log, claims.
 
 Uses SQLite FTS5 when available (most builds have it), falling back to a LIKE
 scan otherwise. The index is built fresh per query from the current rows (a temp
@@ -30,6 +30,11 @@ def _collect(con: sqlite3.Connection, project: str | None) -> list[tuple]:
         pid = prow["id"]
         for r in con.execute("SELECT id, title, body_md FROM note WHERE project_id=?", (pid,)).fetchall():
             items.append(("note", r["id"], slug, r["title"] or "note", r["body_md"]))
+        for r in con.execute(
+                "SELECT n.id, n.body_md, n.quote, n.kind, p.key FROM paper_note n "
+                "JOIN paper p ON p.id=n.paper_id WHERE n.project_id=?", (pid,)).fetchall():
+            items.append(("pnote", r["id"], slug, f"{r['key']} · {r['kind']}",
+                          " ".join(x for x in (r["quote"], r["body_md"]) if x)))
         for r in con.execute("SELECT id, type, body_md FROM log_entry WHERE project_id=?", (pid,)).fetchall():
             items.append(("log", r["id"], slug, r["type"], r["body_md"]))
         for r in con.execute("SELECT id, kind, text FROM claim WHERE project_id=?", (pid,)).fetchall():

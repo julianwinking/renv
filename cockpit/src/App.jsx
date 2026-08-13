@@ -82,6 +82,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
+    document.documentElement.classList.toggle('dark-theme', theme === 'dark')
     localStorage.setItem('renv-theme', theme)
   }, [theme])
 

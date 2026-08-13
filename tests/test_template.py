@@ -44,6 +44,7 @@ def test_scaffold_from_template_substitutes_and_renames(tmp_path):
     assert not (dest / "gitignore").exists()
     # engine-sourced preamble is written
     assert r"\newcommand{\spancite}" in (dest / "text" / "preamble.tex").read_text()
+    assert "renv-cite://" in (dest / "text" / "preamble.tex").read_text()
 
 
 def test_scaffold_is_idempotent(tmp_path):

@@ -210,3 +210,29 @@ export function selectionAnchor(textLayerEl, pageEl) {
   const last = rects[rects.length - 1]
   return { quote, prefix, suffix, clientX: last?.right ?? 0, clientY: last?.bottom ?? 0 }
 }
+
+// A few words around a click in the PDF.js text layer — SyncTeX fallback.
+export function snippetAtPoint(textLayerEl, clientX, clientY) {
+  const caret = document.caretRangeFromPoint?.(clientX, clientY)
+    || document.caretPositionFromPoint?.(clientX, clientY)
+  let node = caret?.startContainer || caret?.offsetNode
+  if (!node) return ''
+  if (node.nodeType === 3) node = node.parentElement
+  if (!node || !textLayerEl.contains(node)) return ''
+  const span = node.closest?.('span') || node
+  const bits = [
+    span.previousElementSibling?.textContent,
+    span.textContent,
+    span.nextElementSibling?.textContent,
+  ]
+  return bits.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 160)
+}
+
+// renv-cite://key/start/end  or  https://renv.local/cite/key/start/end
+export function parseCiteHref(url) {
+  const s = decodeURIComponent(String(url || ''))
+  let m = s.match(/renv-cite:\/\/([^/\s]+)\/(\d+)\/(\d+)/)
+  if (!m) m = s.match(/\/cite\/([^/\s]+)\/(\d+)\/(\d+)/)
+  if (!m) return null
+  return { source_id: m[1], start: +m[2], end: +m[3] }
+}

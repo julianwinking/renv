@@ -95,8 +95,7 @@ def scaffold_from_template(corpus_root, slug: str, title: str) -> list[Path]:
         target.write_text(data)
         written.append(target)
     # engine-sourced preamble (kept in sync with the \spancite macro)
-    (dest / "text").mkdir(parents=True, exist_ok=True)
-    (dest / "text" / "preamble.tex").write_text(LATEX_PREAMBLE.lstrip("\n"))
+    write_preamble(dest)
     return written
 
 
@@ -124,13 +123,24 @@ def seed_ideation(con: sqlite3.Connection, slug: str) -> dict | None:
 
 
 # --- Pillar 6: manuscript scaffold -------------------------------------------
+def write_preamble(project_root: Path) -> Path:
+    """Refresh text/preamble.tex from the engine-owned LATEX_PREAMBLE.
+
+    Called from scaffold, weave, and compile so existing projects pick up
+    numbered-cite macros without a re-scaffold.
+    """
+    dest = Path(project_root) / "text" / "preamble.tex"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(LATEX_PREAMBLE.lstrip("\n"))
+    return dest
+
+
 def scaffold_paper(project_root: Path, slug: str, title: str) -> list[Path]:
     """Write the text/ skeleton: paper.tex + preamble.tex (idempotent on paper.tex)."""
     proj = Project(project_root)
     proj.ensure()
     written = []
-    preamble = proj.text / "preamble.tex"
-    preamble.write_text(LATEX_PREAMBLE.lstrip("\n"))
+    preamble = write_preamble(proj.root)
     written.append(preamble)
     paper = proj.text / "paper.tex"
     if not paper.exists():
@@ -212,6 +222,7 @@ def weave_bib(con: sqlite3.Connection, project: str, project_root: Path) -> Path
 def weave(con: sqlite3.Connection, project: str, project_root: Path) -> list[Path]:
     from renv.papers import ingest
     project_id(con, project)  # validate the project exists
-    return [weave_results_table(con, project, project_root),
+    return [write_preamble(project_root),
+            weave_results_table(con, project, project_root),
             weave_bib(con, project, project_root),
             ingest.regenerate_sidecar(con, project, project_root)]

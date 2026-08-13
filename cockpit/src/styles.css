@@ -393,7 +393,15 @@ select.text {
 .gnode-observation { border-left-color: var(--paper-kind); border-left-style: dashed; }
 .gnode-thought, .gnode-note { border-left-color: var(--line-strong); border-left-style: dashed; }
 .gnode-pnote { border-left-color: var(--pv-line, var(--warn)); }
-.gnode-head { display: flex; align-items: center; gap: 6px; }
+.gnode-ms {
+  font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.3;
+  color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 5px;
+  font-family: var(--mono); font-weight: 600; flex-shrink: 0;
+}
+.react-flow__node.gnode-dim { opacity: 0.22; }
+.glegend-count {
+  font-family: var(--mono); font-size: 10px; color: var(--faint); margin-left: 4px;
+}
 .gnode-head b { font-size: 12px; font-weight: 600; }
 .gnode-slug-edit {
   font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink);
@@ -1261,7 +1269,7 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 .phase-band-grip.r { right: -5px; }
 .phase-band-grip:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
-/* the legend row: two identical toggle boxes — Phases, then Regions */
+/* the legend row: Phases, Regions, In paper */
 .glegend-row {
   position: absolute; bottom: 15px; left: 60px; z-index: 5;
   display: flex; gap: 8px; align-items: stretch;
@@ -1427,6 +1435,29 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 .tx-span-missing { background: color-mix(in srgb, var(--warn) 18%, transparent);
   outline: 1px dashed var(--warn); }
 .tx-cite-plain { background: var(--surface2); outline: 1px dashed var(--faint); }
+.tx-sync {
+  background: none; border: 0; color: var(--accent); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 0; opacity: 0.85;
+}
+.tx-sync:hover { opacity: 1; }
+.pv-mark-sync {
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 50%; pointer-events: none;
+  animation: tx-sync-pulse 1.15s ease-out forwards;
+}
+@keyframes tx-sync-pulse {
+  from { transform: scale(0.55); opacity: 1; }
+  to { transform: scale(1.85); opacity: 0; }
+}
+.tx-cite-pop {
+  position: absolute; z-index: 6; min-width: 220px; max-width: 320px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 10px 12px; display: grid; gap: 6px;
+}
+.tx-cite-pop-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tx-cite-n { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+.tx-cite-pop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .tx-palette {
   flex: 0 0 220px; border-top: 1px solid var(--line); background: var(--surface);

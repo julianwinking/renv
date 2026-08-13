@@ -28,7 +28,9 @@ def test_scaffold_paper_writes_preamble_and_template(tmp_path):
     assert {"preamble.tex", "paper.tex"} <= names
     paper = (root / "text" / "paper.tex").read_text()
     assert "A Paper" in paper and r"\bibliography{references}" in paper
-    assert r"\newcommand{\spancite}" in (root / "text" / "preamble.tex").read_text()
+    preamble = (root / "text" / "preamble.tex").read_text()
+    assert r"\newcommand{\spancite}" in preamble
+    assert "renv-cite://" in preamble
 
 
 def _run_with_metrics(con, tmp_path, slug, recall):

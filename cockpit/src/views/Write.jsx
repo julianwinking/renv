@@ -4,7 +4,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   citeSpan, compileProject, deleteWriteFile, getWriteContext, getWriteFile,
-  getWriteTree, saveWriteFile, weaveProject,
+  getWriteTree, saveWriteFile, syncPdf, syncTex, weaveProject,
 } from '../api.js'
 import { navigate, routePath } from '../nav.js'
 import { Stamp } from '../ui.jsx'
@@ -93,6 +93,8 @@ export default function Write({ slug, focus }) {
   const saveTimer = useRef(0)
   const contentRef = useRef('')
   const ed = useRef(null)
+  const pdfRef = useRef(null)
+  const pendingGoto = useRef(null)
   contentRef.current = content
 
   const loadTree = useCallback(() => getWriteTree(slug).then(setTree), [slug])
@@ -273,6 +275,60 @@ export default function Write({ slug, focus }) {
       || (ctx?.citations || []).find((c) => c.source_id === span.source_id)
     setPicked(hit ? { ...hit, latex: `\\spancite{${span.source_id}}{${span.start}}{${span.end}}{${hit.quote || ''}}` } : span)
     setPanel('citations')
+    const site = (ctx?.spancites || []).find(
+      (s) => s.source_id === span.source_id && (span.start == null || s.start === span.start))
+      || (ctx?.spancites || []).find((s) => s.source_id === span.source_id)
+    if (site) gotoTex(site.path, site.line)
+  }
+
+  const texRel = (raw, fallback) => {
+    if (!raw) return fallback
+    const parts = String(raw).replace(/\\/g, '/').split('/').filter((p) => p && p !== '.')
+    const i = parts.lastIndexOf('text')
+    const rel = (i >= 0 ? parts.slice(i + 1) : parts).join('/')
+    return rel || fallback
+  }
+
+  const gotoTex = (rel, line) => {
+    if (!line) return
+    if (rel && rel !== path) {
+      pendingGoto.current = line
+      openPath(rel)
+    } else {
+      ed.current?.gotoLine(line)
+    }
+  }
+
+  useEffect(() => {
+    if (!file || pendingGoto.current == null) return
+    const n = pendingGoto.current
+    pendingGoto.current = null
+    let tries = 0
+    const tick = () => {
+      if (ed.current?.gotoLine(n) || tries++ > 24) return
+      requestAnimationFrame(tick)
+    }
+    tick()
+  }, [file, path])
+
+  const onSyncLine = async (line, text) => {
+    const r = await syncTex(slug, { path, line, text })
+    if (r.error) return
+    pdfRef.current?.showLine({
+      page: r.ok ? r.page : undefined,
+      x: r.ok ? r.x : undefined,
+      y: r.ok ? r.y : undefined,
+      text: r.ok ? undefined : text,
+    })
+  }
+
+  const onPdfSync = async ({ page, x, y, snippet }) => {
+    const r = await syncPdf(slug, { page, x, y, snippet, prefer: path })
+    if (r.error || !r.ok) {
+      if (snippet) pdfRef.current?.showLine({ text: snippet })
+      return
+    }
+    gotoTex(texRel(r.path, path), r.line)
   }
 
   return (
@@ -324,6 +380,7 @@ export default function Write({ slug, focus }) {
                 readOnly={!file.writable}
                 onChange={onEdit}
                 onCiteClick={inspect}
+                onSyncLine={onSyncLine}
                 citations={citations}
               />
             </Suspense>
@@ -455,10 +512,13 @@ export default function Write({ slug, focus }) {
       <div className="tx-right" style={{ width: `${pdfW}%` }}>
         <div className="tx-pdf-resize" onMouseDown={startPdfResize} />
         <ManuscriptPdf
+          ref={pdfRef}
           slug={slug} bust={bust}
           hasPdf={!!ctx?.pdf || bust > 0}
           citations={ctx?.citations || []}
+          citeNumbers={ctx?.usage?.cite_numbers || {}}
           onMarker={inspect}
+          onSyncPdf={onPdfSync}
           status={compile.status}
           log={compile.log}
           errors={compile.errors}

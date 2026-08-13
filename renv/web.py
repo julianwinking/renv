@@ -88,7 +88,7 @@ def _graph(con, root, slug):
     for e in experiment.list_experiments(con, slug):
         node(f"exp:{e['id']}", "experiment", e["slug"],
              {"title": e["title"], "status": e["status"], "metrics": e["metrics"],
-              "hypothesis": e["hypothesis"]})
+              "hypothesis": e["hypothesis"], "slug": e["slug"]})
         if e["parent_id"]:
             edges.append({"source": f"exp:{e['parent_id']}", "target": f"exp:{e['id']}",
                           "kind": "parent", "etype": "parent", "eid": e["id"]})
@@ -97,9 +97,10 @@ def _graph(con, root, slug):
             "SELECT c.id, c.paper_id, c.support, c.quote, p.key, p.title FROM citation c "
             "LEFT JOIN paper p ON p.id=c.paper_id WHERE c.project_id=?", (pid,)).fetchall():
         node(f"cite:{c['id']}", "citation", (c["key"] or "cite") + f"#{c['id']}",
-             {"support": c["support"], "quote": c["quote"]})
+             {"support": c["support"], "quote": c["quote"], "key": c["key"]})
         if c["paper_id"]:
-            node(f"paper:{c['paper_id']}", "paper", c["key"], {"title": c["title"]})
+            node(f"paper:{c['paper_id']}", "paper", c["key"],
+                 {"title": c["title"], "key": c["key"]})
             edges.append({"source": f"paper:{c['paper_id']}", "target": f"cite:{c['id']}", "kind": "cited"})
 
     # positional paper notes: the reader's marginalia joins the graph, anchored
@@ -107,7 +108,8 @@ def _graph(con, root, slug):
     # motivate an experiment or argue a claim via context links
     from renv.papers import paper_note as pnotemod
     for n_ in pnotemod.list_for_project(con, slug):
-        node(f"paper:{n_['paper_id']}", "paper", n_["paper_key"], {"title": n_["paper_title"]})
+        node(f"paper:{n_['paper_id']}", "paper", n_["paper_key"],
+             {"title": n_["paper_title"], "key": n_["paper_key"]})
         label = (n_["body_md"] or n_["quote"] or "").strip()[:48]
         node(f"pnote:{n_['id']}", "pnote", label,
              {"text": n_["body_md"], "quote": n_["quote"], "page": n_["page"],
@@ -191,7 +193,32 @@ def _graph(con, root, slug):
                 edges.append({"source": f"finding:{f['id']}", "target": f"cite:{ev['citation_id']}", "kind": "about"})
 
     _add_code_refs(con, root, pid, nodes, edges, seen, node)
-    return {"slug": slug, "nodes": nodes, "edges": edges}
+    used = {"papers": [], "experiments": [], "cite_numbers": {}, "results_table": False}
+    try:
+        from renv.research import manuscript as ms
+        used = ms.usage(con, root, slug)
+    except (KeyError, ValueError):
+        pass
+    paper_keys = set(used.get("papers") or [])
+    exp_slugs = set(used.get("experiments") or [])
+    cite_numbers = used.get("cite_numbers") or {}
+    for n in nodes:
+        data = n["data"]
+        kind = n["kind"]
+        if kind == "experiment":
+            slug_ = data.get("slug") or n["label"]
+            data["in_manuscript"] = slug_ in exp_slugs
+        elif kind == "paper":
+            key = data.get("key") or n["label"]
+            data["in_manuscript"] = key in paper_keys
+            if key in cite_numbers:
+                data["cite_number"] = cite_numbers[key]
+        elif kind == "citation":
+            key = data.get("key") or (n["label"] or "").split("#")[0]
+            data["in_manuscript"] = key in paper_keys
+            if key in cite_numbers:
+                data["cite_number"] = cite_numbers[key]
+    return {"slug": slug, "nodes": nodes, "edges": edges, "usage": used}
 
 
 def _add_code_refs(con, root, pid, nodes, edges, seen, node):
@@ -624,6 +651,7 @@ GET_STAR = [
     (("api", "write", "*", "tree"), web_write.get_tree),
     (("api", "write", "*", "file"), web_write.get_file),
     (("api", "write", "*", "context"), web_write.get_context),
+    (("api", "write", "*", "synctex"), web_write.get_synctex),
     (("api", "health", "*"),
      lambda h, con, q, slug: _health(con, h.root, slug)),
     (("api", "plan", "*"), lambda h, con, q, slug: _plan(con, slug)),

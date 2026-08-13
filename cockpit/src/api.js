@@ -126,3 +126,20 @@ export const citeSpan = (slug, body) =>
   post('/api/write/' + encodeURIComponent(slug) + '/cite', body)
 export const writePdfUrl = (slug, bust) =>
   '/api/write/' + encodeURIComponent(slug) + '/pdf' + (bust ? '?t=' + bust : '')
+export const syncTex = (slug, { path, line, text, main } = {}) => {
+  const q = new URLSearchParams({
+    dir: 'tex', path: path || 'paper.tex', line: String(line || 1),
+  })
+  if (text) q.set('text', text)
+  if (main) q.set('main', main)
+  return api('/api/write/' + encodeURIComponent(slug) + '/synctex?' + q)
+}
+export const syncPdf = (slug, { page, x, y, snippet, prefer, main } = {}) => {
+  const q = new URLSearchParams({
+    dir: 'pdf', page: String(page || 1), x: String(x ?? 0), y: String(y ?? 0),
+  })
+  if (snippet) q.set('snippet', snippet)
+  if (prefer) q.set('prefer', prefer)
+  if (main) q.set('main', main)
+  return api('/api/write/' + encodeURIComponent(slug) + '/synctex?' + q)
+}

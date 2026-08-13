@@ -12,10 +12,10 @@ import {
 } from '@codemirror/language'
 import { stex } from '@codemirror/legacy-modes/mode/stex'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
-import { EditorState } from '@codemirror/state'
+import { EditorState, RangeSet } from '@codemirror/state'
 import {
-  Decoration, EditorView, MatchDecorator, ViewPlugin, drawSelection,
-  highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers,
+  Decoration, EditorView, GutterMarker, MatchDecorator, ViewPlugin, drawSelection,
+  gutter, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers,
 } from '@codemirror/view'
 
 const SPAN_RE = /\\spancite\{([^}]*)\}\{(\d+)\}\{(\d+)\}\{([^}]*)\}/g
@@ -28,7 +28,10 @@ function themeExt(dark) {
     '.cm-content': { caretColor: 'var(--accent)', padding: '8px 12px 24px 4px' },
     '.cm-gutters': {
       backgroundColor: 'transparent', color: 'var(--faint)', border: 'none',
-      padding: '0 8px 0 12px',
+      padding: '0 4px 0 12px',
+    },
+    '.cm-syncGutter .cm-gutterElement': {
+      display: 'flex', alignItems: 'center', justifyContent: 'center', width: 14,
     },
     '.cm-activeLine': { backgroundColor: 'var(--accent-soft)' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink)' },
@@ -61,8 +64,39 @@ function markPlugin(regexp, decoFor, click) {
   })
 }
 
+class SyncMarker extends GutterMarker {
+  toDOM() {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'tx-sync'
+    b.title = 'Show this line in the PDF'
+    b.textContent = '→'
+    b.setAttribute('aria-label', 'Show this line in the PDF')
+    return b
+  }
+}
+
+function syncGutter(onSyncRef) {
+  return gutter({
+    class: 'cm-syncGutter',
+    markers(view) {
+      const line = view.state.doc.lineAt(view.state.selection.main.head)
+      return RangeSet.of([new SyncMarker().range(line.from)])
+    },
+    initialSpacer: () => new SyncMarker(),
+    domEventHandlers: {
+      mousedown(view, line, event) {
+        if (!event.target.closest('.tx-sync')) return false
+        event.preventDefault()
+        onSyncRef.current?.(line.number, view.state.doc.line(line.number).text)
+        return true
+      },
+    },
+  })
+}
+
 export default forwardRef(function TexEditor(
-  { doc, readOnly, onChange, onCiteClick, citations },
+  { doc, readOnly, onChange, onCiteClick, onSyncLine, citations },
   ref,
 ) {
   const host = useRef(null)
@@ -73,6 +107,8 @@ export default forwardRef(function TexEditor(
   onChangeRef.current = onChange
   const onCiteRef = useRef(onCiteClick)
   onCiteRef.current = onCiteClick
+  const onSyncRef = useRef(onSyncLine)
+  onSyncRef.current = onSyncLine
 
   useImperativeHandle(ref, () => ({
     insert(text) {
@@ -90,6 +126,23 @@ export default forwardRef(function TexEditor(
       if (!v) return ''
       const { from, to } = v.state.selection.main
       return v.state.doc.sliceString(from, to)
+    },
+    gotoLine(n) {
+      const v = viewRef.current
+      if (!v) return false
+      const line = v.state.doc.line(Math.max(1, Math.min(n, v.state.doc.lines)))
+      v.dispatch({
+        selection: { anchor: line.from },
+        effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+      })
+      v.focus()
+      return true
+    },
+    lineInfo() {
+      const v = viewRef.current
+      if (!v) return null
+      const line = v.state.doc.lineAt(v.state.selection.main.head)
+      return { line: line.number, text: line.text }
     },
     focus() { viewRef.current?.focus() },
   }))
@@ -118,6 +171,7 @@ export default forwardRef(function TexEditor(
         doc: doc || '',
         extensions: [
           lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(),
+          syncGutter(onSyncRef),
           drawSelection(), history(), foldGutter(), indentOnInput(),
           bracketMatching(), closeBrackets(), highlightSelectionMatches(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),

@@ -57,6 +57,12 @@ def test_write_tree_read_write_roundtrip(tmp_path):
             assert e.code == 400
         ctx = _get(base, "/api/write/p/context")
         assert "spancites" in ctx and "metrics" in ctx
+        assert "usage" in ctx
+        sync = _get(base, "/api/write/p/synctex?dir=tex&path=paper.tex&line=1")
+        assert sync.get("ok") is False
+        assert "error" not in sync
+        inv = _get(base, "/api/write/p/synctex?dir=pdf&page=1&x=10&y=20")
+        assert inv.get("ok") is False
         try:
             urllib.request.urlopen(base + "/api/write/p/pdf")
             raise AssertionError("pdf before compile")

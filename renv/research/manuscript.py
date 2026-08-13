@@ -25,6 +25,7 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
+from renv.research import synctex
 from renv.research.db import project_id, row_to_dict
 
 GENERATED_NAMES = frozenset({"results_table.tex", "references.bib"})
@@ -183,16 +184,22 @@ def delete_file(con: sqlite3.Connection, corpus_root, slug: str, rel: str) -> di
 # --- LaTeX scan ---------------------------------------------------------------
 def parse_tex_macros(tex: str, *, path: str = "paper.tex") -> dict:
     """Pull ``\\spancite``, ``\\cite``, and ``\\input`` sites out of one file."""
+    def _line(offset: int) -> int:
+        return tex.count("\n", 0, offset) + 1
+
     spancites = [{
         "path": path, "source_id": m.group("source"), "start": int(m.group("start")),
         "end": int(m.group("end")), "quote": m.group("quote"),
         "offset": m.start(), "length": m.end() - m.start(),
+        "line": _line(m.start()),
     } for m in _SPANCITE.finditer(tex)]
     cites: list[dict] = []
     for m in _CITE.finditer(tex):
         for key in (k.strip() for k in m.group(1).split(",") if k.strip()):
-            cites.append({"path": path, "key": key, "offset": m.start()})
-    inputs = [{"path": path, "name": m.group(1), "offset": m.start()}
+            cites.append({"path": path, "key": key, "offset": m.start(),
+                          "line": _line(m.start())})
+    inputs = [{"path": path, "name": m.group(1), "offset": m.start(),
+               "line": _line(m.start())}
               for m in _INPUT.finditer(tex)]
     return {"spancites": spancites, "cites": cites, "inputs": inputs}
 
@@ -226,21 +233,15 @@ def detect_engine(which=shutil.which) -> dict | None:
 
 def _commands(engine: str, main: str) -> list[list[str]]:
     if engine == "latexmk":
-        return [["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error",
-                 "-file-line-error", "-no-shell-escape", main]]
+        return [["latexmk", "-pdf", "-synctex=1", "-interaction=nonstopmode",
+                 "-halt-on-error", "-file-line-error", "-no-shell-escape", main]]
     if engine == "tectonic":
-        return [["tectonic", main]]
+        return [["tectonic", "-Z", "synctex", main]]
     if engine == "pdflatex":
         stem = Path(main).stem
-        return [
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error",
-             "-no-shell-escape", main],
-            ["bibtex", stem],
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error",
-             "-no-shell-escape", main],
-            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error",
-             "-no-shell-escape", main],
-        ]
+        tex = ["pdflatex", "-synctex=1", "-interaction=nonstopmode",
+               "-halt-on-error", "-no-shell-escape", main]
+        return [tex, ["bibtex", stem], tex, tex]
     raise ValueError(f"unknown engine {engine!r}")
 
 
@@ -316,6 +317,7 @@ def compile_manuscript(con: sqlite3.Connection, corpus_root, slug: str, *,
     from renv.research import authoring
     project_id(con, slug)
     proot = _project_root(corpus_root, slug)
+    authoring.write_preamble(proot)
     woven = []
     if weave:
         woven = [p.name for p in authoring.weave(con, slug, proot)]
@@ -366,10 +368,12 @@ def writing_context(con: sqlite3.Connection, corpus_root, slug: str) -> dict:
                "text": c["text"]} for c in claimmod.list_claims(con, slug)]
     text = _text_root(corpus_root, slug)
     eng = detect_engine()
+    used = usage(con, corpus_root, slug)
     return {
         "slug": slug,
         "engine": ({"name": eng["name"], "path": eng["path"]} if eng else None),
         "pdf": (text / "paper.pdf").is_file(),
+        "synctex": synctex.synctex_path(text).is_file(),
         "citations": [row_to_dict(r) if not isinstance(r, dict) else r for r in rows],
         "spancites": scan["spancites"],
         "cites": scan["cites"],
@@ -378,6 +382,7 @@ def writing_context(con: sqlite3.Connection, corpus_root, slug: str) -> dict:
         "claims": claims,
         "papers": papers,
         "generated": sorted(GENERATED_NAMES),
+        "usage": used,
     }
 
 
@@ -447,3 +452,79 @@ def cite_claim(con: sqlite3.Connection, corpus_root, claim: str, *,
         result["written"] = True
         result["store"] = False
     return result
+
+
+def usage(con: sqlite3.Connection, corpus_root, slug: str) -> dict:
+    """Papers and experiments actually referenced from the manuscript.
+
+    Papers: unique ``\\spancite`` / ``\\cite`` keys in first-appearance order
+    (the numbers the PDF hover card shows). Experiments: those whose metrics
+    land in ``results_table.tex`` *and* that table is ``\\input`` from a
+    ``.tex`` file — the weave-to-paper path, not every experiment in the DAG.
+    """
+    from renv.research import experiment as expmod
+    scan = scan_tree(con, corpus_root, slug)
+    papers: list[str] = []
+    seen: set[str] = set()
+    for s in scan["spancites"]:
+        key = (s.get("source_id") or "").strip()
+        if key and key not in seen:
+            seen.add(key)
+            papers.append(key)
+    for c in scan["cites"]:
+        key = (c.get("key") or "").strip()
+        if key and key not in seen:
+            seen.add(key)
+            papers.append(key)
+    cites_results = any(
+        Path(str(i.get("name") or "")).stem == "results_table"
+        for i in scan["inputs"])
+    experiments = []
+    if cites_results:
+        experiments = [
+            r["slug"] for r in expmod.list_experiments(con, slug)
+            if r.get("metrics")
+        ]
+    return {
+        "papers": papers,
+        "experiments": experiments,
+        "cite_numbers": {k: i + 1 for i, k in enumerate(papers)},
+        "results_table": cites_results,
+    }
+
+
+def _finish_sync(text_dir: Path, hit: dict, via: str) -> dict:
+    out = {k: v for k, v in hit.items()}
+    out["ok"] = True
+    out["via"] = hit.get("engine") or via
+    if out.get("path"):
+        out["path"] = synctex.rel_path(text_dir, str(out["path"]))
+    return out
+
+
+def sync_from_tex(text_dir: Path, rel: str, line: int, text: str | None = None,
+                  main: str = "paper.tex") -> dict:
+    """Forward SyncTeX: editor line → PDF page/x/y. Falls back to a text hint."""
+    text_dir = Path(text_dir)
+    hit = synctex.view_cli(text_dir, rel, int(line), main=main) \
+        or synctex.view(text_dir, rel, int(line), main=main)
+    if hit:
+        return _finish_sync(text_dir, hit, "synctex")
+    return {"ok": False, "fallback": "text", "path": rel,
+            "line": int(line), "text": (text or "").strip()[:240]}
+
+
+def sync_from_pdf(text_dir: Path, page: int, x: float, y: float,
+                  snippet: str | None = None, prefer: str | None = None,
+                  main: str = "paper.tex") -> dict:
+    """Inverse SyncTeX: PDF click → source file/line. Text-search fallback."""
+    text_dir = Path(text_dir)
+    hit = synctex.edit_cli(text_dir, int(page), float(x), float(y), main=main) \
+        or synctex.edit(text_dir, int(page), float(x), float(y), main=main)
+    if hit:
+        return _finish_sync(text_dir, hit, "synctex")
+    if snippet:
+        found = synctex.locate_snippet(text_dir, snippet, prefer=prefer)
+        if found:
+            return {**found, "via": found.get("engine") or "text"}
+    return {"ok": False, "reason": "no-synctex"}

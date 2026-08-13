@@ -24,6 +24,27 @@ def get_context(h, con, q, slug):
     return manuscript.writing_context(con, h.root, slug)
 
 
+def get_synctex(h, con, q, slug):
+    """tex→PDF (dir=tex) or PDF→tex (dir=pdf). Honest JSON when SyncTeX is missing."""
+    from renv.research.db import project_id
+    project_id(con, slug)
+    text = Path(h.root) / "projects" / slug / "text"
+    direction = (q.get("dir") or ["tex"])[0]
+    main = (q.get("main") or ["paper.tex"])[0] or "paper.tex"
+    if direction == "pdf":
+        page = int(float((q.get("page") or ["1"])[0] or 1))
+        x = float((q.get("x") or ["0"])[0] or 0)
+        y = float((q.get("y") or ["0"])[0] or 0)
+        snippet = (q.get("snippet") or [None])[0] or None
+        prefer = (q.get("prefer") or [None])[0] or None
+        return manuscript.sync_from_pdf(
+            text, page, x, y, snippet=snippet, prefer=prefer, main=main)
+    rel = (q.get("path") or ["paper.tex"])[0] or "paper.tex"
+    line = int(float((q.get("line") or ["1"])[0] or 1))
+    body = (q.get("text") or [None])[0] or None
+    return manuscript.sync_from_tex(text, rel, line, text=body, main=main)
+
+
 def serve_pdf(handler, slug):
     """Binary PDF — called from do_GET, not the JSON dispatcher."""
     from renv.research import db

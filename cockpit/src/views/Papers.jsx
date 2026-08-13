@@ -51,29 +51,37 @@ function insertBeforeAt(x) {
   return null
 }
 
-function dropTargetAt(x, y, activeId, dragTab) {
-  const hit = document.elementsFromPoint(x, y)
-  let sourceViewId = null
-  if (dragTab?.key) {
-    for (const chip of document.querySelectorAll('[data-pane-key]')) {
-      if (chip.dataset.paneKey === dragTab.key) {
-        sourceViewId = chip.closest('[data-view-id]')?.dataset.viewId || null
-        break
-      }
-    }
+function paneSideAt(x, y, activeId) {
+  const wrap = document.querySelector('.paper-pane')
+  if (!wrap || activeId === LIBRARY) return null
+  const wr = wrap.getBoundingClientRect()
+  if (x < wr.left || x > wr.right || y < wr.top || y > wr.bottom) return null
+  const panes = [...wrap.querySelectorAll(':scope > .pp-pane')]
+  if (panes.length >= 2) {
+    const left = panes[0].getBoundingClientRect()
+    const right = panes[1].getBoundingClientRect()
+    return x < (left.right + right.left) / 2 ? 'left' : 'right'
   }
+  return x < wr.left + wr.width / 2 ? 'left' : 'right'
+}
 
+function dropTargetAt(x, y, activeId, dragTab, sourceViewId) {
+  const hit = document.elementsFromPoint(x, y)
   const tab = hit.map((n) => n.closest?.('[data-view-id]')).find(Boolean)
-  const overChip = hit.map((n) => n.closest?.('[data-pane-key]')).find(Boolean)
+  const overChip = hit.map((n) => n.closest?.('[data-slot]')).find(Boolean)
   const overOwn = overChip?.dataset.paneKey === dragTab?.key
   const sameView = !!(sourceViewId && tab?.dataset.viewId === sourceViewId)
-  // Still sitting on the chip you picked up (or the pair chrome): not a drop.
-  // Leaving the pair onto the tab bar ungroups; the sibling chip still splits.
-  const insideSource = sameView && (!overChip || overOwn)
+  // Only the chip you picked up is a dead zone. Empty "Drop a tab" chips, the
+  // sibling, and the rest of the bar stay live so the preview matches the drop.
+  const insideSource = sameView && overOwn
 
   if (tab?.dataset.viewId && !insideSource) {
     const r = tab.getBoundingClientRect()
-    return { viewId: tab.dataset.viewId, side: x < r.left + r.width / 2 ? 'left' : 'right', via: 'tab' }
+    const slot = overChip?.dataset.slot
+    const side = (slot === 'left' || slot === 'right')
+      ? slot
+      : (x < r.left + r.width / 2 ? 'left' : 'right')
+    return { viewId: tab.dataset.viewId, side, via: 'tab' }
   }
 
   if (!insideSource) {
@@ -86,11 +94,8 @@ function dropTargetAt(x, y, activeId, dragTab) {
     }
   }
 
-  const pane = document.querySelector('.paper-pane')
-  if (!pane || activeId === LIBRARY) return null
-  const r = pane.getBoundingClientRect()
-  if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null
-  return { viewId: activeId, side: x < r.left + r.width / 2 ? 'left' : 'right', via: 'pane' }
+  const side = paneSideAt(x, y, activeId)
+  return side ? { viewId: activeId, side, via: 'pane' } : null
 }
 
 function useTabDrag(activeId, onDrop) {
@@ -101,17 +106,18 @@ function useTabDrag(activeId, onDrop) {
   activeRef.current = activeId
   onDropRef.current = onDrop
 
-  const onPointerDown = (e, tab) => {
+  const onPointerDown = (e, tab, viewId) => {
     if (e.button !== 0) return
     if (e.target.closest('.ptab-x, .ptab-split')) return
     // Do not preventDefault here: that swallows the click that selects the tab.
+    e.currentTarget.setPointerCapture?.(e.pointerId)
     const origin = { x: e.clientX, y: e.clientY }
-    const st = { tab, moved: false }
+    const st = { tab, viewId, moved: false }
     const move = (ev) => {
       if (!st.moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) < 12) return
       st.moved = true
       document.body.classList.add('ptab-dragging')
-      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current, st.tab)
+      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current, st.tab, st.viewId)
       setDrag({ tab: st.tab, x: ev.clientX, y: ev.clientY, ...(t || {}) })
     }
     const up = (ev) => {
@@ -120,7 +126,7 @@ function useTabDrag(activeId, onDrop) {
       document.body.classList.remove('ptab-dragging')
       if (!st.moved) { setDrag(null); return }
       swallow.current = true
-      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current, st.tab)
+      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current, st.tab, st.viewId)
       setDrag(null)
       if (t) onDropRef.current(st.tab.key, t)
     }
@@ -147,7 +153,7 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
   const waiting = split && view.panes.some((p) => !p)
   const doSplit = (e) => { e.preventDefault(); e.stopPropagation(); onSplit(view.id) }
   return (
-    <div className={`ptab ${selected ? 'active' : ''} ${split ? 'ptab-pair' : ''} ${dropSide ? `drop-${dropSide}` : ''}`}
+    <div className={`ptab ${selected ? 'active' : ''} ${split ? 'ptab-pair' : ''} ${!split && dropSide ? `drop-${dropSide}` : ''}`}
          data-view-id={view.id}
          onClick={() => onActivate(view.id)}>
       {(view.panes.length === 1 || waiting) && (
@@ -158,12 +164,14 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
           <IconSplit size={14} />
         </button>
       )}
-      {view.panes.map((pane, i) => (
-        pane ? (
-          <span key={pane.key} className="ptab-chip" draggable={false}
-                data-pane-key={pane.key}
+      {view.panes.map((pane, i) => {
+        const slot = i === 0 ? 'left' : 'right'
+        const hot = !!(split && dropSide === slot)
+        return pane ? (
+          <span key={pane.key} className={`ptab-chip ${hot ? 'drop-hot' : ''}`} draggable={false}
+                data-pane-key={pane.key} data-slot={slot}
                 title={pane.title || pane.key}
-                onPointerDown={(e) => onPointerDown(e, pane)}
+                onPointerDown={(e) => onPointerDown(e, pane, view.id)}
                 onDragStart={(e) => e.preventDefault()}>
             {pane.type === 'doc' && <IconNote size={13} />}
             <span className="ptab-name">{pane.title || pane.key}</span>
@@ -172,9 +180,10 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
                     onClick={(e) => { e.stopPropagation(); onClose(view.id, i) }}>✕</button>
           </span>
         ) : (
-          <span key="empty" className="ptab-chip ptab-chip-empty">Drop a tab</span>
+          <span key="empty" className={`ptab-chip ptab-chip-empty ${hot ? 'drop-hot' : ''}`}
+                data-slot={slot}>Drop a tab</span>
         )
-      ))}
+      })}
     </div>
   )
 }
@@ -309,12 +318,22 @@ export default function Papers({ focus, slug, onMutate }) {
         )}
         {drag && drag.via === 'pane' && active !== LIBRARY && (
           <div className="pp-dz-wrap">
-            <div className={`pp-dz ${drag.side === 'left' ? 'hot' : ''}`}>
-              <span>{split && !current?.panes[0] ? 'Drop here' : 'Split left'}</span>
-            </div>
-            <div className={`pp-dz right ${drag.side === 'right' ? 'hot' : ''}`}>
-              <span>{split && !current?.panes[1] ? 'Drop here' : 'Split right'}</span>
-            </div>
+            {split ? (current?.panes || []).map((pane, i) => (
+              <React.Fragment key={pane?.key || `dz-${i}`}>
+                {i > 0 && <div className="pp-dz-gap" />}
+                <div className={`pp-dz ${drag.side === (i === 0 ? 'left' : 'right') ? 'hot' : ''}`}
+                     style={i === 0
+                       ? { flexBasis: `${ratio}%`, flexGrow: 0, flexShrink: 0 }
+                       : { flex: 1 }}>
+                  {pane ? <span>{i === 0 ? 'Split left' : 'Split right'}</span> : null}
+                </div>
+              </React.Fragment>
+            )) : (
+              <>
+                <div className={`pp-dz ${drag.side === 'left' ? 'hot' : ''}`}><span>Split left</span></div>
+                <div className={`pp-dz right ${drag.side === 'right' ? 'hot' : ''}`}><span>Split right</span></div>
+              </>
+            )}
           </div>
         )}
       </div>

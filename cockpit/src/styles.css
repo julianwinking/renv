@@ -1005,13 +1005,20 @@ textarea.fileedit {
 .ptab-chip {
   display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 170px;
   height: 100%; padding: 0 6px; cursor: grab; touch-action: none;
-  -webkit-user-drag: none; user-select: none;
+  -webkit-user-drag: none; user-select: none; border-radius: 6px;
 }
 .ptab-chip + .ptab-chip { border-left: 1px solid var(--line-strong); }
+.ptab-chip.drop-hot, .ptab-chip-empty.drop-hot {
+  background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
 .ptab-chip-empty { color: var(--faint); font-style: italic; max-width: 110px; cursor: default; }
 .ptab-insert {
-  flex: 0 0 3px; margin: 6px 1px; border-radius: 2px;
-  background: var(--accent); pointer-events: none;
+  flex: 0 0 0; width: 0; position: relative; pointer-events: none; z-index: 2;
+}
+.ptab-insert::before {
+  content: ""; position: absolute; top: 6px; bottom: 6px; left: -1.5px;
+  width: 3px; border-radius: 2px; background: var(--accent);
 }
 .ptab-ico { color: var(--faint); font-size: 12px; }
 .ptab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1193,8 +1200,9 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 }
 .pp-empty.hot { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .pp-dz-wrap { position: absolute; inset: 0; z-index: 30; display: flex; pointer-events: none; }
+.pp-dz-gap { flex: 0 0 5px; }
 .pp-dz {
-  flex: 1; display: grid; place-items: center;
+  flex: 1; display: grid; place-items: center; min-width: 0;
   background: color-mix(in srgb, var(--accent) 6%, transparent); transition: background 0.12s;
 }
 .pp-dz.right { border-left: 1px dashed var(--accent); }

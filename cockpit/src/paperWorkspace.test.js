@@ -116,6 +116,28 @@ describe('dropTab', () => {
     const ws = { views: [{ id: 'v0', panes: [paper('a')] }], active: LIBRARY }
     assert.deepEqual(dropTab(ws, 'left', 'a'), ws)
   })
+
+  it('drops onto a non-active view when targetId is set', () => {
+    const ws = {
+      views: [
+        { id: 'v0', panes: [paper('a')] },
+        { id: 'v1', panes: [paper('b')] },
+        { id: 'v2', panes: [paper('c')] },
+      ],
+      active: 'v0',
+    }
+    const next = dropTab(ws, 'right', 'c', 'v1')
+    const pair = next.views.find((v) => v.id === 'v1')
+    assert.deepEqual(pair.panes.map((p) => p.key), ['b', 'c'])
+    assert.equal(next.active, 'v1')
+    assert.equal(next.views.length, 2)
+    assert.equal(next.views[0].panes[0].key, 'a')
+  })
+
+  it('keeps a waiting split when the lone filled chip is dropped on itself', () => {
+    const ws = wsOf([paper('a'), null])
+    assert.deepEqual(dropTab(ws, 'right', 'a'), ws)
+  })
 })
 
 describe('closePane', () => {

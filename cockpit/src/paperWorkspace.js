@@ -120,10 +120,11 @@ export function toggleSplit(ws, viewId) {
   return { views, active: viewId }
 }
 
-export function dropTab(ws, side, key) {
-  const { views, active } = ws
-  if (active === LIBRARY || (side !== 'left' && side !== 'right')) return ws
-  const target = views.find((v) => v.id === active)
+export function dropTab(ws, side, key, targetId) {
+  const { views } = ws
+  const dest = targetId || ws.active
+  if (dest === LIBRARY || (side !== 'left' && side !== 'right')) return ws
+  const target = views.find((v) => v.id === dest)
   const source = views.find((v) => v.panes.some((p) => p?.key === key))
   if (!target || !source) return ws
   const tab = source.panes.find((p) => p?.key === key)

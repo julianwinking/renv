@@ -42,33 +42,40 @@ const loadRaw = (slug) => {
   try { return JSON.parse(localStorage.getItem(wsKey(slug))) || {} } catch { return {} }
 }
 
-function dropSideAt(x, y) {
-  const el = document.querySelector('.paper-pane')
-  if (!el) return null
-  const r = el.getBoundingClientRect()
+function dropTargetAt(x, y, activeId) {
+  const hit = document.elementsFromPoint(x, y)
+  const tab = hit.map((n) => n.closest?.('[data-view-id]')).find(Boolean)
+  if (tab?.dataset.viewId) {
+    const r = tab.getBoundingClientRect()
+    return { viewId: tab.dataset.viewId, side: x < r.left + r.width / 2 ? 'left' : 'right', via: 'tab' }
+  }
+  const pane = document.querySelector('.paper-pane')
+  if (!pane || activeId === LIBRARY) return null
+  const r = pane.getBoundingClientRect()
   if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null
-  return x < r.left + r.width / 2 ? 'left' : 'right'
+  return { viewId: activeId, side: x < r.left + r.width / 2 ? 'left' : 'right', via: 'pane' }
 }
 
-function useTabDrag(canDrop, onDrop) {
+function useTabDrag(activeId, onDrop) {
   const [drag, setDrag] = useState(null)
-  const canDropRef = useRef(canDrop)
+  const activeRef = useRef(activeId)
   const onDropRef = useRef(onDrop)
   const swallow = useRef(false)
-  canDropRef.current = canDrop
+  activeRef.current = activeId
   onDropRef.current = onDrop
 
   const onPointerDown = (e, tab) => {
     if (e.button !== 0) return
     if (e.target.closest('.ptab-x, .ptab-split')) return
+    // Do not preventDefault here: that swallows the click that selects the tab.
     const origin = { x: e.clientX, y: e.clientY }
     const st = { tab, moved: false }
     const move = (ev) => {
-      if (!st.moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) < 8) return
+      if (!st.moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) < 12) return
       st.moved = true
       document.body.classList.add('ptab-dragging')
-      const side = canDropRef.current ? dropSideAt(ev.clientX, ev.clientY) : null
-      setDrag({ tab: st.tab, x: ev.clientX, y: ev.clientY, side })
+      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current)
+      setDrag({ tab: st.tab, x: ev.clientX, y: ev.clientY, ...(t || {}) })
     }
     const up = (ev) => {
       window.removeEventListener('pointermove', move)
@@ -76,9 +83,9 @@ function useTabDrag(canDrop, onDrop) {
       document.body.classList.remove('ptab-dragging')
       if (!st.moved) { setDrag(null); return }
       swallow.current = true
-      const side = canDropRef.current ? dropSideAt(ev.clientX, ev.clientY) : null
+      const t = dropTargetAt(ev.clientX, ev.clientY, activeRef.current)
       setDrag(null)
-      if (side) onDropRef.current(st.tab.key, side)
+      if (t) onDropRef.current(st.tab.key, t.side, t.viewId)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -98,20 +105,24 @@ function EmptyPane({ hot }) {
   )
 }
 
-function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerDown }) {
+function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerDown, dropSide }) {
   const split = isSplit(view)
   const waiting = split && view.panes.some((p) => !p)
+  const doSplit = (e) => { e.preventDefault(); e.stopPropagation(); onSplit(view.id) }
   return (
-    <div className={`ptab ${selected ? 'active' : ''} ${split ? 'ptab-pair' : ''}`}
+    <div className={`ptab ${selected ? 'active' : ''} ${split ? 'ptab-pair' : ''} ${dropSide ? `drop-${dropSide}` : ''}`}
+         data-view-id={view.id}
          onClick={() => onActivate(view.id)}
          title={view.panes.filter(Boolean).map((p) => p.title || p.key).join(' | ')}>
       {view.panes.map((pane, i) => (
         pane ? (
-          <span key={pane.key} className="ptab-chip"
-                onPointerDown={(e) => onPointerDown(e, pane)}>
+          <span key={pane.key} className="ptab-chip" draggable={false}
+                onPointerDown={(e) => onPointerDown(e, pane)}
+                onDragStart={(e) => e.preventDefault()}>
             {pane.type === 'doc' && <IconNote size={13} />}
             <span className="ptab-name">{pane.title || pane.key}</span>
             <button type="button" className="ptab-x" title="Close"
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); onClose(view.id, i) }}>✕</button>
           </span>
         ) : (
@@ -121,8 +132,9 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
       {(view.panes.length === 1 || waiting) && (
         <button type="button" className={`ptab-split ${waiting ? 'on' : ''}`}
                 title={waiting ? 'Cancel split' : 'Split this tab'}
-                onClick={(e) => { e.stopPropagation(); onSplit(view.id) }}>
-          <IconSplit size={12} />
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+                onClick={doSplit}>
+          <IconSplit size={14} />
         </button>
       )}
     </div>
@@ -184,8 +196,9 @@ export default function Papers({ focus, slug, onMutate }) {
     insertRefs.current[targetDocTab.docId]?.(md)
   }
 
-  const { drag, onPointerDown, dragged } = useTabDrag(
-    active !== LIBRARY, (key, side) => setWs((w) => dropTab(w, side, key)))
+  const { drag, onPointerDown, dragged } = useTabDrag(active, (key, side, viewId) => {
+    setWs((w) => dropTab(w, side, key, viewId))
+  })
 
   const startSplitResize = (e) => {
     e.preventDefault()
@@ -226,6 +239,7 @@ export default function Papers({ focus, slug, onMutate }) {
         </button>
         {views.map((v) => (
           <WorkspaceTab key={v.id} view={v} selected={active === v.id}
+                        dropSide={drag?.via === 'tab' && drag.viewId === v.id ? drag.side : null}
                         onActivate={(id) => { if (dragged()) return; setWs((w) => ({ ...w, active: id })) }}
                         onClose={(id, i) => setWs((w) => closePane(w, id, i))}
                         onSplit={(id) => setWs((w) => toggleSplit(w, id))}
@@ -243,13 +257,15 @@ export default function Papers({ focus, slug, onMutate }) {
           (current?.panes || []).map((pane, i) => (
             <React.Fragment key={pane?.key || `empty-${i}`}>
               {i > 0 && <div className="pp-divider" onMouseDown={startSplitResize} title="Drag to resize" />}
-              <div className="pp-pane" style={split && i === 0 ? { flexBasis: `${ratio}%`, flexGrow: 0 } : { flex: 1 }}>
-                {renderPane(pane, !!(drag && ((i === 0 && drag.side === 'left') || (i === 1 && drag.side === 'right'))))}
+              <div className="pp-pane" style={split && i === 0
+                ? { flexBasis: `${ratio}%`, flexGrow: 0, flexShrink: 0 }
+                : { flex: 1, minWidth: pane ? 80 : 220 }}>
+                {renderPane(pane, !!(drag && drag.via === 'pane' && ((i === 0 && drag.side === 'left') || (i === 1 && drag.side === 'right'))))}
               </div>
             </React.Fragment>
           ))
         )}
-        {drag && active !== LIBRARY && (
+        {drag && drag.via === 'pane' && active !== LIBRARY && (
           <div className="pp-dz-wrap">
             <div className={`pp-dz ${drag.side === 'left' ? 'hot' : ''}`}>
               <span>{split && !current?.panes[0] ? 'Drop here' : 'Split left'}</span>

@@ -976,18 +976,36 @@ textarea.fileedit {
   overflow-x: auto; overflow-y: hidden;
 }
 .ptab {
-  display: flex; align-items: center; gap: 7px; max-width: 220px; flex: 0 0 auto;
+  position: relative;
+  display: flex; align-items: center; gap: 7px; max-width: 260px; flex: 0 0 auto;
   padding: 0 8px; border: 0; background: none; cursor: pointer; font: inherit;
   color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
   font-weight: 500;   /* constant weight — active is shown by color + underline, so switching never reflows the tab */
 }
 .ptab:hover { color: var(--ink); background: var(--surface2); }
 .ptab.active { color: var(--ink); border-bottom-color: var(--accent); }
-.ptab-pair { max-width: 420px; padding: 0 6px 0 2px; gap: 0; }
-.ptab-pair.active { border-bottom-color: var(--claim); }
+.ptab-pair {
+  max-width: 460px; padding: 0 4px 0 2px; gap: 0;
+  background: var(--surface2); border-radius: 8px 8px 0 0;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.ptab-pair:hover { background: var(--surface2); }
+.ptab-pair.active {
+  border-bottom-color: var(--claim);
+  background: color-mix(in srgb, var(--claim) 10%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--claim) 35%, var(--line));
+}
+.ptab.drop-left::before, .ptab.drop-right::before {
+  content: ""; position: absolute; top: 4px; bottom: 4px; width: 50%;
+  background: var(--accent-soft); border: 1px dashed var(--accent);
+  border-radius: 6px; pointer-events: none;
+}
+.ptab.drop-left::before { left: 2px; }
+.ptab.drop-right::before { right: 2px; }
 .ptab-chip {
   display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 170px;
   height: 100%; padding: 0 6px; cursor: grab; touch-action: none;
+  -webkit-user-drag: none; user-select: none;
 }
 .ptab-chip + .ptab-chip { border-left: 1px solid var(--line-strong); }
 .ptab-chip-empty { color: var(--faint); font-style: italic; max-width: 110px; cursor: default; }
@@ -1160,6 +1178,7 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 
 /* ---------- split panes on the paper page ---------- */
 .pp-pane { position: relative; min-width: 0; height: 100%; overflow: hidden; }
+.pp-pane:has(.pp-empty) { min-width: 220px; }
 .pp-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); position: relative; }
 .pp-divider:hover { background: var(--accent); }
 .pp-empty {
@@ -1181,8 +1200,9 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
   padding: 7px 14px; border-radius: 9px; box-shadow: var(--shadow);
 }
 .ptab-split {
-  display: inline-grid; place-items: center; color: var(--faint); padding: 1px;
-  border: 0; background: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;
+  display: inline-grid; place-items: center; color: var(--faint);
+  width: 24px; height: 24px; padding: 0;
+  border: 0; background: none; border-radius: 6px; cursor: pointer; flex-shrink: 0;
 }
 .ptab-split:hover { background: var(--line-strong); color: var(--ink); }
 .ptab-split.on { color: var(--accent); background: var(--accent-soft); }

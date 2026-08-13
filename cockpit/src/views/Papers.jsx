@@ -112,11 +112,19 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
   return (
     <div className={`ptab ${selected ? 'active' : ''} ${split ? 'ptab-pair' : ''} ${dropSide ? `drop-${dropSide}` : ''}`}
          data-view-id={view.id}
-         onClick={() => onActivate(view.id)}
-         title={view.panes.filter(Boolean).map((p) => p.title || p.key).join(' | ')}>
+         onClick={() => onActivate(view.id)}>
+      {(view.panes.length === 1 || waiting) && (
+        <button type="button" className={`ptab-split ${waiting ? 'on' : ''}`}
+                title={waiting ? 'Cancel split' : 'Split this tab — open an empty pane'}
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+                onClick={doSplit}>
+          <IconSplit size={14} />
+        </button>
+      )}
       {view.panes.map((pane, i) => (
         pane ? (
           <span key={pane.key} className="ptab-chip" draggable={false}
+                title={pane.title || pane.key}
                 onPointerDown={(e) => onPointerDown(e, pane)}
                 onDragStart={(e) => e.preventDefault()}>
             {pane.type === 'doc' && <IconNote size={13} />}
@@ -129,14 +137,6 @@ function WorkspaceTab({ view, selected, onActivate, onClose, onSplit, onPointerD
           <span key="empty" className="ptab-chip ptab-chip-empty">Drop a tab</span>
         )
       ))}
-      {(view.panes.length === 1 || waiting) && (
-        <button type="button" className={`ptab-split ${waiting ? 'on' : ''}`}
-                title={waiting ? 'Cancel split' : 'Split this tab'}
-                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation() }}
-                onClick={doSplit}>
-          <IconSplit size={14} />
-        </button>
-      )}
     </div>
   )
 }

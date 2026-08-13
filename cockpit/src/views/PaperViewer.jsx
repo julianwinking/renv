@@ -109,7 +109,11 @@ export default function PaperViewer({ paperKey, title, project, onClose, onMutat
   const [curPage, setCurPage] = useState(1)
   const [panel, setPanel] = useState(null)          // null | thumbnails | outline | search
   const [panelW, setPanelW] = useState(() => Number(localStorage.getItem('renv-pv-panel')) || 264)
-  const [showSide, setShowSide] = useState(() => localStorage.getItem('renv-pv-side') !== 'off')
+  // Embedded (tab) viewers default the annotations rail off so a split is not
+  // crushed by two 300px sidebars. Standalone still remembers the last choice.
+  const [showSide, setShowSide] = useState(() => (
+    embedded ? false : localStorage.getItem('renv-pv-side') !== 'off'
+  ))
   const [sideW, setSideW] = useState(() => Number(localStorage.getItem('renv-pv-sidew')) || 300)
   const [outline, setOutline] = useState(null)
   const [query, setQuery] = useState('')

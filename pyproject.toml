@@ -27,7 +27,7 @@ dev = ["pytest>=9.1.1", "pytest-cov>=5", "hypothesis>=6.165.3", "ruff>=0.16.2"]
 # the default sync. Enable with e.g. `uv sync --extra verify-local`.
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

@@ -1502,7 +1502,7 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
   display: flex; align-items: center; width: 100%; height: var(--tx-row);
   background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px;
   line-height: 1; text-align: left; cursor: pointer; position: relative;
-  padding: 0 10px 0 calc(var(--tx-pad) + (var(--d, 0) * var(--tx-indent)));
+  padding: 0 10px 0 calc(var(--tx-pad) + 6px + (var(--d, 0) * var(--tx-indent)));
 }
 .tx-fn:hover { background: var(--surface2); }
 .tx-fn.on { background: var(--accent-soft); color: var(--accent); }
@@ -1510,7 +1510,7 @@ tr:hover .lib-ico .lib-chev, .lib-ico.open .lib-chev { display: block; }
 .tx-dir { font-weight: 500; }
 .tx-chev {
   position: absolute; left: calc(2px + var(--d, 0) * var(--tx-indent)); top: 0; bottom: 0;
-  width: 10px; color: var(--faint); font-size: 10px;
+  width: 16px; color: var(--faint); font-size: 10px;
   display: flex; align-items: center; justify-content: center;
 }
 .tx-fn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

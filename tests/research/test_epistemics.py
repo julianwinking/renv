@@ -303,3 +303,84 @@ def test_lint_result_without_run_via_backdoor(tmp_path):
                 "VALUES (?, 'result', 'now', 'made-up number')", (pid,))
     con.commit()
     assert [f for f in lint.run(con, "p")["open"] if f["rule"] == "result-without-run"]
+
+
+def test_lint_result_without_run_is_non_waivable(tmp_path):
+    from renv.research import finding as findmod
+    con = _proj(tmp_path)
+    pid = db.project_id(con, "p")
+    con.execute("INSERT INTO log_entry (project_id, type, ts, body_md) "
+                "VALUES (?, 'result', 'now', 'made-up number')", (pid,))
+    con.commit()
+    hit = [f for f in lint.run(con, "p")["open"] if f["rule"] == "result-without-run"][0]
+    with pytest.raises(ValueError, match="non-waivable"):
+        findmod.adjudicate(con, hit["id"], "reject", "I made it up on purpose")
+    # a historical reject is reopened, not duplicated
+    con.execute("UPDATE finding SET status='rejected' WHERE id=?", (hit["id"],))
+    con.execute(
+        "INSERT INTO adjudication (finding_id, verdict, reasoning, by, ts) "
+        "VALUES (?,?,?,?,?)", (hit["id"], "reject", "ignore", "test", "t"))
+    con.commit()
+    out = lint.run(con, "p")
+    assert findmod.get_finding(con, hit["id"])["status"] == "open"
+    n = con.execute(
+        "SELECT COUNT(*) n FROM finding WHERE check_id='lint-result-without-run'"
+    ).fetchone()["n"]
+    assert n == 1
+    assert [f for f in out["open"] if f["rule"] == "result-without-run"]
+
+
+def test_lint_cited_paper_no_text(tmp_path):
+    con = _proj(tmp_path)
+    _cite(con)  # add_paper without sha256
+    hits = [f for f in lint.run(con, "p")["open"] if f["rule"] == "cited-paper-no-text"]
+    assert hits and hits[0]["severity"] == "medium"
+    con.execute("UPDATE paper SET sha256='abc' WHERE key='t2024'")
+    con.commit()
+    assert not [f for f in lint.run(con, "p")["open"] if f["rule"] == "cited-paper-no-text"]
+
+
+def test_lint_run_not_reproducible_typed_remote(tmp_path):
+    con = _proj(tmp_path)
+    experiment.create_experiment(con, "p", "010")
+    run = experiment.ingest_run(
+        con, "p", "010", metrics={"acc": 0.88},
+        remote="ssh://cluster/scratch/runs/x")
+    c = claim.add_claim(con, "p", "cluster result", kind="contribution")
+    claim.link_evidence(con, c["id"], run_id=run["id"], stance="supports")
+    hits = [f for f in lint.run(con, "p")["open"] if f["rule"] == "run-not-reproducible"]
+    assert hits and hits[0]["severity"] == "medium"
+    from renv.research import finding as findmod
+    findmod.adjudicate(con, hits[0]["id"], "reject", "cluster ingest is enough here")
+    assert not [f for f in lint.run(con, "p")["open"] if f["rule"] == "run-not-reproducible"]
+
+
+def test_lint_local_degraded_run_is_not_run_not_reproducible(tmp_path):
+    con = _proj(tmp_path)
+    run = _run(con, tmp_path)
+    c = claim.add_claim(con, "p", "local result", kind="contribution")
+    claim.link_evidence(con, c["id"], run_id=run["id"], stance="supports",
+                        grade="confirmatory")
+    rules = {f["rule"] for f in lint.run(con, "p")["open"]}
+    assert "run-not-reproducible" not in rules
+
+
+def test_lint_table_latest_not_evidential(tmp_path):
+    con = _proj(tmp_path)
+    run1 = _run(con, tmp_path, "001")
+    entry = tmp_path / "e_001b.py"
+    entry.write_text(
+        "import json,os\n"
+        "json.dump({'r':0.9},open(os.environ['RENV_RUN_DIR']+'/metrics.json','w'))\n")
+    run2 = experiment.run_experiment(
+        con, "p", "001", entrypoint=str(entry), root=str(tmp_path))
+    assert run2["id"] != run1["id"]
+    c = claim.add_claim(con, "p", "old run", kind="contribution")
+    linked = claim.link_evidence(con, c["id"], run_id=run1["id"], stance="supports",
+                                 grade="confirmatory")
+    hits = [f for f in lint.run(con, "p")["open"] if f["rule"] == "table-latest-not-evidential"]
+    assert hits and hits[0]["severity"] == "medium"
+    claim.retract_evidence(con, linked["evidence"][0]["id"], "superseded by later run")
+    claim.link_evidence(con, c["id"], run_id=run2["id"], stance="supports",
+                        grade="confirmatory")
+    assert not [f for f in lint.run(con, "p")["open"] if f["rule"] == "table-latest-not-evidential"]

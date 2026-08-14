@@ -1,9 +1,12 @@
-"""Finding adjudication + dedup-by-memory: rejected findings are never re-raised."""
+"""Finding adjudication: waivable rejects stay dismissed; provenance ones cannot."""
 
 from __future__ import annotations
 
+import argparse
+
 import pytest
 
+from renv.cli import cmd_review
 from renv.research import authoring, db, experiment, finding, review
 
 
@@ -91,3 +94,62 @@ def test_fixed_finding_auto_resolves(tmp_path):
         "\\bibliography{references}\n")
     review.review(con, str(tmp_path), "p")
     assert finding.get_finding(con, fid)["status"] == "resolved"
+
+
+def _non_waivable_finding(check_id="cites-verify-full"):
+    return {"check_id": check_id, "section": "all",
+            "dimension": "correctness", "severity": "high",
+            "issue": f"{check_id} violation",
+            "location": {"quote": check_id}}
+
+
+@pytest.mark.parametrize("check_id", sorted(finding.NON_WAIVABLE))
+def test_reject_non_waivable_is_refused(tmp_path, check_id):
+    con, _ = _project_with_paper(tmp_path, abstract="recall 0.800")
+    fid = finding.persist_findings(con, "p", [_non_waivable_finding(check_id)])["open"][0]["id"]
+    with pytest.raises(ValueError, match="non-waivable"):
+        finding.adjudicate(con, fid, "reject", "I don't want to fix this")
+    assert finding.get_finding(con, fid)["status"] == "open"
+
+
+@pytest.mark.parametrize("check_id", sorted(finding.NON_WAIVABLE))
+def test_non_waivable_rejected_finding_is_reopened(tmp_path, check_id):
+    con, _ = _project_with_paper(tmp_path, abstract="recall 0.800")
+    payload = _non_waivable_finding(check_id)
+    fid = finding.persist_findings(con, "p", [payload])["open"][0]["id"]
+    con.execute("UPDATE finding SET status='rejected' WHERE id=?", (fid,))
+    con.execute(
+        "INSERT INTO adjudication (finding_id, verdict, reasoning, by, ts) "
+        "VALUES (?,?,?,?,?)", (fid, "reject", "historical dismiss", "test", "t"))
+    con.commit()
+    res = finding.persist_findings(con, "p", [payload])
+    assert res["open"][0]["id"] == fid
+    assert finding.get_finding(con, fid)["status"] == "open"
+    fp = finding.fingerprint(payload)
+    n = con.execute(
+        "SELECT COUNT(*) n FROM finding WHERE fingerprint=?", (fp,)).fetchone()["n"]
+    assert n == 1
+
+
+def test_review_does_not_resolve_lint_findings(tmp_path):
+    from renv.research import claim, lint
+    con, root = _project_with_paper(tmp_path, abstract="recall 0.800")
+    claim.add_claim(con, "p", "our grand thesis", kind="thesis")
+    out = lint.run(con, "p")
+    hits = [f for f in out["open"] if f["rule"] == "headline-unbacked"]
+    assert hits
+    fid = hits[0]["id"]
+    review.review(con, str(tmp_path), "p")
+    assert finding.get_finding(con, fid)["status"] == "open"
+
+
+def test_cmd_review_strict_exits_on_lint_high(tmp_path):
+    con, _ = _project_with_paper(tmp_path, abstract="recall 0.800")
+    pid = db.project_id(con, "p")
+    con.execute("INSERT INTO log_entry (project_id, type, ts, body_md) "
+                "VALUES (?, 'result', 'now', 'made-up number')", (pid,))
+    con.commit()
+    cmd_review(argparse.Namespace(corpus=str(tmp_path), project="p", strict=False))
+    with pytest.raises(SystemExit) as ei:
+        cmd_review(argparse.Namespace(corpus=str(tmp_path), project="p", strict=True))
+    assert ei.value.code == 1

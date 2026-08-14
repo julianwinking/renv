@@ -298,7 +298,16 @@ def h_get_card(root, a):
 
 def h_review(root, a):
     from renv.research import review
-    return review.review(_conn(root), root, a["project"])
+    con = _conn(root)
+    lint_res = None
+    if a.get("strict"):
+        from renv.research import lint
+        lint_res = lint.run(con, a["project"])
+    res = review.review(con, root, a["project"])
+    if lint_res is not None:
+        res = dict(res)
+        res["lint"] = lint_res
+    return res
 
 
 def h_rubric(root, a):
@@ -541,7 +550,7 @@ TOOLS = [
                          ["project", "type", "body"]), "handler": h_log_decision},
     {"name": "list_log", "description": "Recent decision-log entries with evidence links.",
      "inputSchema": _obj({"project": _S, "limit": _I}, ["project"]), "handler": h_list_log},
-    {"name": "check_invariants", "description": "With a project: run the full graph-lint catalog (unbacked headline claims, toy-only or exploratory-only support, stale/none-verdict evidence, contradictions, dangling questions/links, phase-order violations) — violations persist as adjudicable findings; rejected ones never re-nag. Without: DB-wide §0 quick audit.",
+    {"name": "check_invariants", "description": "With a project: run the full graph-lint catalog (unbacked headline claims, toy-only or exploratory-only support, stale/none-verdict evidence, contradictions, dangling questions/links, phase-order violations) — violations persist as adjudicable findings. Rejected waivable nags are not re-raised; provenance lints (result-without-run, none-verdict support) cannot be dismissed. Without: DB-wide §0 quick audit.",
      "inputSchema": _obj({"project": _S}), "handler": h_check_invariants},
     {"name": "add_note", "description": "Add a meeting note to a project.",
      "inputSchema": _obj({"project": _S, "body": _S, "title": _S}, ["project", "body"]),
@@ -575,8 +584,8 @@ TOOLS = [
      "inputSchema": _obj({"key": _S}, ["key"]), "handler": h_paper_usage},
     {"name": "get_card", "description": "A paper's structured card (problem/method/results…); generates if missing.",
      "inputSchema": _obj({"key": _S, "refresh": {"type": "boolean"}}, ["key"]), "handler": h_get_card},
-    {"name": "review", "description": "Run automated per-section paper checks; returns findings + a saved report.",
-     "inputSchema": _obj({"project": _S}, ["project"]), "handler": h_review},
+    {"name": "review", "description": "Run automated per-section paper checks; returns findings + a saved report. strict=true also runs graph lints.",
+     "inputSchema": _obj({"project": _S, "strict": {"type": "boolean"}}, ["project"]), "handler": h_review},
     {"name": "rubric", "description": "The review rubric (section → checks); the agentic layer runs the llm checks.",
      "inputSchema": _obj({}), "handler": h_rubric},
     {"name": "list_findings", "description": "A project's review findings (optionally filter by status).",
@@ -584,8 +593,9 @@ TOOLS = [
     {"name": "get_finding", "description": "A finding with its evidence (proof to branch into) + adjudication trail.",
      "inputSchema": _obj({"id": _I}, ["id"]), "handler": h_get_finding},
     {"name": "adjudicate_finding",
-     "description": "Accept/reject/defer a finding with reasoning. Rejected findings are never re-raised — "
-                    "future agents see the verdict, preventing repeated/hallucinated findings.",
+     "description": "Accept/reject/defer a finding with reasoning. Rejected *waivable* findings are not re-raised. "
+                    "Reject is refused for non-waivable provenance checks (unverified cites, stale results table, "
+                    "unknown cite keys, §0 result-without-run, none-verdict support).",
      "inputSchema": _obj({"id": _I, "verdict": {"type": "string", "enum": ["accept", "reject", "defer"]},
                           "reasoning": _S, "by": _S}, ["id", "verdict", "reasoning"]),
      "handler": h_adjudicate_finding},

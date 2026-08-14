@@ -132,7 +132,10 @@ Rules of thumb the loop depends on:
 
 CLI and MCP tools are 1:1 — discover them with `uv run renv --help` (or the
 MCP tool list; server `renv` in `.mcp.json`). `query` is read-only SQL over
-the whole store.
+the whole store. `renv review` / `renv lint` audit the manuscript and graph
+against the store (`renv review --strict` runs both); unverified cites, a
+stale results table, unknown cite keys, a result with no run, and none-verdict
+"support" cannot be dismissed — fix the evidence.
 
 **Web cockpit:** `https://research.com/` (local: /etc/hosts + a mkcert-trusted
 cert; http redirects) — starts ON DEMAND (launchd socket activation) on the

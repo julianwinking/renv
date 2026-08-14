@@ -4,9 +4,10 @@
 full catalog: every rule is a query over the store that yields *violations* —
 places where the research graph claims more than it can back, or where
 structure has gone stale. Violations are persisted as findings, which buys the
-whole adjudication apparatus for free: fingerprint dedup across runs, a
-rejected verdict suppresses the same nag forever ("yes, this thesis is
+adjudication apparatus for free: fingerprint dedup across runs, a rejected
+verdict suppresses a *waivable* nag forever ("yes, this thesis is
 intentionally open for now"), and violations that stop firing auto-resolve.
+Provenance lints in `finding.NON_WAIVABLE` cannot be dismissed.
 
 Severities follow the review rubric: high / medium / low.
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from renv.research import experiment as expmod
 from renv.research import finding as findmod
 from renv.research import links as linksmod
 from renv.research import phases as phasesmod
@@ -137,6 +139,47 @@ def _r_hypothesis_untested(con, pid):
                 "WHERE t.claim_id=claim.id)", (pid,))]
 
 
+def _r_cited_paper_no_text(con, pid):
+    return [{"entity": f"paper:{r['id']}",
+             "issue": f"cited paper {r['key']!r} has no PDF text (sha256 empty) — "
+                      f"attach a PDF with `renv add <pdf> --key {r['key']}`"}
+            for r in con.execute(
+                "SELECT DISTINCT p.id, p.key FROM citation c "
+                "JOIN paper p ON p.id=c.paper_id "
+                "WHERE c.project_id=? AND (p.sha256 IS NULL OR p.sha256='')", (pid,))]
+
+
+def _r_run_not_reproducible(con, pid):
+    return [{"entity": f"run:{r['id']}",
+             "issue": f"claim #{r['claim_id']} is supported by remote run #{r['id']} "
+                      "with no entrypoint (typed ingest) — not reproducible"}
+            for r in con.execute(
+                "SELECT r.id, ev.claim_id FROM run r "
+                "JOIN claim_evidence ev ON ev.run_id=r.id "
+                "JOIN claim c ON c.id=ev.claim_id "
+                "WHERE c.project_id=? AND ev.retracted IS NULL AND ev.stance='supports' "
+                "AND r.provenance='remote' "
+                "AND (r.entrypoint IS NULL OR r.entrypoint='')", (pid,))]
+
+
+def _r_table_latest_not_evidential(con, pid):
+    out = []
+    for r in con.execute(
+            "SELECT ev.id, ev.claim_id, ev.run_id, e.slug, e.id AS exp_id "
+            "FROM claim_evidence ev "
+            "JOIN claim c ON c.id=ev.claim_id "
+            "JOIN run r ON r.id=ev.run_id "
+            "JOIN experiment e ON e.id=r.experiment_id "
+            "WHERE c.project_id=? AND ev.retracted IS NULL "
+            "AND ev.stance='supports' AND ev.run_id IS NOT NULL", (pid,)):
+        latest = expmod.latest_run_id(con, r["exp_id"])
+        if latest is not None and latest != r["run_id"]:
+            out.append({"entity": f"evidence:{r['id']}",
+                        "issue": f"claim #{r['claim_id']} is supported by run #{r['run_id']} "
+                                 f"of '{r['slug']}', but weave uses latest run #{latest}"})
+    return out
+
+
 def _make_project_rules(project):
     """Rules needing the project slug (they call domain modules, not raw SQL)."""
 
@@ -218,6 +261,9 @@ RULES = [
     ("exploratory-only", "low", _r_exploratory_only),
     ("stale-evidence", "medium", _r_stale_evidence),
     ("hypothesis-untested", "low", _r_hypothesis_untested),
+    ("cited-paper-no-text", "medium", _r_cited_paper_no_text),
+    ("run-not-reproducible", "medium", _r_run_not_reproducible),
+    ("table-latest-not-evidential", "medium", _r_table_latest_not_evidential),
 ]
 
 
@@ -228,8 +274,10 @@ def _fingerprint(rule_id: str, entity: str) -> str:
 def run(con: sqlite3.Connection, project: str) -> dict:
     """Run the catalog and sync violations into the finding table.
 
-    - a new violation opens a finding (unless its fingerprint was rejected);
+    - a new violation opens a finding (unless its fingerprint was rejected
+      and the rule is waivable);
     - an unchanged violation carries its existing finding (no duplicates);
+    - a previously rejected non-waivable finding is reopened, not duplicated;
     - a violation that stopped firing auto-resolves its finding.
     Review findings (non-lint check_ids) are never touched.
     """
@@ -244,7 +292,8 @@ def run(con: sqlite3.Connection, project: str) -> dict:
 
     opened, carried, suppressed = [], [], []
     for fp, v in live.items():
-        if fp in rejected:
+        check_id = f"lint-{v['rule']}"
+        if fp in rejected and not findmod.is_non_waivable(check_id):
             suppressed.append({**v, "prior_reason": rejected[fp]})
             continue
         existing = con.execute(
@@ -253,21 +302,20 @@ def run(con: sqlite3.Connection, project: str) -> dict:
         if existing:
             carried.append({**v, "id": existing["id"]})
             continue
+        if findmod.is_non_waivable(check_id):
+            rid = findmod.reopen_rejected(con, pid, fp)
+            if rid is not None:
+                opened.append({**v, "id": rid})
+                continue
         fid = con.execute(
             "INSERT INTO finding (project_id, fingerprint, check_id, section, "
             "dimension, severity, issue, location_json, created) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            (pid, fp, f"lint-{v['rule']}", "graph", "lint", v["severity"],
+            (pid, fp, check_id, "graph", "lint", v["severity"],
              v["issue"], f'{{"entity": "{v["entity"]}"}}', now())).lastrowid
         opened.append({**v, "id": fid})
 
-    resolved = 0
-    for r in con.execute(
-            "SELECT id, fingerprint FROM finding WHERE project_id=? "
-            "AND check_id LIKE 'lint-%' AND status IN ('open','accepted')", (pid,)):
-        if r["fingerprint"] not in live:
-            con.execute("UPDATE finding SET status='resolved' WHERE id=?", (r["id"],))
-            resolved += 1
+    resolved = findmod.resolve_fixed(con, project, set(live), family="lint")
     con.commit()
     return {"open": opened + carried, "opened": len(opened), "carried": len(carried),
             "suppressed": len(suppressed), "resolved": resolved}

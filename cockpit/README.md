@@ -17,7 +17,8 @@ and humans always see identical live state.
   retractions, and pre-registered tests.
 - **Experiments** — the branch DAG with runs and metrics.
 - **Findings** — review findings with inline accept / reject (reasoning
-  required; rejected findings are never re-raised).
+  required; rejected waivable findings are not re-raised; provenance
+  findings cannot be dismissed).
 - **Graph** — everything above as one interactive canvas (React Flow +
   dagre): experiments, claims, findings, citations, papers, and notes as
   connected, expandable nodes, with regions and phase bands.

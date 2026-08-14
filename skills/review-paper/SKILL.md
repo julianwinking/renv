@@ -8,9 +8,11 @@ one big sweep — work the rubric check by check.
 
 ## 1. Automated checks (ground truth — run first)
 Run `uv run renv review <project-slug>`. These are deterministic facts cross-checked against
-the store (abstract numbers vs. metric rows, `\spancite` vs. verified citations,
-bib coverage, results-table freshness, experiment hypotheses). Treat every HIGH
-finding as a blocker. Read the saved report path it prints.
+the store (prose numbers vs. `results_table.tex` cells, `\spancite` vs. verified citations,
+bib coverage and known paper keys, results-table freshness, experiment hypotheses). Treat
+every HIGH finding as a blocker. Provenance HIGHs (unverified cites, stale table, unknown
+cite keys) cannot be rejected — fix the evidence. Read the saved report path it prints.
+Use `renv review <slug> --strict` when graph lints should gate too.
 
 ## 2. LLM checks (the rubric's `verify: llm` rows)
 Fetch the rubric: call the `rubric` MCP tool (or read `renv/review.py:RUBRIC`).

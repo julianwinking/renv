@@ -53,6 +53,7 @@ def test_weave_results_table_from_metrics(tmp_path):
     assert "0.800" in tex and "0.860" in tex          # numbers come from metric rows
     assert "001-base" in tex and "002-dense" in tex
     assert r"\toprule" in tex and r"\bottomrule" in tex
+    assert "% runs:" in tex and "001-base=" in tex and "002-dense=" in tex
 
 
 def test_weave_results_table_handles_no_metrics(tmp_path):

@@ -22,6 +22,8 @@ renv exp new {{slug}} 001-baseline --hypothesis "..."   # add an experiment (DAG
 renv exp run {{slug}} 001-baseline --entrypoint src/run.py --param k=8
 renv cite "<claim>" {{slug}} --write                     # span-anchored, verified citation
 renv weave {{slug}}                                      # regenerate numbers + bib from the store
+renv lint {{slug}}                                       # graph invariants
 renv review {{slug}}                                     # automated per-section checks
+renv review {{slug}} --strict                            # review + graph lints
 ```
 See the parent `AGENTS.md` for the operating protocol.

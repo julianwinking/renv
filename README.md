@@ -48,6 +48,14 @@ graph behind a finished paper on renv.ai is planned but not live yet.
   else; it installs in seconds. Heavy SOTA backends are optional extras
   behind lazy imports.
 
+## Landscape
+
+Most “AI scientist” systems emit papers. renv is the opposite shape: a
+local store that refuses ungrounded writes. A catalog of those systems —
+repos, licenses, and a critical overlap against what renv already
+implements — is in
+[`docs/autonomous-scientists.md`](docs/autonomous-scientists.md).
+
 ## Quickstart
 
 Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+); the cockpit build
@@ -182,6 +190,7 @@ library/        shared corpus of reference papers (index once)
 .renv/         derived index + lockfile
 projects/       one folder per paper (each its own git repo)
 AGENTS.md       the operating protocol for agents (and humans)
+docs/           product docs (not research state)
 ```
 
 ## Contributing

@@ -258,14 +258,15 @@ def scan_tree(con: sqlite3.Connection, corpus_root, slug: str) -> dict:
     project_id(con, slug)
     text = _text_root(corpus_root, slug)
     acc: dict = {"spancites": [], "cites": [], "inputs": []}
-    seen: set[str] = set()
+    typeset: set[str] = set()
     if (text / "paper.tex").is_file():
-        _walk_tex_macros(text, "paper.tex", seen, acc)
+        _walk_tex_macros(text, "paper.tex", typeset, acc)
+    seen = set(typeset)
     for p in sorted(text.rglob("*.tex")):
         rel = p.relative_to(text).as_posix()
         if rel not in seen:
             _walk_tex_macros(text, rel, seen, acc)
-    return acc
+    return {**acc, "typeset_files": sorted(typeset)}
 
 
 # --- compile ------------------------------------------------------------------
@@ -516,14 +517,19 @@ def usage(con: sqlite3.Connection, corpus_root, slug: str) -> dict:
     """
     from renv.research import experiment as expmod
     scan = scan_tree(con, corpus_root, slug)
+    typeset = set(scan.get("typeset_files") or [])
     span_keys: list[str] = []
+    papers: list[str] = []
     seen: set[str] = set()
     for s in scan["spancites"]:
         key = (s.get("source_id") or "").strip()
-        if key and key not in seen:
-            seen.add(key)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        papers.append(key)
+        # PDF [n] only for macros that actually typeset from paper.tex.
+        if not typeset or s.get("path") in typeset:
             span_keys.append(key)
-    papers = list(span_keys)
     for c in scan["cites"]:
         key = (c.get("key") or "").strip()
         if key and key not in seen:

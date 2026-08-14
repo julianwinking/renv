@@ -43,9 +43,11 @@ function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
   const contentRef = useRef('')
   const selRef = useRef(null)
   const dirtyRef = useRef(false)
+  const readyRef = useRef(null)
   const saveTimer = useRef(0)
   selRef.current = sel
   dirtyRef.current = dirty
+  readyRef.current = ready
 
   useEffect(() => {
     let live = true
@@ -85,13 +87,20 @@ function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
   const tree = useMemo(() => filesToTree(files || [], { strip }), [files, strip])
 
   const saveNow = async (row = selRef.current, text = contentRef.current) => {
-    if (!row) return
+    if (!row) return true
+    // Don't POST the previous buffer onto a file whose contents are not loaded.
+    if (readyRef.current !== row.path) return true
     setSaving(true)
-    const r = await saveConfigFile(row.scope, row.name, text, row.project)
-    setSaving(false)
-    if (r.error) { setMsg({ bad: true, text: r.error }); return }
-    if (selRef.current && row.path === selRef.current.path && text === contentRef.current) {
-      setDirty(false)
+    try {
+      const r = await saveConfigFile(row.scope, row.name, text, row.project)
+      if (r.error) { setMsg({ bad: true, text: r.error }); return false }
+      if (selRef.current && row.path === selRef.current.path && text === contentRef.current) {
+        setDirty(false)
+        dirtyRef.current = false
+      }
+      return true
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -99,15 +108,19 @@ function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
     contentRef.current = text
     setContent(text)
     setDirty(true)
+    dirtyRef.current = true
     clearTimeout(saveTimer.current)
     const row = selRef.current
     saveTimer.current = setTimeout(() => saveNow(row, text), 700)
   }
 
-  const openFile = (row) => {
+  const openFile = async (row) => {
     if (!row || (sel && row.path === sel.path)) return
     clearTimeout(saveTimer.current)
-    if (dirty && sel) saveNow(sel, contentRef.current)
+    if (dirtyRef.current && sel) {
+      const ok = await saveNow(sel, contentRef.current)
+      if (!ok) return
+    }
     setSel(row)
     if (slug && view) navigate(routePath(slug, view, row.path))
   }

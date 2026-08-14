@@ -335,4 +335,4 @@ def test_usage_numbers_follow_input_order_not_rglob(tmp_path):
     (text / "orphan.tex").write_text(r"\spancite{orphan}{1}{2}{o}" + "\n")
     used = manuscript.usage(con, tmp_path, "p")
     assert used["papers"][-1] == "orphan"
-    assert used["cite_numbers"]["orphan"] == 4
+    assert "orphan" not in used["cite_numbers"]

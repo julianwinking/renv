@@ -94,8 +94,9 @@ def test_write_path_traversal_rejected(tmp_path):
         sync = _get(base, "/api/write/p/synctex?dir=pdf&page=1&x=0&y=0"
                          "&snippet=citationprecisionoutside"
                          "&prefer=../AGENTS.md")
-        assert "error" not in sync
-        assert sync.get("path") != "../AGENTS.md"
+        assert sync.get("ok") is False
+        assert sync.get("reason") == "no-synctex"
+        assert "AGENTS.md" not in str(sync.get("path") or "")
     finally:
         httpd.shutdown()
 

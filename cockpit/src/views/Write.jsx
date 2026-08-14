@@ -58,37 +58,49 @@ export default function Write({ slug, focus }) {
 
   const saveNow = async (rel, text) => {
     const live = fileRef.current
-    if (!rel || (live && live.path === rel && !live.writable)) return
+    // Identity: only write the file that is actually loaded. A null fileRef is
+    // the loading gap after a path change — Cmd+S must not POST the previous
+    // buffer (or "") onto the new path. flushOpen saves the old file *before*
+    // setPath, while fileRef still matches.
+    if (!rel || !live || live.path !== rel || !live.writable) return true
     setSaving(true)
-    const r = await saveWriteFile(slug, rel, text)
-    setSaving(false)
-    if (r.error) { setErr(r.error); return }
-    // Don't clear dirty if the buffer moved on while this POST was in flight.
-    if (rel === pathRef.current && text === contentRef.current) {
-      setDirty(false)
-      dirtyRef.current = false
+    try {
+      const r = await saveWriteFile(slug, rel, text)
+      if (r.error) { setErr(r.error); return false }
+      if (rel === pathRef.current && text === contentRef.current) {
+        setDirty(false)
+        dirtyRef.current = false
+      }
+      loadTree()
+      return true
+    } finally {
+      setSaving(false)
     }
-    loadTree()
   }
 
-  const flushOpen = (rel) => {
+  const flushOpen = async (rel) => {
     if (rel === pathRef.current) return false
     clearTimeout(saveTimer.current)
     if (dirtyRef.current && fileRef.current?.writable) {
-      saveNow(pathRef.current, contentRef.current)
+      const ok = await saveNow(pathRef.current, contentRef.current)
+      if (!ok) return false
     }
     return true
   }
 
   useEffect(() => {
-    if (focus && focus !== path) {
-      flushOpen(focus)
+    if (!focus || focus === pathRef.current) return
+    let cancelled = false
+    ;(async () => {
+      const ok = await flushOpen(focus)
+      if (!ok || cancelled) return
       setPath(focus)
-    }
+    })()
+    return () => { cancelled = true }
   }, [focus]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openPath = (rel) => {
-    if (!flushOpen(rel)) return
+  const openPath = async (rel) => {
+    if (!(await flushOpen(rel))) return
     setPath(rel)
     navigate(routePath(slug, 'write', rel))
   }
@@ -366,7 +378,7 @@ export default function Write({ slug, focus }) {
             <Suspense fallback={<div className="loading">loading editor…</div>}>
               <TexEditor
                 ref={ed}
-                key={slug + ':' + path + ':' + edRev}
+                key={slug + ':' + path + ':' + edRev + ':' + (ctx?.citations ? 'c' : '0')}
                 doc={file.content}
                 readOnly={!file.writable}
                 onChange={onEdit}

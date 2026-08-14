@@ -16,7 +16,7 @@ import ast
 from pathlib import Path
 
 RENV = Path(__file__).resolve().parent.parent / "renv"
-CLIENTS = {"renv.cli", "renv.web", "renv.mcp_server"}
+CLIENTS = {"renv.cli", "renv.web", "renv.web_write", "renv.mcp_server"}
 
 
 def _imports(path: Path) -> set[str]:

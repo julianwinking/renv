@@ -11,6 +11,7 @@ import Timeline from './views/Timeline.jsx'
 import Plan from './views/Plan.jsx'
 import { Instructions, Templates, Settings } from './views/Admin.jsx'
 import Conferences from './views/Conferences.jsx'
+import Write from './views/Write.jsx'
 import { ErrorBoundary } from './ui.jsx'
 
 const I = {
@@ -23,12 +24,13 @@ const I = {
   timeline: <path d="M2 3h6v2.2H2zM4.5 6.4h7v2.2h-7zM7 9.8h6V12H7z" />,
   experiments: <path d="M6 2v4L2.5 12a1 1 0 0 0 .9 1.5h8.2a1 1 0 0 0 .9-1.5L9 6V2M4.5 2h6M5 9.5h5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
   papers: <path d="M3.5 1.5h6L12 4v9.5a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1zM5 6h5M5 8.5h5M5 11h3" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />,
+  write: <path d="M11 2.2 13.3 4.5 5.2 12.6H2.9v-2.3zM8.2 4.2l2.3 2.3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />,
   claims: <path d="M7.5 1.5 13 4.5v6l-5.5 3-5.5-3v-6zM7.5 7.5V13M7.5 7.5 13 4.5M7.5 7.5 2 4.5" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />,
   findings: <path d="M7.5 2 14 13H1zM7.5 6v3.2M7.5 11.2v.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />,
   log: <path d="M7.5 7.5m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0M7.5 4.5v3l2.2 1.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />,
 }
 
-const VIEWS = ['overview', 'graph', 'claims', 'experiments', 'papers', 'findings', 'timeline', 'log']
+const VIEWS = ['overview', 'graph', 'claims', 'experiments', 'papers', 'write', 'findings', 'timeline', 'log']
 const ADMIN = ['instructions', 'templates', 'settings']
 const TOOLS = ['conferences']
 const ALL_VIEWS = [...VIEWS, ...ADMIN, ...TOOLS]
@@ -80,6 +82,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
+    document.documentElement.classList.toggle('dark-theme', theme === 'dark')
     localStorage.setItem('renv-theme', theme)
   }, [theme])
 
@@ -397,7 +400,7 @@ export default function App() {
           </button>
         </div>
 
-        <div className={`content ${view === 'graph' || view === 'papers' ? 'full' : ''}`}>
+        <div className={`content ${view === 'graph' || view === 'papers' || view === 'write' || view === 'instructions' || view === 'templates' ? 'full' : ''}`}>
           <ErrorBoundary key={view + '|' + slug}>
           {!slug && <div className="loading">no project selected</div>}
           {slug && view === 'overview' && <Overview slug={slug} project={project} defs={defs} counts={counts} />}
@@ -405,11 +408,12 @@ export default function App() {
           {slug && view === 'timeline' && <Plan slug={slug} />}
           {slug && view === 'experiments' && <Experiments slug={slug} defs={defs} focus={focus} />}
           {view === 'papers' && <Papers focus={focus} slug={slug} onMutate={loadOverview} />}
+          {slug && view === 'write' && <Write slug={slug} focus={focus} />}
           {slug && view === 'claims' && <Claims slug={slug} focus={focus} />}
           {slug && view === 'findings' && <Findings slug={slug} />}
           {slug && view === 'log' && <Timeline slug={slug} focus={focus} />}
-          {slug && view === 'instructions' && <Instructions slug={slug} />}
-          {view === 'templates' && <Templates slug={slug} />}
+          {slug && view === 'instructions' && <Instructions slug={slug} focus={focus} />}
+          {view === 'templates' && <Templates slug={slug} focus={focus} />}
           {slug && view === 'settings' && <Settings slug={slug} project={project} onMutate={loadOverview} />}
           {slug && view === 'conferences' && <Conferences slug={slug} />}
           </ErrorBoundary>

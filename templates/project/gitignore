@@ -15,3 +15,8 @@ runs/*
 *.bbl
 *.blg
 *.synctex.gz
+*.fdb_latexmk
+*.fls
+
+# compiled manuscript (rebuild with `renv compile` / cockpit Write)
+text/*.pdf

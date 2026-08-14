@@ -140,8 +140,9 @@ are supported through registered ssh remotes with graded provenance; see
 ## The web cockpit
 
 The **React cockpit** ([`cockpit/`](cockpit/)) is the all-in-one UI for
-driving a project: the paper library with a PDF reader (span-anchored
-citations and reference intelligence highlighted in place), the
+driving a project: the **Write** view (Overleaf-shaped `text/` editor with
+span-anchored `\\spancite`, weave, and PDF preview), the paper library with a
+PDF reader (citations and reference intelligence highlighted in place), the
 claim/evidence graph, experiment branches with runs and metrics, findings
 review, the decision log, and the full interactive canvas. Setup is in the
 Quickstart above; `renv web uninstall` reverses the renv.local install, and
@@ -152,7 +153,8 @@ package install. Development mode and details: [`cockpit/README.md`](cockpit/REA
 
 `.mcp.json` registers a local stdio MCP server (`renv mcp`, pure stdlib) so
 an agent can run the whole loop: `search_corpus`, `cite_claim`,
-`create/run_experiment`, `log_decision`, `weave`, and read-only `query`,
+`create/run_experiment`, `log_decision`, `weave`, `compile_manuscript`,
+and read-only `query`,
 through the same code paths and constraints as the CLI.
 [`AGENTS.md`](AGENTS.md) is the operating protocol.
 

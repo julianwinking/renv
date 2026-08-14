@@ -220,7 +220,7 @@ aside {
 
 /* ---------- content ---------- */
 .content { flex: 1; overflow-y: auto; padding: 22px; overscroll-behavior: contain; }
-.content.full { padding: 0; position: relative; }
+.content.full { padding: 0; position: relative; overflow: hidden; }
 
 .pagehead { margin: 2px 2px 18px; }
 .pagehead h1 { font-size: 19px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
@@ -393,7 +393,15 @@ select.text {
 .gnode-observation { border-left-color: var(--paper-kind); border-left-style: dashed; }
 .gnode-thought, .gnode-note { border-left-color: var(--line-strong); border-left-style: dashed; }
 .gnode-pnote { border-left-color: var(--pv-line, var(--warn)); }
-.gnode-head { display: flex; align-items: center; gap: 6px; }
+.gnode-ms {
+  font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.3;
+  color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 5px;
+  font-family: var(--mono); font-weight: 600; flex-shrink: 0;
+}
+.react-flow__node.gnode-dim { opacity: 0.22; }
+.glegend-count {
+  font-family: var(--mono); font-size: 10px; color: var(--faint); margin-left: 4px;
+}
 .gnode-head b { font-size: 12px; font-weight: 600; }
 .gnode-slug-edit {
   font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink);
@@ -645,13 +653,21 @@ textarea.gnode-edit {
   margin-top: 4px;
 }
 
-/* admin file editor */
+/* admin file editor — same tree chrome as Write; .md files use live markdown */
 .filetabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .filetabs .active-tab { color: var(--accent); border-color: var(--accent); }
+.tx-fileedit-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.tx-fileedit-wrap textarea.fileedit,
 textarea.fileedit {
-  font-family: var(--mono); font-size: 12px; line-height: 1.6;
-  min-height: 420px; white-space: pre; tab-size: 2;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  white-space: pre; tab-size: 2; color: var(--ink); background: var(--bg);
+  border: 0; resize: none;
 }
+.tx-fileedit-wrap textarea.fileedit {
+  position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0;
+  padding: 12px var(--tx-pad); box-sizing: border-box;
+}
+.tx-err.ok { color: var(--ok); background: var(--ok-soft); }
 
 /* graph planning tools */
 .gpanel {
@@ -1239,21 +1255,111 @@ body.ptab-dragging, body.ptab-dragging * { cursor: grabbing !important; user-sel
 .nd-mode:last-child { border-right: 0; }
 .nd-mode:hover { background: var(--surface2); color: var(--ink); }
 .nd-mode.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
-.nd-body { flex: 1; min-height: 0; overflow: auto; }
-.nd-body .mdxeditor { height: 100%; background: var(--surface); font-family: var(--sans); }
-.nd-mdx {
-  padding: 18px 30px !important;   /* MDXEditor ships its own contenteditable padding; override it */
-  font-family: var(--sans); font-size: 14px; line-height: 1.65; min-height: 100%; max-width: 860px;
+.nd-body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+/* MDXEditor token remap — two classes so this wins over the editor's own
+   stylesheet (loaded later, same specificity otherwise). */
+.mdxeditor.renv-mdx {
+  --basePageBg: var(--bg);
+  --baseBase: var(--surface);
+  --baseBgSubtle: var(--surface);
+  --baseBg: var(--surface2);
+  --baseBgHover: var(--line);
+  --baseBgActive: var(--line-strong);
+  --baseLine: var(--line);
+  --baseBorder: var(--line);
+  --baseBorderHover: var(--line-strong);
+  --baseSolid: var(--muted);
+  --baseSolidHover: var(--ink);
+  --baseText: var(--muted);
+  --baseTextContrast: var(--ink);
+  --accentBase: var(--accent-soft);
+  --accentBgSubtle: var(--accent-soft);
+  --accentBg: var(--accent-soft);
+  --accentBgHover: var(--accent-soft);
+  --accentBgActive: var(--accent-soft);
+  --accentLine: var(--accent);
+  --accentBorder: var(--accent);
+  --accentBorderHover: var(--accent);
+  --accentSolid: var(--accent);
+  --accentSolidHover: var(--accent);
+  --accentText: var(--accent);
+  --accentTextContrast: var(--accent-ink);
+  --font-mono: var(--mono);
+  --font-body: var(--sans);
+  background: var(--bg);
+  font-family: var(--sans);
+  color: var(--ink);
+  display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden;
 }
-.nd-mdx:focus { outline: none; }
-/* map MDXEditor's content colours to our tokens so it reads correctly in both
-   themes (--ink/--muted flip automatically) instead of MDXEditor's own palette */
+.mdxeditor.renv-mdx .mdxeditor-toolbar,
+.mdxeditor.renv-mdx .renv-mdx-toolbar {
+  flex: 0 0 auto; border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.mdxeditor.renv-mdx .mdxeditor-diff-source-wrapper {
+  flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column;
+}
+.mdxeditor.renv-mdx .mdxeditor-rich-text-editor,
+.mdxeditor.renv-mdx .mdxeditor-root-contenteditable {
+  flex: 1; min-height: 0;
+}
+.mdxeditor.renv-mdx .mdxeditor-source-editor,
+.mdxeditor.renv-mdx .cm-sourceView {
+  flex: 1; min-height: 0; height: 100%;
+  font-family: var(--mono); font-size: 13px;
+}
+.nd-body .mdxeditor { height: 100%; }
+.tx-fileedit-wrap.md .mdxeditor { flex: 1; height: 100%; min-height: 0; }
+
+.nd-mdx, .tx-mdx {
+  font-family: var(--sans); min-height: 100%; max-width: 860px; margin: 0 auto;
+}
+.nd-mdx {
+  padding: 18px 30px 48px !important;
+  font-size: 14px; line-height: 1.65;
+}
+.tx-mdx {
+  padding: 28px 44px 80px !important;
+  font-size: 16px; line-height: 1.7;
+}
+.nd-mdx:focus, .tx-mdx:focus { outline: none; }
 .nd-mdx, .nd-mdx p, .nd-mdx li,
 .nd-mdx h1, .nd-mdx h2, .nd-mdx h3, .nd-mdx h4, .nd-mdx h5, .nd-mdx h6,
-.nd-mdx strong, .nd-mdx em { color: var(--ink) !important; }
-.nd-mdx blockquote, .nd-mdx blockquote p { color: var(--muted) !important; }
-.nd-mdx a { color: var(--accent) !important; }
-.nd-mdx code { color: var(--ink) !important; background: var(--surface2) !important; }
+.nd-mdx strong, .nd-mdx em,
+.tx-mdx, .tx-mdx p, .tx-mdx li,
+.tx-mdx h1, .tx-mdx h2, .tx-mdx h3, .tx-mdx h4, .tx-mdx h5, .tx-mdx h6,
+.tx-mdx strong, .tx-mdx em { color: var(--ink) !important; }
+.nd-mdx blockquote, .nd-mdx blockquote p,
+.tx-mdx blockquote, .tx-mdx blockquote p { color: var(--muted) !important; }
+.nd-mdx a, .tx-mdx a { color: var(--accent) !important; }
+.nd-mdx code, .tx-mdx code {
+  color: var(--ink) !important; background: var(--surface2) !important;
+  font-family: var(--mono); font-size: 0.88em; padding: 0.12em 0.4em; border-radius: 4px;
+}
+.tx-mdx h1, .tx-mdx h2, .tx-mdx h3, .tx-mdx h4 {
+  font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
+  margin: 1.35em 0 0.45em;
+}
+.tx-mdx h1:first-child, .tx-mdx h2:first-child, .tx-mdx h3:first-child { margin-top: 0; }
+.tx-mdx h1 { font-size: 1.85em; }
+.tx-mdx h2 { font-size: 1.4em; padding-bottom: 0.2em; border-bottom: 1px solid var(--line); }
+.tx-mdx h3 { font-size: 1.18em; }
+.tx-mdx p { margin: 0.7em 0; }
+.tx-mdx ul, .tx-mdx ol { margin: 0.6em 0; padding-left: 1.5em; }
+.tx-mdx li { margin: 0.25em 0; }
+.tx-mdx blockquote {
+  margin: 1em 0; padding: 0.15em 0 0.15em 1em;
+  border-left: 3px solid var(--accent);
+  background: transparent;
+}
+.tx-mdx hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
+.tx-mdx table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.92em; }
+.tx-mdx th, .tx-mdx td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.tx-mdx th { background: var(--surface2); font-weight: 600; }
+.mdxeditor.renv-mdx .cm-editor { background: var(--surface2); font-family: var(--mono); }
+.mdxeditor.renv-mdx .cm-gutters { background: var(--surface); border-right: 1px solid var(--line); color: var(--faint); }
 
 /* rendered markdown */
 .markdown { font-size: 14px; line-height: 1.65; color: var(--ink); max-width: 780px; }
@@ -1321,7 +1427,7 @@ body.ptab-dragging, body.ptab-dragging * { cursor: grabbing !important; user-sel
 .phase-band-grip.r { right: -5px; }
 .phase-band-grip:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
-/* the legend row: two identical toggle boxes — Phases, then Regions */
+/* the legend row: Phases, Regions, In paper */
 .glegend-row {
   position: absolute; bottom: 15px; left: 60px; z-index: 5;
   display: flex; gap: 8px; align-items: stretch;
@@ -1387,6 +1493,189 @@ body.ptab-dragging, body.ptab-dragging * { cursor: grabbing !important; user-sel
   color: var(--muted); font-size: 11px; line-height: 1; padding: 2px 5px; cursor: pointer;
 }
 .gnode-promote:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- write (Overleaf-shaped manuscript) ---------- */
+/* Chrome height matches .paper-tabs (40px). --tx-pad is the shared left
+   inset for pane titles AND root file names, so `text/` sits on the same
+   baseline as the filename / PDF titles and on the same x as `paper.tex`. */
+.tx {
+  --tx-chrome-h: 40px;
+  --tx-pad: 12px;
+  --tx-indent: 12px;
+  --tx-row: 28px;
+  position: absolute; inset: 0; display: flex; min-height: 0; background: var(--bg);
+}
+.tx-chrome {
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+  height: var(--tx-chrome-h); padding: 0 var(--tx-pad);
+  border-bottom: 1px solid var(--line); background: var(--surface);
+  flex-shrink: 0; min-width: 0; overflow: hidden;
+}
+.tx-title {
+  font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.tx-chrome .pv-zoom {
+  margin-left: 2px; padding-left: 8px; border-left: 1px solid var(--line);
+}
+.tx-status { color: var(--faint); font-size: 12px; line-height: 1; flex-shrink: 0; }
+.tx-chrome-actions {
+  margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.tx-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px; padding: 0 11px; border-radius: 6px;
+  font: inherit; font-size: 12.5px; font-weight: 500; line-height: 1;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.tx-tool.primary {
+  background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600;
+}
+.tx-tool.primary:hover { filter: brightness(1.06); }
+.tx-tool.primary:disabled { opacity: 0.45; cursor: default; filter: none; }
+.tx-tool.ghost {
+  background: none; color: var(--muted); border: 1px solid var(--line);
+}
+.tx-tool.ghost:hover { color: var(--ink); border-color: var(--line-strong); }
+.tx-tool.ghost.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.tx-tool.ghost.danger:hover {
+  color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+  background: var(--bad-soft);
+}
+
+.tx-files {
+  flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
+  padding: 0; overflow: hidden;
+  border-right: 1px solid var(--line); background: var(--surface); position: relative;
+}
+.tx-files-resize {
+  position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2;
+}
+.tx-files-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.tx-tree { flex: 1; overflow: auto; padding: 4px 0 12px; background: var(--bg); }
+.tx-files .muted { padding: var(--tx-pad); }
+.tx-fn {
+  display: flex; align-items: center; width: 100%; height: var(--tx-row);
+  background: none; border: 0; color: var(--ink); font: inherit; font-size: 13px;
+  line-height: 1; text-align: left; cursor: pointer; position: relative;
+  padding: 0 10px 0 calc(var(--tx-pad) + 6px + (var(--d, 0) * var(--tx-indent)));
+}
+.tx-fn:hover { background: var(--surface2); }
+.tx-fn.on { background: var(--accent-soft); color: var(--accent); }
+.tx-fn.gen { color: var(--muted); }
+.tx-dir { font-weight: 500; }
+.tx-chev {
+  position: absolute; left: calc(2px + var(--d, 0) * var(--tx-indent)); top: 0; bottom: 0;
+  width: 16px; color: var(--faint); font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.tx-fn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tx-tag {
+  font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.4;
+  color: var(--faint); background: var(--surface2); border-radius: 4px; padding: 2px 5px;
+  flex-shrink: 0;
+}
+.tx-fn .tx-tag { margin-left: auto; }
+.tx-new {
+  display: flex; align-items: center; gap: 6px; height: var(--tx-chrome-h);
+  padding: 0 var(--tx-pad); border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.tx-new .text { width: auto; flex: 1; min-width: 0; height: 26px; padding: 0 8px; font-size: 12.5px; }
+
+.tx-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.tx-editor { flex: 1; min-height: 0; position: relative; background: var(--bg); }
+.tx-host, .tx-host .cm-editor { height: 100%; }
+.tx-err { padding: 6px var(--tx-pad); color: var(--bad); background: var(--bad-soft); font-size: 12px; }
+.tx-span { border-radius: 2px; cursor: pointer; }
+.tx-span-full { background: var(--ok-soft); outline: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+.tx-span-partial { background: var(--warn-soft); }
+.tx-span-none { background: var(--bad-soft); }
+.tx-span-missing { background: color-mix(in srgb, var(--warn) 18%, transparent);
+  outline: 1px dashed var(--warn); }
+.tx-cite-plain { background: var(--surface2); outline: 1px dashed var(--faint); }
+.tx-sync {
+  background: none; border: 0; color: var(--accent); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 0; opacity: 0.85;
+}
+.tx-sync:hover { opacity: 1; }
+.pv-mark-sync {
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 50%; pointer-events: none;
+  animation: tx-sync-pulse 1.15s ease-out forwards;
+}
+@keyframes tx-sync-pulse {
+  from { transform: scale(0.55); opacity: 1; }
+  to { transform: scale(1.85); opacity: 0; }
+}
+.tx-cite-pop {
+  position: absolute; z-index: 6; min-width: 220px; max-width: 320px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 10px 12px; display: grid; gap: 6px;
+}
+.tx-cite-pop-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tx-cite-n { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+.tx-cite-pop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.tx-palette {
+  flex: 0 0 220px; border-top: 1px solid var(--line); background: var(--surface);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.tx-ptabs {
+  display: flex; align-items: stretch; height: 36px; padding: 0;
+  border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.tx-ptab {
+  background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  color: var(--muted); padding: 0 12px; font: inherit; font-weight: 500; cursor: pointer;
+}
+.tx-ptab:hover { color: var(--ink); }
+.tx-ptab.on { color: var(--ink); border-bottom-color: var(--accent); }
+.tx-ppane { flex: 1; overflow: auto; padding: 10px 12px 16px; display: grid; gap: 8px; align-content: start; }
+.tx-ppane .inline-edit { width: 100%; min-height: 52px; resize: vertical; field-sizing: fixed; }
+.tx-help { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.tx-kicker {
+  font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--faint); margin: 4px 0 0;
+}
+.tx-cite-row { display: flex; gap: 8px; align-items: center; }
+.tx-cite-row .text { flex: 1; width: auto; height: 26px; padding: 0 30px 0 10px; font-size: 12.5px; }
+.tx-hit {
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  background: var(--bg);
+}
+.tx-hit.warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.tx-hit-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tx-hit-q { font-style: italic; color: var(--ink); font-size: 12.5px; line-height: 1.45; }
+.tx-key {
+  background: none; border: 0; color: var(--citation); font-family: var(--mono);
+  font-size: 12px; cursor: pointer; padding: 0;
+}
+.tx-key:hover { text-decoration: underline; }
+.tx-picked { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+.tx-metric {
+  display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+}
+
+.tx-right {
+  flex: 0 0 auto; min-width: 280px; position: relative;
+  border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface);
+}
+.tx-pdf-resize {
+  position: absolute; top: 0; left: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2;
+}
+.tx-pdf-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.tx-pdf { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.tx-pdf-body { flex: 1; min-height: 0; position: relative; overflow: auto; background: var(--bg); }
+.tx-pdf-msg { padding: 24px 18px; color: var(--muted); max-width: 36em; }
+.tx-pdf-msg b { color: var(--ink); display: block; margin-bottom: 6px; }
+.tx-log {
+  flex: 0 0 160px; margin: 0; padding: 8px 10px; overflow: auto;
+  font-family: var(--mono); font-size: 11px; background: var(--bg);
+  border-top: 1px solid var(--line); color: var(--muted); white-space: pre-wrap;
+}
 
 /* ---------- minimal theme-aware scrollbars everywhere ---------------------- */
 /* the OS default vertical bar glares in dark mode; match the Gantt's thin bar */

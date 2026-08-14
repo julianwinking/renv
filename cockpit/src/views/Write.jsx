@@ -1,0 +1,535 @@
+// Overleaf-shaped manuscript workspace: text/ file tree, LaTeX editor with
+// store-backed \\spancite decorations, and a compiled PDF preview. Numbers come
+// from weave; literature claims from cite_claim (the same path as `renv cite`).
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  citeSpan, compileProject, deleteWriteFile, getWriteContext, getWriteFile,
+  getWriteTree, saveWriteFile, syncPdf, syncTex, weaveProject,
+} from '../api.js'
+import { navigate, routePath } from '../nav.js'
+import { FileTree } from '../FileTree.jsx'
+import { Stamp } from '../ui.jsx'
+import ManuscriptPdf from './ManuscriptPdf.jsx'
+
+const TexEditor = lazy(() => import('./TexEditor.jsx'))
+
+export default function Write({ slug, focus }) {
+  const [tree, setTree] = useState(null)
+  const [ctx, setCtx] = useState(null)
+  const [path, setPath] = useState(focus || 'paper.tex')
+  const [file, setFile] = useState(null)
+  const [content, setContent] = useState('')
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [panel, setPanel] = useState('cite') // cite | metrics | citations
+  const [claim, setClaim] = useState('')
+  const [sourcePin, setSourcePin] = useState('')
+  const [hits, setHits] = useState(null)
+  const [searching, setSearching] = useState(false)
+  const [picked, setPicked] = useState(null)
+  const [compile, setCompile] = useState({ status: 'missing' })
+  const [bust, setBust] = useState(0)
+  const [err, setErr] = useState('')
+  const [newName, setNewName] = useState(null)
+  const [treeW, setTreeW] = useState(() => Number(localStorage.getItem('renv-tx-tree')) || 200)
+  const [pdfW, setPdfW] = useState(() => Number(localStorage.getItem('renv-tx-pdf')) || 42)
+  const [edRev, setEdRev] = useState(0)
+  const saveTimer = useRef(0)
+  const contentRef = useRef('')
+  const pathRef = useRef(path)
+  const dirtyRef = useRef(false)
+  const fileRef = useRef(null)
+  const ed = useRef(null)
+  const pdfRef = useRef(null)
+  const pendingGoto = useRef(null)
+  contentRef.current = content
+  pathRef.current = path
+  dirtyRef.current = dirty
+  fileRef.current = file
+
+  const loadTree = useCallback(() => getWriteTree(slug).then(setTree), [slug])
+  const loadCtx = useCallback(() => getWriteContext(slug).then(setCtx), [slug])
+
+  useEffect(() => { loadTree(); loadCtx() }, [loadTree, loadCtx])
+  useEffect(() => {
+    if (ctx?.pdf) setCompile((c) => (c.status === 'ok' ? c : { status: 'ok', engine: ctx.engine?.name }))
+    else if (ctx && !ctx.engine) setCompile({ status: 'no-engine', engine: null })
+  }, [ctx])
+
+  const saveNow = async (rel, text) => {
+    const live = fileRef.current
+    // Identity: only write the file that is actually loaded. A null fileRef is
+    // the loading gap after a path change — Cmd+S must not POST the previous
+    // buffer (or "") onto the new path. flushOpen saves the old file *before*
+    // setPath, while fileRef still matches.
+    if (!rel || !live || live.path !== rel || !live.writable) return true
+    setSaving(true)
+    try {
+      const r = await saveWriteFile(slug, rel, text)
+      if (r.error) { setErr(r.error); return false }
+      if (rel === pathRef.current && text === contentRef.current) {
+        setDirty(false)
+        dirtyRef.current = false
+      }
+      loadTree()
+      return true
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const flushOpen = async (rel) => {
+    if (rel === pathRef.current) return false
+    clearTimeout(saveTimer.current)
+    if (dirtyRef.current && fileRef.current?.writable) {
+      const ok = await saveNow(pathRef.current, contentRef.current)
+      if (!ok) return false
+    }
+    return true
+  }
+
+  useEffect(() => {
+    if (!focus || focus === pathRef.current) return
+    let cancelled = false
+    ;(async () => {
+      const ok = await flushOpen(focus)
+      if (!ok || cancelled) return
+      setPath(focus)
+    })()
+    return () => { cancelled = true }
+  }, [focus]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openPath = async (rel) => {
+    if (!(await flushOpen(rel))) return
+    setPath(rel)
+    navigate(routePath(slug, 'write', rel))
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    setErr('')
+    setFile(null)
+    fileRef.current = null
+    setDirty(false)
+    dirtyRef.current = false
+    getWriteFile(slug, path).then((f) => {
+      if (cancelled) return
+      if (f.error) { setErr(f.error); setFile(null); return }
+      setFile(f)
+      fileRef.current = f
+      const text = f.content || ''
+      setContent(text)
+      contentRef.current = text
+      setDirty(false)
+      dirtyRef.current = false
+    }).catch((e) => { if (!cancelled) setErr(String(e)) })
+    return () => { cancelled = true }
+  }, [slug, path])
+
+  useEffect(() => () => {
+    clearTimeout(saveTimer.current)
+    if (dirtyRef.current && fileRef.current?.writable && pathRef.current) {
+      saveWriteFile(slug, pathRef.current, contentRef.current)
+    }
+  }, [slug])
+
+  const onEdit = (text) => {
+    contentRef.current = text
+    setContent(text)
+    setDirty(true)
+    dirtyRef.current = true
+    clearTimeout(saveTimer.current)
+    const rel = pathRef.current
+    saveTimer.current = setTimeout(() => saveNow(rel, text), 700)
+  }
+
+  const citations = useMemo(() => {
+    const m = new Map()
+    for (const c of ctx?.citations || []) m.set(`${c.source_id}:${c.src_start}`, c)
+    return m
+  }, [ctx])
+
+  const runCite = async (write, pick = 0) => {
+    const q = (claim || ed.current?.selectedText() || '').trim()
+    if (!q) { setErr('Select a sentence in the editor, or type the claim to ground.'); return }
+    setClaim(q)
+    setSearching(true); setErr('')
+    const r = await citeSpan(slug, {
+      claim: q, source: sourcePin || undefined, write, pick,
+      manuscript_loc: path, top_k: 8,
+    })
+    setSearching(false)
+    if (r.error) { setErr(r.error); return }
+    setHits(r)
+    if (r.written && r.latex) {
+      ed.current?.insert(r.latex)
+      loadCtx()
+    }
+  }
+
+  const insertHit = async (i) => {
+    const cand = hits?.candidates?.[i]
+    if (!cand) return
+    const r = await citeSpan(slug, {
+      claim: claim || hits.claim, source: sourcePin || undefined, write: true, pick: i,
+      manuscript_loc: path, top_k: 8,
+    })
+    if (r.error) { setErr(r.error); return }
+    if (r.written === false && r.reason) { setErr(r.reason); return }
+    ed.current?.insert((r.latex || cand.latex) + ' ')
+    setPicked(r)
+    loadCtx()
+  }
+
+  const recompile = async () => {
+    if (fileRef.current?.writable) await saveNow(pathRef.current, contentRef.current)
+    setCompile({ status: 'running', engine: ctx?.engine?.name })
+    setErr('')
+    const r = await compileProject(slug, { weave: true, main: 'paper.tex' })
+    if (r.error) { setErr(r.error); setCompile({ status: 'error', log: r.error }); return }
+    setCompile({
+      status: r.ok ? 'ok' : (r.engine ? 'error' : 'no-engine'),
+      engine: r.engine, log: r.log, errors: r.errors, hint: r.hint,
+    })
+    if (r.ok) setBust(Date.now())
+    loadTree(); loadCtx()
+  }
+
+  const weaveOnly = async () => {
+    const r = await weaveProject(slug)
+    if (r.error) setErr(r.error)
+    loadTree(); loadCtx()
+    if (path === 'results_table.tex' || path === 'references.bib') {
+      const f = await getWriteFile(slug, path)
+      setFile(f); setContent(f.content || ''); setDirty(false); setEdRev((n) => n + 1)
+    }
+  }
+
+  const createFile = async () => {
+    const rel = (newName || '').trim().replace(/^\//, '')
+    if (!rel) return
+    const r = await saveWriteFile(slug, rel, '% \n')
+    if (r.error) { setErr(r.error); return }
+    setNewName(null)
+    await loadTree()
+    openPath(rel)
+  }
+
+  const removeFile = async () => {
+    if (!file || file.generated || !file.writable) return
+    if (path === 'paper.tex' || path === 'preamble.tex') return
+    if (!confirm(`Delete text/${path}?`)) return
+    const r = await deleteWriteFile(slug, path)
+    if (r.error) { setErr(r.error); return }
+    openPath('paper.tex')
+    loadTree()
+  }
+
+  const recompileRef = useRef(recompile)
+  recompileRef.current = recompile
+  const saveNowRef = useRef(saveNow)
+  saveNowRef.current = saveNow
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        clearTimeout(saveTimer.current)
+        saveNowRef.current(pathRef.current, contentRef.current)
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault()
+        recompileRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [slug])
+
+  const startTreeResize = (e) => {
+    e.preventDefault()
+    const x0 = e.clientX, w0 = treeW
+    let w = w0
+    const move = (ev) => { w = Math.min(360, Math.max(140, w0 + ev.clientX - x0)); setTreeW(w) }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      localStorage.setItem('renv-tx-tree', String(w))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+  const startPdfResize = (e) => {
+    e.preventDefault()
+    const x0 = e.clientX, w0 = pdfW
+    let w = w0
+    const move = (ev) => { w = Math.min(70, Math.max(28, w0 - (ev.clientX - x0) / 8)); setPdfW(w) }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      localStorage.setItem('renv-tx-pdf', String(w))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
+  const inspect = (span) => {
+    const hit = citations.get(`${span.source_id}:${span.start}`)
+      || (ctx?.citations || []).find((c) => c.source_id === span.source_id)
+    setPicked(hit ? { ...hit, latex: `\\spancite{${span.source_id}}{${span.start}}{${span.end}}{${hit.quote || ''}}` } : span)
+    setPanel('citations')
+    const site = (ctx?.spancites || []).find(
+      (s) => s.source_id === span.source_id && (span.start == null || s.start === span.start))
+      || (ctx?.spancites || []).find((s) => s.source_id === span.source_id)
+    if (site) gotoTex(site.path, site.line)
+  }
+
+  const texRel = (raw, fallback) => {
+    if (!raw) return fallback
+    const parts = String(raw).replace(/\\/g, '/').split('/').filter((p) => p && p !== '.')
+    const i = parts.lastIndexOf('text')
+    const rel = (i >= 0 ? parts.slice(i + 1) : parts).join('/')
+    return rel || fallback
+  }
+
+  const gotoTex = (rel, line) => {
+    if (!line) return
+    if (rel && rel !== path) {
+      pendingGoto.current = line
+      openPath(rel)
+    } else {
+      ed.current?.gotoLine(line)
+    }
+  }
+
+  useEffect(() => {
+    if (!file || pendingGoto.current == null) return
+    const n = pendingGoto.current
+    pendingGoto.current = null
+    let tries = 0
+    const tick = () => {
+      if (ed.current?.gotoLine(n) || tries++ > 24) return
+      requestAnimationFrame(tick)
+    }
+    tick()
+  }, [file, path])
+
+  const onSyncLine = async (line, text) => {
+    const r = await syncTex(slug, { path, line, text })
+    if (r.error) return
+    pdfRef.current?.showLine({
+      page: r.ok ? r.page : undefined,
+      x: r.ok ? r.x : undefined,
+      y: r.ok ? r.y : undefined,
+      text: r.ok ? undefined : text,
+    })
+  }
+
+  const onPdfSync = async ({ page, x, y, snippet }) => {
+    const r = await syncPdf(slug, { page, x, y, snippet, prefer: path })
+    if (r.error || !r.ok) {
+      if (snippet) pdfRef.current?.showLine({ text: snippet })
+      return
+    }
+    gotoTex(texRel(r.path, path), r.line)
+  }
+
+  return (
+    <div className="tx">
+      <div className="tx-files" style={{ width: treeW }}>
+        <div className="tx-chrome">
+          <span className="tx-title">text/</span>
+          <div className="tx-chrome-actions">
+            <button className="pv-tbtn" title="New file" onClick={() => setNewName('sections/new.tex')}>+</button>
+          </div>
+        </div>
+        {newName !== null && (
+          <div className="tx-new">
+            <input className="text" autoFocus value={newName}
+                   onChange={(e) => setNewName(e.target.value)}
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter') createFile()
+                     if (e.key === 'Escape') setNewName(null)
+                   }} />
+            <button className="tx-tool primary" onClick={createFile}>Add</button>
+          </div>
+        )}
+        {tree ? <FileTree tree={(tree.tree || []).filter((n) => !n.build)} active={path}
+                          onOpen={(n) => { if (n.kind === 'file' && !n.build) openPath(n.path) }} />
+               : <div className="muted">loading…</div>}
+        <div className="tx-files-resize" onMouseDown={startTreeResize} />
+      </div>
+
+      <div className="tx-mid">
+        <div className="tx-chrome">
+          <span className="tx-title" title={path}>{path}</span>
+          {file?.generated && <span className="tx-tag">weave</span>}
+          {file?.engine_owned && <span className="tx-tag">engine</span>}
+          {dirty && <span className="tx-status">unsaved</span>}
+          {saving && <span className="tx-status">saving…</span>}
+          {file?.writable && path !== 'paper.tex' && path !== 'preamble.tex' && (
+            <div className="tx-chrome-actions">
+              <button className="tx-tool ghost danger" onClick={removeFile}>Delete</button>
+            </div>
+          )}
+        </div>
+        <div className="tx-editor">
+          {err && <div className="tx-err">{err}</div>}
+          {file && file.path === path && (
+            <Suspense fallback={<div className="loading">loading editor…</div>}>
+              <TexEditor
+                ref={ed}
+                key={slug + ':' + path + ':' + edRev + ':' + (ctx?.citations ? 'c' : '0')}
+                doc={file.content}
+                readOnly={!file.writable}
+                onChange={onEdit}
+                onCiteClick={inspect}
+                onSyncLine={onSyncLine}
+                citations={citations}
+              />
+            </Suspense>
+          )}
+        </div>
+        <div className="tx-palette">
+          <div className="tx-ptabs">
+            {[['cite', 'Cite'], ['citations', 'In paper'], ['metrics', 'Results']].map(([id, lab]) => (
+              <button key={id} className={`tx-ptab ${panel === id ? 'on' : ''}`}
+                      onClick={() => setPanel(id)}>{lab}</button>
+            ))}
+          </div>
+          {panel === 'cite' && (
+            <div className="tx-ppane">
+              <div className="tx-help">
+                Ground a sentence in a quoted span from the corpus index —
+                inserts <span className="mono">\spancite</span>, not a bare <span className="mono">\cite</span>.
+              </div>
+              <textarea className="inline-edit" rows={2} placeholder="Claim to ground (or select text in the editor)…"
+                        value={claim} onChange={(e) => setClaim(e.target.value)} />
+              <div className="tx-cite-row">
+                <select className="text" value={sourcePin} onChange={(e) => setSourcePin(e.target.value)}>
+                  <option value="">any indexed paper</option>
+                  {(ctx?.papers || []).map((p) => (
+                    <option key={p.key} value={p.key}>{p.key}{p.year ? ` (${p.year})` : ''}</option>
+                  ))}
+                </select>
+                <button className="tx-tool primary" disabled={searching} onClick={() => runCite(false)}>
+                  {searching ? 'Searching…' : 'Search spans'}
+                </button>
+              </div>
+              {hits && !hits.found && <div className="muted">No candidates. Index the corpus (`renv index`) and pin a source.</div>}
+              {hits?.candidates?.map((c, i) => (
+                <div key={i} className="tx-hit">
+                  <div className="tx-hit-h">
+                    <Stamp value={c.support} />
+                    <button className="tx-key" onClick={() => navigate(routePath(slug, 'papers', c.source_id))}>
+                      {c.source_id}
+                    </button>
+                    <span className="mono faint">{c.start}–{c.end}{c.page != null ? ` · p.${c.page}` : ''}</span>
+                    <span className="faint">sim {c.similarity}</span>
+                    <button className="tx-tool primary" style={{ marginLeft: 'auto' }}
+                            onClick={() => insertHit(i)}>Insert & record</button>
+                  </div>
+                  <div className="tx-hit-q">“{c.quote}”</div>
+                </div>
+              ))}
+              {picked?.reason && <div className="tx-err">{picked.reason}</div>}
+            </div>
+          )}
+          {panel === 'citations' && (
+            <div className="tx-ppane">
+              {(ctx?.spancites || []).length === 0 && (
+                <div className="muted">No <span className="mono">\spancite</span> macros in text/ yet.</div>
+              )}
+              {(ctx?.spancites || []).map((s, i) => (
+                <div key={i} className={`tx-hit ${s.in_store ? '' : 'warn'}`}>
+                  <div className="tx-hit-h">
+                    {s.in_store ? <Stamp value={s.support} /> : <Stamp value="unrecorded" tone="warn" />}
+                    <button className="tx-key" onClick={() => navigate(routePath(slug, 'papers', s.source_id))}>
+                      {s.source_id}
+                    </button>
+                    <span className="mono faint">{s.start}–{s.end}</span>
+                    <span className="faint">{s.path}</span>
+                  </div>
+                  {s.quote && <div className="tx-hit-q">“{s.quote}”</div>}
+                  {!s.in_store && (
+                    <div className="muted" style={{ fontSize: 11.5 }}>
+                      In the .tex but not in the citation table — search the claim and Insert & record.
+                    </div>
+                  )}
+                </div>
+              ))}
+              {picked && picked.source_id && (
+                <div className="tx-picked">
+                  <div className="tx-kicker">selected</div>
+                  <div className="mono">{picked.source_id}:{picked.start || picked.src_start}–{picked.end || picked.src_end}</div>
+                  {picked.quote && <div className="tx-hit-q">“{picked.quote}”</div>}
+                  <button className="tx-tool ghost" onClick={() => navigate(routePath(slug, 'papers', picked.source_id))}>
+                    Open source paper
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {panel === 'metrics' && (
+            <div className="tx-ppane">
+              <div className="tx-help">
+                Numbers come from recorded runs via <span className="mono">renv weave</span>.
+                {' '}<span className="mono">{'\\input{results_table}'}</span> is the only table — never type a metric.
+              </div>
+              <div className="tx-cite-row">
+                <button className="tx-tool ghost" onClick={() => ed.current?.insert('\\input{results_table}\n')}>
+                  Insert table
+                </button>
+                <button className="tx-tool ghost" onClick={weaveOnly}>Weave now</button>
+              </div>
+              {(ctx?.metrics || []).length === 0 && (
+                <div className="muted" style={{ marginTop: 8 }}>No metric rows yet — run an experiment.</div>
+              )}
+              {(ctx?.metrics || []).map((m, i) => (
+                <div key={i} className="tx-metric">
+                  <span className="mono">{m.experiment}</span>
+                  <span>{m.name}</span>
+                  <span className="num">{typeof m.value === 'number' ? m.value.toFixed(3) : m.value}</span>
+                </div>
+              ))}
+              {(ctx?.claims || []).length > 0 && (
+                <>
+                  <div className="tx-kicker">claims</div>
+                  {(ctx.claims).map((c) => (
+                    <div key={c.id} className="tx-hit">
+                      <div className="tx-hit-h">
+                        <Stamp value={c.status} />
+                        <span className="faint">{c.kind}</span>
+                        <button className="tx-tool ghost" style={{ marginLeft: 'auto' }}
+                                onClick={() => ed.current?.insert(c.text)}>Insert text</button>
+                      </div>
+                      <div>{c.text}</div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="tx-right" style={{ width: `${pdfW}%` }}>
+        <div className="tx-pdf-resize" onMouseDown={startPdfResize} />
+        <ManuscriptPdf
+          ref={pdfRef}
+          slug={slug} bust={bust}
+          hasPdf={!!ctx?.pdf || bust > 0}
+          citations={ctx?.citations || []}
+          citeNumbers={ctx?.usage?.cite_numbers || {}}
+          onMarker={inspect}
+          onSyncPdf={onPdfSync}
+          status={compile.status}
+          log={compile.log}
+          errors={compile.errors}
+          engine={compile.engine || ctx?.engine?.name}
+          onWeave={weaveOnly}
+          onCompile={recompile}
+        />
+      </div>
+    </div>
+  )
+}

@@ -60,6 +60,7 @@ export default function NoteDoc({ docId, project, registerInsert, onClose, onMut
       <div className="nd-body">
         <Suspense fallback={<div className="loading" style={{ padding: 20 }}>loading editor…</div>}>
           <MarkdownEditor ref={editorRef} markdown={doc.body_md || ''}
+                          placeholder="Write in markdown. Shortcuts: # heading, **bold**, - list, > quote."
                           onChange={(md) => { bodyRef.current = md; schedule() }} />
         </Suspense>
       </div>

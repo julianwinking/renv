@@ -107,3 +107,39 @@ export const getArgument = (slug) => api('/api/argument/' + encodeURIComponent(s
 export const addPlanItem = (project, item) => post('/api/plan', { project, ...item })
 export const updatePlanItem = (id, fields) => post('/api/plan/update', { id, ...fields })
 export const deletePlanItem = (id) => post('/api/plan/delete', { id })
+
+export const getWriteTree = (slug) =>
+  api('/api/write/' + encodeURIComponent(slug) + '/tree')
+export const getWriteFile = (slug, path) =>
+  api('/api/write/' + encodeURIComponent(slug) + '/file?path=' + encodeURIComponent(path))
+export const getWriteContext = (slug) =>
+  api('/api/write/' + encodeURIComponent(slug) + '/context')
+export const saveWriteFile = (slug, path, content) =>
+  post('/api/write/' + encodeURIComponent(slug) + '/file', { path, content })
+export const deleteWriteFile = (slug, path) =>
+  post('/api/write/' + encodeURIComponent(slug) + '/delete', { path })
+export const weaveProject = (slug) =>
+  post('/api/write/' + encodeURIComponent(slug) + '/weave', {})
+export const compileProject = (slug, opts = {}) =>
+  post('/api/write/' + encodeURIComponent(slug) + '/compile', opts)
+export const citeSpan = (slug, body) =>
+  post('/api/write/' + encodeURIComponent(slug) + '/cite', body)
+export const writePdfUrl = (slug, bust) =>
+  '/api/write/' + encodeURIComponent(slug) + '/pdf' + (bust ? '?t=' + bust : '')
+export const syncTex = (slug, { path, line, text, main } = {}) => {
+  const q = new URLSearchParams({
+    dir: 'tex', path: path || 'paper.tex', line: String(line || 1),
+  })
+  if (text) q.set('text', text)
+  if (main) q.set('main', main)
+  return api('/api/write/' + encodeURIComponent(slug) + '/synctex?' + q)
+}
+export const syncPdf = (slug, { page, x, y, snippet, prefer, main } = {}) => {
+  const q = new URLSearchParams({
+    dir: 'pdf', page: String(page || 1), x: String(x ?? 0), y: String(y ?? 0),
+  })
+  if (snippet) q.set('snippet', snippet)
+  if (prefer) q.set('prefer', prefer)
+  if (main) q.set('main', main)
+  return api('/api/write/' + encodeURIComponent(slug) + '/synctex?' + q)
+}

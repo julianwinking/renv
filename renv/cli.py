@@ -2,6 +2,7 @@
 
     renv index   [--corpus .]                     index <corpus>/library -> .renv/
     renv cite    "<claim>" <project> [--corpus .]  retrieve, verify, emit citation
+    renv compile <project>                         weave + compile text/ to PDF
     renv resolve "<claim>" [--corpus .]            show where a claim's span anchors
     renv status  [--corpus .] [project]            corpus + (optional) project state
     renv preamble                                  print the LaTeX \\spancite macro
@@ -16,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from renv.corpus.cite import LATEX_PREAMBLE, append_sidecar, make_citation
+from renv.corpus.cite import LATEX_PREAMBLE
 from renv.corpus.embed import get_embedder
 from renv.corpus.index_store import Index
 from renv.corpus.indexer import build_index
@@ -68,60 +69,53 @@ def cmd_index(args):
 
 
 def cmd_cite(args):
-    corpus = Corpus(args.corpus)
-    proot, pslug = _resolve_project(args.corpus, args.project)
-    project = Project(proot)
-    project.validate()
-    r, lock = _load(corpus, args.verifier)
-    hashes = {s.source_id: s.sha256 for s in lock.sources}
-    if args.source and not any(s.source_id == args.source for s in lock.sources):
-        sys.exit(f"! --source {args.source!r} is not an indexed source "
-                 f"(check `renv papers` / `renv status`, then `renv index`)")
-    cands = r.search(args.claim, top_k=args.top_k, verify=True, source_id=args.source)
-    if not cands:
+    from renv.research import manuscript
+    _, pslug = _resolve_project(args.corpus, args.project)
+    con = db.connect(args.corpus)
+    try:
+        result = manuscript.cite_claim(
+            con, args.corpus, args.claim, project=pslug,
+            source=args.source, write=args.write, force=args.force,
+            verifier=args.verifier, top_k=args.top_k)
+    except FileNotFoundError as exc:
+        sys.exit(f"! {exc}")
+    except KeyError as exc:
+        sys.exit(f"! {exc}")
+    if not result["found"]:
         sys.exit("no candidates" + (f" in source {args.source!r}" if args.source else ""))
-    best = cands[0]
-    cit = make_citation(args.claim, best, hashes.get(best.record.source_id, ""))
     print("CLAIM:", args.claim)
-    print(f"SUPPORT: {cit.support} ({cit.support_score})  sim={cit.similarity}")
+    print(f"SUPPORT: {result['support']} ({result['support_score']})  sim={result['similarity']}")
     if args.verifier == "lexical":
         print("  (verifier=lexical scores token overlap, not entailment — paraphrases "
               "score low; consider --verifier factcg for semantic verification)")
-    print(f"SOURCE: {cit.source_id} chars {cit.start}-{cit.end} (page {cit.page})")
-    print(f"QUOTE: “{cit.quote}”")
-    print("LATEX:", cit.latex())
+    print(f"SOURCE: {result['source_id']} chars {result['start']}-{result['end']} "
+          f"(page {result.get('page')})")
+    print(f"QUOTE: “{result['quote']}”")
+    print("LATEX:", result["latex"])
     if args.write:
-        if cit.support == "none" and not args.force:
+        if not result["written"]:
             sys.exit("! not written: the best span's verifier verdict is 'none' — it "
                      "does not support the claim. Reword closer to the source, pin "
                      "--source, try --verifier factcg, or pass --force to write anyway.")
-        # the citation table is the source of truth; citations.json is derived from it
-        try:
-            from renv.papers import ingest
-            con = db.connect(args.corpus)
-            db.project_id(con, pslug)
-            row = ingest.record_citation(con, pslug, cit)
-            sidecar = ingest.regenerate_sidecar(con, pslug, project.root)
-            print(f"citation row: #{row['id']}"
-                  + (f" → paper {best.record.source_id}" if row["paper_id"] else
-                     f"  (! no paper row with key {best.record.source_id!r} — "
-                     f"repair with `renv papers --rekey {best.record.source_id} <key>`)"))
-            print(f"  link it: renv claim link <claim-id> --cite {row['id']}")
-            print("sidecar (derived):", sidecar)
-        except KeyError:
-            # project not registered in the store — fall back to a plain sidecar
+        if result.get("store") is False:
             print(f"! project {pslug!r} is not registered in the store — wrote the "
                   "sidecar only: NO citation row, NO id to link evidence with. "
                   f"Register it with `renv project new {pslug}`.")
-            print("sidecar:", append_sidecar(project.root, cit,
-                                             filename=project.citations_path.name))
+            print("sidecar:", result.get("sidecar"))
+        else:
+            cid = result.get("citation_id")
+            print(f"citation row: #{cid}"
+                  + (f" → paper {result['source_id']}" if result.get("paper_id") else
+                     f"  (! no paper row with key {result['source_id']!r} — "
+                     f"repair with `renv papers --rekey {result['source_id']} <key>`)"))
+            print(f"  link it: renv claim link <claim-id> --cite {cid}")
+            print("sidecar (derived):", result.get("sidecar"))
     if args.all:
         print("\n-- other candidates --")
-        for c in cands[1:]:
-            v = c.verdict
-            print(f"  [{v.support if v else '?'}] sim={c.similarity:.3f} "
-                  f"{c.record.source_id}:{c.record.start}-{c.record.end} "
-                  f"“{c.record.text[:80]}...”")
+        for c in result.get("candidates", [])[1:]:
+            print(f"  [{c.get('support', '?')}] sim={c.get('similarity', 0):.3f} "
+                  f"{c['source_id']}:{c['start']}-{c['end']} "
+                  f"“{(c.get('quote') or '')[:80]}...”")
 
 
 def cmd_resolve(args):
@@ -555,6 +549,27 @@ def cmd_weave(args):
     root = Path(args.corpus) / "projects" / args.project
     for p in authoring.weave(con, args.project, root):
         print("generated:", p)
+
+
+def cmd_compile(args):
+    from renv.research import manuscript
+    con = db.connect(args.corpus)
+    args.project = _resolve_project(args.corpus, args.project)[1]
+    result = manuscript.compile_manuscript(
+        con, args.corpus, args.project, main=args.main, weave=not args.no_weave)
+    if result.get("woven"):
+        print("woven:", ", ".join(result["woven"]))
+    if result["ok"]:
+        print(f"pdf: projects/{args.project}/text/"
+              f"{Path(args.main).with_suffix('.pdf').name}  [{result['engine']}]")
+        return
+    if result.get("hint"):
+        print("compile:", result["hint"])
+    for err in result.get("errors") or []:
+        print("!", err)
+    if result.get("log"):
+        print(result["log"][-4000:])
+    sys.exit(1)
 
 
 def cmd_add(args):
@@ -1316,6 +1331,13 @@ def main(argv=None):
     pw = sub.add_parser("weave", help="regenerate results_table.tex + references.bib from the store")
     pw.add_argument("project")
     pw.set_defaults(func=cmd_weave)
+
+    pco = sub.add_parser("compile", help="weave + compile text/ to PDF (latexmk/tectonic/pdflatex)")
+    pco.add_argument("project")
+    pco.add_argument("--main", default="paper.tex", help="entry .tex under text/")
+    pco.add_argument("--no-weave", action="store_true",
+                     help="skip regenerating results_table.tex / references.bib")
+    pco.set_defaults(func=cmd_compile)
 
     # --- ingest + knowledge base ---
     pa = sub.add_parser("add",

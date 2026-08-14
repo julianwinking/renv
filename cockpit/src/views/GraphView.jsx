@@ -26,6 +26,12 @@ const KINDS = [
 ]
 const MINI = Object.fromEntries(KINDS)
 
+function lensClass(n, on) {
+  if (!on || String(n.id || '').startsWith('region:')) return undefined
+  if (!['paper', 'experiment', 'citation'].includes(n.type)) return undefined
+  return n.data?.in_manuscript ? undefined : 'gnode-dim'
+}
+
 // The canvas is a planning surface over the ledger: every gesture maps to a
 // domain write (or is refused with the store's reason). Nothing is drawn free-form.
 function AddPanel({ kind, slug, onClose, onDone, experiments, at, initial }) {
@@ -421,6 +427,10 @@ export default function GraphView({ slug, defs, onMutate }) {
   const [conns, setConns] = useState([])            // the connection registry
   const [phases, setPhases] = useState([])          // plan phases + canvas bands
   const [showPhases, setShowPhases] = useState(() => localStorage.getItem('renv-phasebands') !== 'off')
+  const [inPaper, setInPaper] = useState(() => localStorage.getItem('renv-inpaper') === 'on')
+  const inPaperRef = React.useRef(inPaper)
+  inPaperRef.current = inPaper
+  const [msUsage, setMsUsage] = useState({ papers: [], experiments: [] })
   const [hoverPhase, setHoverPhase] = useState(null)
   const [edgeAction, setEdgeAction] = useState(null) // {edge, at} — edge click panel
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 })
@@ -448,6 +458,7 @@ export default function GraphView({ slug, defs, onMutate }) {
       [getGraph(slug), getRegions(slug), getPhases(slug)])
     setPhases(Array.isArray(phaseRows) ? phaseRows : [])
     const flow = toFlow(g)
+    setMsUsage(g.usage || { papers: [], experiments: [] })
     const after = () => { load(); onMutate && onMutate() }
     flow.nodes.forEach((n) => {
       n.data.defs = defs
@@ -474,6 +485,7 @@ export default function GraphView({ slug, defs, onMutate }) {
         n.data.id = Number(id)
         n.data.onDone = after
       }
+      n.className = lensClass(n, inPaperRef.current)
     })
     // region frames as background nodes: dragged by their label bar, resizable;
     // the phases a region belongs to are DERIVED from its surface overlap
@@ -551,6 +563,13 @@ export default function GraphView({ slug, defs, onMutate }) {
     setNodes((ns) => ns.map((n) =>
       n.id.startsWith('region:') ? { ...n, hidden: !showRegions } : n))
   }, [showRegions, setNodes])
+
+  useEffect(() => {
+    setNodes((ns) => ns.map((n) => {
+      const cls = lensClass(n, inPaper)
+      return n.className === cls ? n : { ...n, className: cls }
+    }))
+  }, [inPaper, setNodes])
 
   const say = (msg, bad) => {
     setToast({ msg, bad })
@@ -780,6 +799,23 @@ export default function GraphView({ slug, defs, onMutate }) {
                   }}>
             <span className="lamp" style={{ background: showRegions ? 'var(--accent)' : 'var(--line-strong)' }} />
             <span className="eyebrow" style={{ margin: 0 }}>Regions</span>
+          </button>
+        </div>
+        <div className="glegend closed">
+          <button className="glegend-head"
+                  title="Papers cited in the manuscript and experiments whose metrics are woven into results_table. Dims unused papers, citations, and experiments."
+                  onClick={() => {
+                    const next = !inPaper
+                    setInPaper(next)
+                    localStorage.setItem('renv-inpaper', next ? 'on' : 'off')
+                  }}>
+            <span className="lamp" style={{ background: inPaper ? 'var(--accent)' : 'var(--line-strong)' }} />
+            <span className="eyebrow" style={{ margin: 0 }}>In paper</span>
+            {(msUsage.papers?.length || msUsage.experiments?.length) ? (
+              <span className="glegend-count">
+                {(msUsage.papers || []).length} · {(msUsage.experiments || []).length}
+              </span>
+            ) : null}
           </button>
         </div>
       </div>

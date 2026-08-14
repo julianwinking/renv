@@ -66,6 +66,17 @@ export function RegionNode({ id, data }) {
   )
 }
 
+function InPaperPip({ data, numbered }) {
+  if (!data?.in_manuscript) return null
+  const n = numbered ? data.cite_number : null
+  return (
+    <span className="gnode-ms"
+          title={n ? `Cited as [${n}] in the manuscript` : 'Used in the manuscript (\\spancite or results_table)'}>
+      {n ? `[${n}]` : 'in paper'}
+    </span>
+  )
+}
+
 function Shell({ kind, children }) {
   return (
     <div className={`gnode gnode-${kind}`}>
@@ -132,8 +143,9 @@ export function ExperimentNode({ data }) {
             {data.label}
           </b>
         )}
-        <span style={{ marginLeft: 'auto', cursor: 'pointer' }}
+        <span style={{ marginLeft: 'auto', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center' }}
               onClick={(e) => { e.stopPropagation(); setOpen(!open) }}>
+          <InPaperPip data={data} />
           <Stamp value={data.status} />
         </span>
       </div>
@@ -216,7 +228,10 @@ export function CitationNode({ data }) {
     <Shell kind="citation">
       <div className="gnode-head">
         <b className="mono">{data.label}</b>
-        <span style={{ marginLeft: 'auto' }}><Stamp value={data.support} /></span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <InPaperPip data={data} numbered />
+          <Stamp value={data.support} />
+        </span>
       </div>
       {data.quote && <div className="gnode-sub quote">“{(data.quote || '').slice(0, 90)}…”</div>}
     </Shell>
@@ -229,6 +244,7 @@ export function PaperNode({ data }) {
       <div className="gnode-head">
         <span className="gnode-kind">paper</span>
         <b className="mono">{data.label}</b>
+        <span style={{ marginLeft: 'auto' }}><InPaperPip data={data} numbered /></span>
       </div>
       {(data.title || data.onSaveText) && (
         <EditableText className="gnode-sub" value={data.title} onSave={data.onSaveText}

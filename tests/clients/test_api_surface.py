@@ -30,6 +30,9 @@ def test_every_read_endpoint_answers(tmp_path):
         "/api/project/p", "/api/project/p/runs", "/api/graph/p",
         "/api/argument/p", "/api/plan/p", "/api/phases/p", "/api/regions/p",
         "/api/health/p", "/api/search?q=claim",
+        "/api/write/p/tree", "/api/write/p/context",
+        "/api/write/p/synctex?dir=tex&path=paper.tex&line=1",
+        "/api/config/files", "/api/config/files?project=p",
     ]
     try:
         for r in routes:

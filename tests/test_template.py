@@ -42,8 +42,13 @@ def test_scaffold_from_template_substitutes_and_renames(tmp_path):
     # gitignore -> .gitignore, and the literal 'gitignore' file is not copied
     assert (dest / ".gitignore").exists()
     assert not (dest / "gitignore").exists()
+    gi = (dest / ".gitignore").read_text()
+    assert "*.aux" in gi and "*.synctex.gz" in gi
+    assert "text/*.pdf" in gi
+    assert "*.fdb_latexmk" in gi
     # engine-sourced preamble is written
     assert r"\newcommand{\spancite}" in (dest / "text" / "preamble.tex").read_text()
+    assert "renv-cite://" in (dest / "text" / "preamble.tex").read_text()
 
 
 def test_scaffold_is_idempotent(tmp_path):

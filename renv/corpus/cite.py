@@ -14,13 +14,37 @@ from pathlib import Path
 
 from renv.corpus.retrieve import Candidate
 
-# Drop this in your preamble; it prints [id:start-end] and footnotes the quote.
+# Drop this in your preamble. The PDF typesets a normal numbered citation
+# (first appearance of each source_id); a renv-cite:// link carries the span
+# so the cockpit can show the stored quote on hover. #4 stays in the .tex.
 LATEX_PREAMBLE = r"""
-% recursive-referencing span citation
-\newcommand{\spancite}[4]{%
-  % #1 source id, #2 start, #3 end, #4 quoted span
-  \textsuperscript{[\,#1:#2--#3\,]}\footnote{#1, chars #2--#3: ``#4''}%
+% ENGINE-OWNED by renv (rewritten on weave/compile). Packages go in paper.tex.
+% renv span citation — numbered like the camera-ready paper; hover in the
+% cockpit reads the renv-cite:// annotation (source, start, end).
+\makeatletter
+\IfFileExists{hyperref.sty}{%
+  \@ifpackageloaded{hyperref}{}{\usepackage[hidelinks]{hyperref}}%
+}{}
+\newcounter{spancitenum}
+\newcommand{\spn@assign}[1]{%
+  \@ifundefined{spn@n@#1}{%
+    \stepcounter{spancitenum}%
+    \expandafter\xdef\csname spn@n@#1\endcsname{\thespancitenum}%
+  }{}%
 }
+\newcommand{\spancite}[4]{%
+  % #1 source id, #2 start, #3 end, #4 quoted span (kept in the .tex)
+  \spn@assign{#1}%
+  \begingroup
+    \edef\spn@n{\csname spn@n@#1\endcsname}%
+    \@ifundefined{href}{%
+      \textsuperscript{[\spn@n]}%
+    }{%
+      \href{renv-cite://\detokenize{#1}/#2/#3}{\textsuperscript{[\spn@n]}}%
+    }%
+  \endgroup
+}
+\makeatother
 """
 
 

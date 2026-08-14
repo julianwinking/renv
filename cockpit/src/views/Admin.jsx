@@ -4,19 +4,50 @@
 // start. What is deliberately NOT here: CLI/MCP tool prompts (they are code;
 // their designed control point IS AGENTS.md) and the review rubric (hardcoded
 // in review.py today — shown read-only until it moves to data).
-import React, { useEffect, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getConfigFiles, getConfigFile, saveConfigFile, getMetricDefs, defineMetric,
   saveProjectSettings, getRubric, getRemotes, addRemote,
 } from '../api.js'
+import { FileTree, filesToTree } from '../FileTree.jsx'
+import { navigate, routePath } from '../nav.js'
 import { asArray, Stamp, Section, Empty, Mono } from '../ui.jsx'
 
-function FileEditor({ scopes, slug, banner }) {
+const MarkdownEditor = lazy(() => import('./MarkdownEditor.jsx'))
+
+// Live markdown can throw on a construct the parser doesn't know. Fall back
+// to the monospace textarea rather than taking down the whole admin view.
+class MdBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch() { this.props.onError?.() }
+  render() {
+    if (this.state.error) return this.props.fallback
+    return this.props.children
+  }
+}
+
+function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
   const [files, setFiles] = useState(null)
-  const [sel, setSel] = useState(null)          // {scope, name, project}
+  const [sel, setSel] = useState(null)          // listing row
   const [content, setContent] = useState('')
   const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [ready, setReady] = useState(null)      // sel.path whose contents are loaded
+  const [mdCrash, setMdCrash] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [treeW, setTreeW] = useState(() => Number(localStorage.getItem('renv-cfg-tree')) || 220)
+  const contentRef = useRef('')
+  const selRef = useRef(null)
+  const dirtyRef = useRef(false)
+  const readyRef = useRef(null)
+  const saveTimer = useRef(0)
+  selRef.current = sel
+  dirtyRef.current = dirty
+  readyRef.current = ready
 
   useEffect(() => {
     let live = true
@@ -24,95 +55,202 @@ function FileEditor({ scopes, slug, banner }) {
       if (!live) return
       const mine = asArray(all).filter((f) => scopes.includes(f.scope))
       setFiles(mine)
-      setSel((cur) => cur || mine[0] || null)
+      const want = focus && mine.find((f) => f.path === focus || f.name === focus)
+      setSel((cur) => {
+        if (want) return want
+        if (cur && mine.some((f) => f.path === cur.path)) {
+          return mine.find((f) => f.path === cur.path) || cur
+        }
+        return mine[0] || null
+      })
     })
     return () => { live = false }
-  }, [slug, scopes])
+  }, [slug, scopes, focus])
 
   useEffect(() => {
     if (!sel) return
+    setReady(null)
+    setMdCrash(false)
     let live = true
     getConfigFile(sel.scope, sel.name, sel.project).then((r) => {
-      if (live) { setContent(r.content ?? ''); setDirty(false); setMsg(null) }
+      if (!live) return
+      const text = r.content ?? ''
+      contentRef.current = text
+      setContent(text)
+      setDirty(false)
+      setMsg(null)
+      setReady(sel.path)
     })
     return () => { live = false }
   }, [sel])
 
-  const save = async () => {
-    const r = await saveConfigFile(sel.scope, sel.name, content, sel.project)
-    if (r.error) { setMsg({ bad: true, text: r.error }); return }
-    setDirty(false)
-    setMsg({ text: `saved to ${r.saved}` })
+  const tree = useMemo(() => filesToTree(files || [], { strip }), [files, strip])
+
+  const saveNow = async (row = selRef.current, text = contentRef.current) => {
+    if (!row) return true
+    // Don't POST the previous buffer onto a file whose contents are not loaded.
+    if (readyRef.current !== row.path) return true
+    setSaving(true)
+    try {
+      const r = await saveConfigFile(row.scope, row.name, text, row.project)
+      if (r.error) { setMsg({ bad: true, text: r.error }); return false }
+      if (selRef.current && row.path === selRef.current.path && text === contentRef.current) {
+        setDirty(false)
+        dirtyRef.current = false
+      }
+      return true
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onEdit = (text) => {
+    contentRef.current = text
+    setContent(text)
+    setDirty(true)
+    dirtyRef.current = true
+    clearTimeout(saveTimer.current)
+    const row = selRef.current
+    saveTimer.current = setTimeout(() => saveNow(row, text), 700)
+  }
+
+  const openFile = async (row) => {
+    if (!row || (sel && row.path === sel.path)) return
+    clearTimeout(saveTimer.current)
+    if (dirtyRef.current && sel) {
+      const ok = await saveNow(sel, contentRef.current)
+      if (!ok) return
+    }
+    setSel(row)
+    if (slug && view) navigate(routePath(slug, view, row.path))
+  }
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        clearTimeout(saveTimer.current)
+        saveNow()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => () => {
+    clearTimeout(saveTimer.current)
+    if (dirtyRef.current && selRef.current) {
+      saveConfigFile(selRef.current.scope, selRef.current.name,
+                     contentRef.current, selRef.current.project)
+    }
+  }, [])
+
+  const startTreeResize = (e) => {
+    e.preventDefault()
+    const x0 = e.clientX, w0 = treeW
+    let w = w0
+    const move = (ev) => { w = Math.min(360, Math.max(140, w0 + ev.clientX - x0)); setTreeW(w) }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      localStorage.setItem('renv-cfg-tree', String(w))
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
   }
 
   if (!files) return <div className="loading">reading files…</div>
 
+  const isMd = sel && /\.md$/i.test(sel.name)
+  // Protocol files stay on the byte-accurate textarea: live MDX re-serializes
+  // the whole document on the first keystroke (mdast), which would rewrite
+  // AGENTS.md. Writing templates (style.md, …) are the live-MDX surface.
+  const useLive = isMd && !mdCrash && ready === sel.path && sel.name !== 'AGENTS.md'
+  const sourceArea = (
+    <textarea
+      className="fileedit"
+      value={content}
+      onChange={(e) => onEdit(e.target.value)}
+      spellCheck={false}
+    />
+  )
+
   return (
-    <>
-      <div className="filetabs">
-        {files.map((f) => (
-          <button
-            key={f.scope + f.name}
-            className={`btn ghost ${sel && sel.scope === f.scope && sel.name === f.name ? 'active-tab' : ''}`}
-            onClick={() => setSel(f)}
-          >
-            <span className="mono">
-              {f.scope === 'project' ? `${f.project}/` : f.scope === 'template' ? 'template/'
-                : f.scope === 'writing' ? 'writing/' : ''}{f.name}
-            </span>
-          </button>
-        ))}
+    <div className="tx">
+      <div className="tx-files" style={{ width: treeW }}>
+        <div className="tx-chrome">
+          <span className="tx-title">{rootLabel}</span>
+        </div>
+        <FileTree tree={tree} active={sel?.path}
+                  onOpen={(n) => { if (n.kind === 'file' && n.file) openFile(n.file) }} />
+        <div className="tx-files-resize" onMouseDown={startTreeResize} />
       </div>
-      {sel && (
-        <Section title={sel.name} aside={dirty ? 'Unsaved changes' : 'Saved'}>
-          <div style={{ padding: '0 16px 6px' }} className="muted">
-            {files.find((f) => f.scope === sel.scope && f.name === sel.name)?.description} {banner}
-          </div>
-          <div style={{ padding: '6px 16px 14px' }}>
-            <textarea
-              className="fileedit"
-              value={content}
-              onChange={(e) => { setContent(e.target.value); setDirty(true) }}
-              spellCheck={false}
-            />
-            {msg && <div style={{ color: msg.bad ? 'var(--bad)' : 'var(--ok)', marginTop: 6, fontSize: 12 }} className="mono">{msg.text}</div>}
-            <div className="gnode-actions">
-              <button className="btn" onClick={save} disabled={!dirty}>Save file</button>
+      <div className="tx-mid">
+        <div className="tx-chrome">
+          <span className="tx-title" title={sel?.path}>{sel?.path || ''}</span>
+          {sel && (
+            <span className="tx-status">{saving ? 'saving…' : dirty ? 'unsaved' : 'saved'}</span>
+          )}
+          {sel && (
+            <div className="tx-chrome-actions">
+              <button className="tx-tool primary" onClick={() => { clearTimeout(saveTimer.current); saveNow() }}
+                      disabled={!dirty || saving}>Save</button>
             </div>
-          </div>
-        </Section>
-      )}
-    </>
+          )}
+        </div>
+        {sel && (
+          <>
+            {mdCrash && (
+              <div className="tx-err">Live preview could not open this file — editing as source.</div>
+            )}
+            {msg && (
+              <div className={`tx-err ${msg.bad ? '' : 'ok'}`}>{msg.text}</div>
+            )}
+            <div className={`tx-fileedit-wrap${useLive ? ' md' : ''}`}>
+              {ready !== sel.path ? (
+                <div className="loading" style={{ padding: 20 }}>reading file…</div>
+              ) : useLive ? (
+                <MdBoundary onError={() => setMdCrash(true)} fallback={sourceArea}>
+                  <Suspense fallback={<div className="loading" style={{ padding: 20 }}>loading editor…</div>}>
+                    <MarkdownEditor
+                      key={sel.path}
+                      markdown={content}
+                      onChange={onEdit}
+                      onError={({ error }) => setMsg({ bad: true, text: `${error} — switch to Source to edit.` })}
+                      className="tx-mdx-root"
+                      contentEditableClassName="tx-mdx"
+                      spellCheck={false}
+                      placeholder="Write in markdown. Shortcuts: # heading, **bold**, - list, > quote."
+                    />
+                  </Suspense>
+                </MdBoundary>
+              ) : sourceArea}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
-export function Instructions({ slug }) {
+const INSTR_SCOPES = ['env', 'project']
+const TMPL_SCOPES = ['writing', 'template']
+
+export function Instructions({ slug, focus }) {
   return (
-    <>
-      <div className="pagehead">
-        <h1>Instructions</h1>
-        <div className="sub">
-          the protocol agents load at session start — saving changes what they do on their next session
-        </div>
-      </div>
-      <FileEditor scopes={['env', 'project']} slug={slug}
-                  banner="Agents (Claude Code via MCP/CLI) read this file — edits take effect next session." />
-    </>
+    <FileEditor
+      scopes={INSTR_SCOPES} slug={slug} view="instructions" focus={focus}
+      rootLabel="."
+    />
   )
 }
 
-export function Templates({ slug }) {
+export function Templates({ slug, focus }) {
   return (
-    <>
-      <div className="pagehead">
-        <h1>Templates & writing</h1>
-        <div className="sub">
-          how a paper is built, how a thesis argues, sentences worth reusing — plus the project scaffold
-        </div>
-      </div>
-      <FileEditor scopes={['writing', 'template']} slug={slug}
-                  banner="Agents read the writing guides before drafting text; template files apply to every FUTURE `renv new`." />
-    </>
+    <FileEditor
+      scopes={TMPL_SCOPES} slug={slug} view="templates" focus={focus}
+      rootLabel="templates/" strip="templates"
+    />
   )
 }
 

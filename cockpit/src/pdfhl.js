@@ -133,6 +133,26 @@ export function paintRects(range, overlay, pageEl, className, dataset = {}) {
   return made
 }
 
+const SPAN_MARK_RE = /\[\s*([A-Za-z0-9_.:-]+):(\d+)--(\d+)\s*\]/g
+export function findSpanCiteMarkers(textLayerEl) {
+  // Markers emitted by \\spancite: [key:start--end] (thin spaces possible).
+  const { text, nodeAt } = buildIndex(textLayerEl)
+  const out = []
+  SPAN_MARK_RE.lastIndex = 0
+  let m
+  while ((m = SPAN_MARK_RE.exec(text)) && out.length < 400) {
+    const a = nodeAt(m.index)
+    const b = nodeAt(m.index + m[0].length)
+    const range = document.createRange()
+    try {
+      range.setStart(a.node, a.offset)
+      range.setEnd(b.node, b.offset)
+    } catch { continue }
+    out.push({ range, source_id: m[1], start: +m[2], end: +m[3] })
+  }
+  return out
+}
+
 // Numeric in-text citation markers ([12], [3, 7], [1-4], [1–3]) on a text
 // layer, as { range, nums }. Runs on the RAW text — normalize() would strip the
 // brackets and match every bare number on the page. `validNums` (the paper's
@@ -189,4 +209,30 @@ export function selectionAnchor(textLayerEl, pageEl) {
   const rects = range.getClientRects()
   const last = rects[rects.length - 1]
   return { quote, prefix, suffix, clientX: last?.right ?? 0, clientY: last?.bottom ?? 0 }
+}
+
+// A few words around a click in the PDF.js text layer — SyncTeX fallback.
+export function snippetAtPoint(textLayerEl, clientX, clientY) {
+  const caret = document.caretRangeFromPoint?.(clientX, clientY)
+    || document.caretPositionFromPoint?.(clientX, clientY)
+  let node = caret?.startContainer || caret?.offsetNode
+  if (!node) return ''
+  if (node.nodeType === 3) node = node.parentElement
+  if (!node || !textLayerEl.contains(node)) return ''
+  const span = node.closest?.('span') || node
+  const bits = [
+    span.previousElementSibling?.textContent,
+    span.textContent,
+    span.nextElementSibling?.textContent,
+  ]
+  return bits.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 160)
+}
+
+// renv-cite://key/start/end  or  https://renv.local/cite/key/start/end
+export function parseCiteHref(url) {
+  const s = decodeURIComponent(String(url || ''))
+  let m = s.match(/renv-cite:\/\/([^/\s]+)\/(\d+)\/(\d+)/)
+  if (!m) m = s.match(/\/cite\/([^/\s]+)\/(\d+)\/(\d+)/)
+  if (!m) return null
+  return { source_id: m[1], start: +m[2], end: +m[3] }
 }

@@ -656,10 +656,6 @@ textarea.gnode-edit {
 /* admin file editor — same tree chrome as Write; .md files use live markdown */
 .filetabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .filetabs .active-tab { color: var(--accent); border-color: var(--accent); }
-.tx-file-help {
-  flex-shrink: 0; padding: 8px var(--tx-pad); font-size: 12px; color: var(--muted);
-  line-height: 1.45; border-bottom: 1px solid var(--line); background: var(--surface);
-}
 .tx-fileedit-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
 .tx-fileedit-wrap textarea.fileedit,
 textarea.fileedit {

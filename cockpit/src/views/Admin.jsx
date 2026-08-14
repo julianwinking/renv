@@ -30,7 +30,7 @@ class MdBoundary extends React.Component {
   }
 }
 
-function FileEditor({ scopes, slug, view, focus, banner, rootLabel, strip }) {
+function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
   const [files, setFiles] = useState(null)
   const [sel, setSel] = useState(null)          // listing row
   const [content, setContent] = useState('')
@@ -161,7 +161,7 @@ function FileEditor({ scopes, slug, view, focus, banner, rootLabel, strip }) {
     <div className="tx">
       <div className="tx-files" style={{ width: treeW }}>
         <div className="tx-chrome">
-          <span className="tx-title" title={banner}>{rootLabel}</span>
+          <span className="tx-title">{rootLabel}</span>
         </div>
         <FileTree tree={tree} active={sel?.path}
                   onOpen={(n) => { if (n.kind === 'file' && n.file) openFile(n.file) }} />
@@ -182,10 +182,9 @@ function FileEditor({ scopes, slug, view, focus, banner, rootLabel, strip }) {
         </div>
         {sel && (
           <>
-            <div className="tx-file-help">
-              {sel.description} {banner}
-              {mdCrash && ' Live preview could not open this file — editing as source.'}
-            </div>
+            {mdCrash && (
+              <div className="tx-err">Live preview could not open this file — editing as source.</div>
+            )}
             {msg && (
               <div className={`tx-err ${msg.bad ? '' : 'ok'}`}>{msg.text}</div>
             )}
@@ -224,7 +223,6 @@ export function Instructions({ slug, focus }) {
     <FileEditor
       scopes={INSTR_SCOPES} slug={slug} view="instructions" focus={focus}
       rootLabel="."
-      banner="Agents read this at session start — edits take effect next session."
     />
   )
 }
@@ -234,7 +232,6 @@ export function Templates({ slug, focus }) {
     <FileEditor
       scopes={TMPL_SCOPES} slug={slug} view="templates" focus={focus}
       rootLabel="templates/" strip="templates"
-      banner="Writing guides apply when drafting; template files apply to every FUTURE `renv new`."
     />
   )
 }

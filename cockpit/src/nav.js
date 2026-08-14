@@ -15,18 +15,25 @@ export function navigate(path) {
 // different project can be open in each browser tab:
 //   /<slug>                       → that project's overview
 //   /<slug>/<view>                → a view (graph, claims, settings, …)
-//   /<slug>/<view>/<focus>        → a deep link (paper key, claim id, exp slug)
+//   /<slug>/<view>/<focus>        → a deep link (paper key, claim id, exp slug,
+//                                   or a nested file: sections/intro.tex)
+// Focus is the remainder of the path (joined), not only seg[2], so nested
+// Write/Instructions files round-trip. encodeURIComponent of the *whole*
+// focus would turn `/` into `%2F`; some proxies decode that back to `/` and
+// a one-segment parser would then truncate to the first folder.
 export function parsePath(views) {
   const seg = location.pathname.replace(/^\/+/, '').split('/').filter(Boolean)
   return {
     slug: seg[0] ? decodeURIComponent(seg[0]) : null,
     view: views.includes(seg[1]) ? seg[1] : 'overview',
-    focus: seg[2] ? decodeURIComponent(seg[2]) : null,
+    focus: seg.length > 2 ? seg.slice(2).map(decodeURIComponent).join('/') : null,
   }
 }
 
 // Build a route path from parts (slug required; view/focus optional).
 export function routePath(slug, view = 'overview', focus = null) {
-  return '/' + encodeURIComponent(slug) + '/' + view +
-    (focus ? '/' + encodeURIComponent(focus) : '')
+  const rest = focus
+    ? '/' + String(focus).split('/').filter(Boolean).map(encodeURIComponent).join('/')
+    : ''
+  return '/' + encodeURIComponent(slug) + '/' + view + rest
 }

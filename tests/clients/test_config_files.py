@@ -35,6 +35,8 @@ def test_spa_shell_for_md_deep_link(tmp_path):
     try:
         html = urllib.request.urlopen(base + "/p/instructions/AGENTS.md").read()
         assert b"<html" in html.lower() or b"<!doctype" in html.lower() or b"root" in html
+        nested = urllib.request.urlopen(base + "/p/write/sections/intro.tex").read()
+        assert b"<html" in nested.lower() or b"<!doctype" in nested.lower() or b"root" in nested
         try:
             urllib.request.urlopen(base + "/assets/missing-bundle.js")
             raise AssertionError("missing asset should 404")

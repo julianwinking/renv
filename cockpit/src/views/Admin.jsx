@@ -90,7 +90,9 @@ function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
     const r = await saveConfigFile(row.scope, row.name, text, row.project)
     setSaving(false)
     if (r.error) { setMsg({ bad: true, text: r.error }); return }
-    if (selRef.current && row.path === selRef.current.path) setDirty(false)
+    if (selRef.current && row.path === selRef.current.path && text === contentRef.current) {
+      setDirty(false)
+    }
   }
 
   const onEdit = (text) => {
@@ -147,7 +149,10 @@ function FileEditor({ scopes, slug, view, focus, rootLabel, strip }) {
   if (!files) return <div className="loading">reading files…</div>
 
   const isMd = sel && /\.md$/i.test(sel.name)
-  const useLive = isMd && !mdCrash && ready === sel.path
+  // Protocol files stay on the byte-accurate textarea: live MDX re-serializes
+  // the whole document on the first keystroke (mdast), which would rewrite
+  // AGENTS.md. Writing templates (style.md, …) are the live-MDX surface.
+  const useLive = isMd && !mdCrash && ready === sel.path && sel.name !== 'AGENTS.md'
   const sourceArea = (
     <textarea
       className="fileedit"

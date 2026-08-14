@@ -36,6 +36,8 @@ def test_list_tree_flags_generated_and_hides_build_cruft(tmp_path):
     assert by["results_table.tex"]["generated"] is True
     assert by["results_table.tex"]["writable"] is False
     assert by["paper.tex"]["writable"] is True
+    assert by["preamble.tex"]["writable"] is False
+    assert by["preamble.tex"]["engine_owned"] is True
     intro = by["sections"]["children"][0]
     assert intro["path"] == "sections/intro.tex"
 
@@ -68,6 +70,22 @@ def test_weave_outputs_are_not_writable(tmp_path):
             raise AssertionError(name)
         except ValueError as e:
             assert "weave" in str(e)
+
+
+def test_preamble_is_engine_owned_not_writable(tmp_path):
+    con, _ = _project(tmp_path)
+    got = manuscript.read_file(con, tmp_path, "p", "preamble.tex")
+    assert got["writable"] is False and got["engine_owned"] is True
+    try:
+        manuscript.write_file(con, tmp_path, "p", "preamble.tex", "% custom\n")
+        raise AssertionError
+    except ValueError as e:
+        assert "engine-owned" in str(e)
+    try:
+        manuscript.delete_file(con, tmp_path, "p", "preamble.tex")
+        raise AssertionError
+    except ValueError:
+        pass
 
 
 def test_delete_refuses_skeleton(tmp_path):
@@ -206,7 +224,7 @@ def test_usage_papers_and_woven_experiments(tmp_path):
     used = manuscript.usage(con, tmp_path, "p")
     assert used["papers"] == ["gao2023_alce", "smith2024"]
     assert used["cite_numbers"]["gao2023_alce"] == 1
-    assert used["cite_numbers"]["smith2024"] == 2
+    assert "smith2024" not in used["cite_numbers"]
     assert used["results_table"] is True
     assert used["experiments"] == ["001"]
     ctx = manuscript.writing_context(con, tmp_path, "p")
@@ -245,6 +263,15 @@ def test_synctex_parse_view_edit_and_snippet(tmp_path):
     assert miss["ok"] is False and miss["reason"] == "no-synctex"
     fb = manuscript.sync_from_tex(text, "paper.tex", 2, text="citation precision")
     assert fb["ok"] is False and fb["fallback"] == "text"
+    secret = tmp_path / "secret.tex"
+    secret.write_text("The citation precision result lives outside text/.\n")
+    escaped = manuscript.sync_from_pdf(
+        text, 1, 0, 0, snippet="citation precision lives outside",
+        prefer="../secret.tex")
+    assert escaped.get("ok") is not True
+    found_escape = synctex.locate_snippet(
+        text, "citation precision lives outside", prefer="../secret.tex")
+    assert found_escape is None
 
 
 def test_graph_stamps_in_manuscript(tmp_path):
@@ -285,3 +312,27 @@ def test_graph_stamps_in_manuscript(tmp_path):
     assert pap["data"]["cite_number"] == 1
     cite = next(n for n in g["nodes"] if n["kind"] == "citation")
     assert cite["data"]["in_manuscript"] is True
+
+
+def test_usage_numbers_follow_input_order_not_rglob(tmp_path):
+    """First-appearance [n] follows \\input expansion, not alphabetical rglob."""
+    con, root = _project(tmp_path)
+    text = root / "text"
+    (text / "sections").mkdir()
+    (text / "sections" / "aaa.tex").write_text(
+        r"\spancite{aaa}{1}{2}{a}" + "\n")
+    (text / "sections" / "zzz.tex").write_text(
+        r"\spancite{zzz}{1}{2}{z}" + "\n")
+    (text / "paper.tex").write_text(
+        r"\input{preamble}" + "\n"
+        + r"\input{sections/zzz}" + "\n"
+        + r"\spancite{paper}{1}{2}{p}" + "\n"
+        + r"\input{sections/aaa}" + "\n")
+    used = manuscript.usage(con, tmp_path, "p")
+    assert used["papers"] == ["zzz", "paper", "aaa"]
+    assert used["cite_numbers"] == {"zzz": 1, "paper": 2, "aaa": 3}
+    # orphan file still counted for occupancy, after the typeset walk
+    (text / "orphan.tex").write_text(r"\spancite{orphan}{1}{2}{o}" + "\n")
+    used = manuscript.usage(con, tmp_path, "p")
+    assert used["papers"][-1] == "orphan"
+    assert used["cite_numbers"]["orphan"] == 4

@@ -245,12 +245,16 @@ def locate_snippet(text_dir: Path, query: str, *, prefer: str | None = None) -> 
     q, _ = _alnum(query or "")
     if len(q) < 6:
         return None
-    text_dir = Path(text_dir)
+    text_dir = Path(text_dir).resolve()
     ordered: list[Path] = []
     if prefer:
-        cand = text_dir / prefer
-        if cand.is_file():
-            ordered.append(cand)
+        try:
+            cand = (text_dir / str(prefer)).resolve()
+            cand.relative_to(text_dir)
+            if cand.is_file():
+                ordered.append(cand)
+        except (ValueError, OSError):
+            pass
     ordered.extend(sorted(p for p in text_dir.rglob("*.tex") if p not in ordered))
     needle = q[:96]
     for p in ordered:

@@ -55,6 +55,12 @@ def test_write_tree_read_write_roundtrip(tmp_path):
             raise AssertionError("weave file was writable")
         except urllib.error.HTTPError as e:
             assert e.code == 400
+        try:
+            _post(base, "/api/write/p/file",
+                  {"path": "preamble.tex", "content": "% no\n"})
+            raise AssertionError("preamble was writable")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
         ctx = _get(base, "/api/write/p/context")
         assert "spancites" in ctx and "metrics" in ctx
         assert "usage" in ctx
@@ -84,6 +90,12 @@ def test_write_path_traversal_rejected(tmp_path):
             raise AssertionError
         except urllib.error.HTTPError as e:
             assert e.code == 400
+        # SyncTeX prefer must not read outside text/
+        sync = _get(base, "/api/write/p/synctex?dir=pdf&page=1&x=0&y=0"
+                         "&snippet=citationprecisionoutside"
+                         "&prefer=../AGENTS.md")
+        assert "error" not in sync
+        assert sync.get("path") != "../AGENTS.md"
     finally:
         httpd.shutdown()
 

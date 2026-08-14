@@ -36,10 +36,16 @@ export default function Write({ slug, focus }) {
   const [edRev, setEdRev] = useState(0)
   const saveTimer = useRef(0)
   const contentRef = useRef('')
+  const pathRef = useRef(path)
+  const dirtyRef = useRef(false)
+  const fileRef = useRef(null)
   const ed = useRef(null)
   const pdfRef = useRef(null)
   const pendingGoto = useRef(null)
   contentRef.current = content
+  pathRef.current = path
+  dirtyRef.current = dirty
+  fileRef.current = file
 
   const loadTree = useCallback(() => getWriteTree(slug).then(setTree), [slug])
   const loadCtx = useCallback(() => getWriteContext(slug).then(setCtx), [slug])
@@ -50,14 +56,39 @@ export default function Write({ slug, focus }) {
     else if (ctx && !ctx.engine) setCompile({ status: 'no-engine', engine: null })
   }, [ctx])
 
+  const saveNow = async (rel, text) => {
+    const live = fileRef.current
+    if (!rel || (live && live.path === rel && !live.writable)) return
+    setSaving(true)
+    const r = await saveWriteFile(slug, rel, text)
+    setSaving(false)
+    if (r.error) { setErr(r.error); return }
+    // Don't clear dirty if the buffer moved on while this POST was in flight.
+    if (rel === pathRef.current && text === contentRef.current) {
+      setDirty(false)
+      dirtyRef.current = false
+    }
+    loadTree()
+  }
+
+  const flushOpen = (rel) => {
+    if (rel === pathRef.current) return false
+    clearTimeout(saveTimer.current)
+    if (dirtyRef.current && fileRef.current?.writable) {
+      saveNow(pathRef.current, contentRef.current)
+    }
+    return true
+  }
+
   useEffect(() => {
-    if (focus && focus !== path) setPath(focus)
+    if (focus && focus !== path) {
+      flushOpen(focus)
+      setPath(focus)
+    }
   }, [focus]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openPath = (rel) => {
-    if (rel === path) return
-    clearTimeout(saveTimer.current)
-    if (dirty && file?.writable) saveNow(path, contentRef.current)
+    if (!flushOpen(rel)) return
     setPath(rel)
     navigate(routePath(slug, 'write', rel))
   }
@@ -65,31 +96,39 @@ export default function Write({ slug, focus }) {
   useEffect(() => {
     let cancelled = false
     setErr('')
+    setFile(null)
+    fileRef.current = null
+    setDirty(false)
+    dirtyRef.current = false
     getWriteFile(slug, path).then((f) => {
       if (cancelled) return
       if (f.error) { setErr(f.error); setFile(null); return }
       setFile(f)
-      setContent(f.content || '')
+      fileRef.current = f
+      const text = f.content || ''
+      setContent(text)
+      contentRef.current = text
       setDirty(false)
+      dirtyRef.current = false
     }).catch((e) => { if (!cancelled) setErr(String(e)) })
     return () => { cancelled = true }
   }, [slug, path])
 
-  const saveNow = async (rel, text) => {
-    if (rel === path && file && !file.writable) return
-    setSaving(true)
-    const r = await saveWriteFile(slug, rel, text)
-    setSaving(false)
-    if (r.error) { setErr(r.error); return }
-    if (rel === path) setDirty(false)
-    loadTree()
-  }
+  useEffect(() => () => {
+    clearTimeout(saveTimer.current)
+    if (dirtyRef.current && fileRef.current?.writable && pathRef.current) {
+      saveWriteFile(slug, pathRef.current, contentRef.current)
+    }
+  }, [slug])
 
   const onEdit = (text) => {
+    contentRef.current = text
     setContent(text)
     setDirty(true)
+    dirtyRef.current = true
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => saveNow(path, text), 700)
+    const rel = pathRef.current
+    saveTimer.current = setTimeout(() => saveNow(rel, text), 700)
   }
 
   const citations = useMemo(() => {
@@ -131,7 +170,7 @@ export default function Write({ slug, focus }) {
   }
 
   const recompile = async () => {
-    if (dirty && file?.writable) await saveNow(path, contentRef.current)
+    if (fileRef.current?.writable) await saveNow(pathRef.current, contentRef.current)
     setCompile({ status: 'running', engine: ctx?.engine?.name })
     setErr('')
     const r = await compileProject(slug, { weave: true, main: 'paper.tex' })
@@ -174,18 +213,25 @@ export default function Write({ slug, focus }) {
     loadTree()
   }
 
+  const recompileRef = useRef(recompile)
+  recompileRef.current = recompile
+  const saveNowRef = useRef(saveNow)
+  saveNowRef.current = saveNow
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault(); saveNow(path, contentRef.current)
+        e.preventDefault()
+        clearTimeout(saveTimer.current)
+        saveNowRef.current(pathRef.current, contentRef.current)
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault(); recompile()
+        e.preventDefault()
+        recompileRef.current()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [path, slug]) // eslint-disable-line
+  }, [slug])
 
   const startTreeResize = (e) => {
     e.preventDefault()
@@ -305,6 +351,7 @@ export default function Write({ slug, focus }) {
         <div className="tx-chrome">
           <span className="tx-title" title={path}>{path}</span>
           {file?.generated && <span className="tx-tag">weave</span>}
+          {file?.engine_owned && <span className="tx-tag">engine</span>}
           {dirty && <span className="tx-status">unsaved</span>}
           {saving && <span className="tx-status">saving…</span>}
           {file?.writable && path !== 'paper.tex' && path !== 'preamble.tex' && (
@@ -315,7 +362,7 @@ export default function Write({ slug, focus }) {
         </div>
         <div className="tx-editor">
           {err && <div className="tx-err">{err}</div>}
-          {file && (
+          {file && file.path === path && (
             <Suspense fallback={<div className="loading">loading editor…</div>}>
               <TexEditor
                 ref={ed}

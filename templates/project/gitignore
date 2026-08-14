@@ -8,7 +8,15 @@ __pycache__/
 runs/*
 !runs/.gitkeep
 
-# compiled manuscript (rebuild with `renv compile` / cockpit Write)
-text/*.pdf
+# LaTeX build cruft
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.synctex.gz
 *.fdb_latexmk
 *.fls
+
+# compiled manuscript (rebuild with `renv compile` / cockpit Write)
+text/*.pdf

@@ -18,6 +18,7 @@ from renv.corpus.retrieve import Candidate
 # (first appearance of each source_id); a renv-cite:// link carries the span
 # so the cockpit can show the stored quote on hover. #4 stays in the .tex.
 LATEX_PREAMBLE = r"""
+% ENGINE-OWNED by renv (rewritten on weave/compile). Packages go in paper.tex.
 % renv span citation — numbered like the camera-ready paper; hover in the
 % cockpit reads the renv-cite:// annotation (source, start, end).
 \makeatletter

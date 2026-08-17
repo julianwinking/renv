@@ -20,7 +20,7 @@ renv = "renv.cli:main"
 
 [dependency-groups]
 # Dev tooling, installed by `uv sync` but not shipped with the package.
-dev = ["pytest>=9.1.1", "pytest-cov>=5", "hypothesis>=6.165.3", "ruff>=0.16.2"]
+dev = ["pytest>=9.1.1", "pytest-cov>=5", "hypothesis>=6.165.8", "ruff>=0.16.3"]
 
 [tool.uv]
 # Optional extras are lazy-imported heavy SOTA backends; leave them out of
